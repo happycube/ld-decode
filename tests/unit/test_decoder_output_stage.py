@@ -54,7 +54,7 @@ def stub_decoder(lane=None, pool=None, cvbs=None, dbconn=None):
     it = types.SimpleNamespace(
         fieldinfo=[], fields_written=3, cvbs_writer=cvbs, dbconn=dbconn,
         _output_lane=lane, _output_pool=pool, dg_speculation_tolerance=None,
-        fdoffset=12345.0, capture_id=7, written=[],
+        fdoffset=12345.0, capture_id=7, written=[], _chroma_record=[],
     )
     it.writeout = lambda ds: LDdecode.writeout(it, ds)
     it._output_picture = lambda p, v: LDdecode._output_picture(it, p, v)
@@ -82,6 +82,23 @@ def dataset(f, picture=None, audio=None, efm=None):
     if picture is None:
         picture = f.dspicture
     return (f, fi, picture, audio, efm)
+
+
+def test_commit_half_keeps_every_fields_burst_level_for_the_chroma_record(corrector):
+    """FieldInfo only holds the last few fields; the capture notes' chroma
+    record is over all of them, one entry per committed field with the
+    inverse-MTF strength it was decoded under."""
+    it = stub_decoder(lane=RecordingLane(), cvbs=object())
+    f = stub_field()
+    f.decoded_imtf_strength = 0.5
+
+    for level in (15.0, 15.5, 16.0, 15.25, None):
+        job = dataset(f)
+        job[1]["medianBurstIRE"] = level
+        it.writeout(job)
+
+    assert it._chroma_record == [(15.0, 0.5), (15.5, 0.5), (16.0, 0.5),
+                                 (15.25, 0.5), (None, 0.5)]
 
 
 def test_commit_half_records_the_field_and_queues_the_rest_in_order(corrector):

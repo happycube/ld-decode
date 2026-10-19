@@ -246,12 +246,95 @@ def test_a_disc_with_no_dspicture_yields_nothing():
     assert measure_vits_dg_staircase(f) is None
 
 
+# --- NTSC: the NTC-7 composite staircase ----------------------------------
+
+NTSC_OUTFREQ = 14.318182
+NTSC_LINELEN = 910
+
+
+def ntc7_line_ire(chroma_peak_of, chroma_phase_of=lambda level: 0.0,
+                  early_us=0.0):
+    """NTC-7 composite's chrominance reference over blanking from 42.2 us
+    and its five treads to 90 IRE every 3.0 us from 46 us, the subcarrier
+    ending at 60.9; `early_us` moves it all earlier, as Pioneer's GGV
+    discs place it (0.35 us)."""
+    fs = NTSC_OUTFREQ
+    t = np.arange(NTSC_LINELEN) / fs + early_us
+    levels = (0.0, 18.0, 36.0, 54.0, 72.0, 90.0)
+    step = np.clip(np.floor((t - 46.0) / 3.0) + 1, 0, 5).astype(int)
+    lum = np.where((t >= 42.2) & (t < 61.5), np.take(levels, step), 0.0)
+    carrier = (t >= 42.2) & (t < 60.9)
+    n = np.arange(NTSC_LINELEN)
+    chroma = np.array([chroma_peak_of(l) for l in lum]) * np.cos(
+        0.5 * np.pi * n + 0.7 + np.array([chroma_phase_of(l) for l in lum]))
+    return lum + carrier * chroma
+
+
+def ntsc_field_stub(lines, is_first=True):
+    """An NTSC field carrying the given {line: waveform} rows."""
+    dspicture = np.zeros(NTSC_LINELEN * 25)
+    for line, row in lines.items():
+        dspicture[NTSC_LINELEN * (line - 1):NTSC_LINELEN * line] = row
+    it = types.SimpleNamespace(
+        isFirstField=is_first,
+        dspicture=dspicture,
+        rf=types.SimpleNamespace(
+            system="NTSC",
+            SysParams={"outfreq": NTSC_OUTFREQ, "outlinelen": NTSC_LINELEN}),
+    )
+
+    def lineslice_tbc(line, begin, length, keepphase=False):
+        start = NTSC_LINELEN * (line - 1)
+        off = int(np.floor(begin * NTSC_OUTFREQ))
+        if keepphase:
+            off = (off // 4) * 4
+        return slice(start + off,
+                     start + off + int(np.floor(length * NTSC_OUTFREQ)))
+
+    it.lineslice_tbc = lineslice_tbc
+    it.output_to_ire = lambda x: x
+    return it
+
+
+#: About what the short NTSC capture that prompted the NTSC servo
+#: measures: +0.0010-0.0014 per IRE of gain, +0.09 degrees per IRE of
+#: phase.
+NTSC_SLOPE, NTSC_PHASE_DEG = 0.0014, 0.09
+
+
+@pytest.mark.parametrize("early_us", [0.0, 0.35])
+def test_the_ntc7_staircase_slope_and_phase_are_recovered(early_us):
+    row = ntc7_line_ire(lambda l: 20.0 * (1 + NTSC_SLOPE * l),
+                        lambda l: np.deg2rad(NTSC_PHASE_DEG * l), early_us)
+    slope, phase, line = measure_vits_dg_staircase(ntsc_field_stub({20: row}))
+    assert line == 20
+    assert slope == pytest.approx(NTSC_SLOPE, rel=0.10)
+    assert phase == pytest.approx(NTSC_PHASE_DEG, rel=0.10)
+
+
+def test_ntsc_reads_its_first_fields_only():
+    """The second field's line 20 carries the NTC-7 combination signal."""
+    row = ntc7_line_ire(lambda l: 20.0)
+    assert measure_vits_dg_staircase(
+        ntsc_field_stub({20: row}, is_first=False)) is None
+
+
+@pytest.mark.parametrize("carried, read", [((13,), 13), ((20, 13), 20),
+                                           ((19, 13), 19)])
+def test_ntsc_reads_line_13_only_when_lines_20_and_19_have_none(carried, read):
+    row = ntc7_line_ire(lambda l: 20.0, early_us=0.35)
+    measured = measure_vits_dg_staircase(
+        ntsc_field_stub({line: row for line in carried}))
+    assert measured[2] == read
+
+
 # ---------------------------------------------------------------------------
 # The servo
 # ---------------------------------------------------------------------------
 
 def servo_stub(slopes, calibrated=False, current=0.0, enabled=True,
-               fields_written=0, phases=None, current_phase=0.0):
+               fields_written=0, phases=None, current_phase=0.0,
+               system="PAL"):
     if phases is None:
         phases = [0.0] * len(slopes)
     it = types.SimpleNamespace(
@@ -277,6 +360,7 @@ def servo_stub(slopes, calibrated=False, current=0.0, enabled=True,
         DG_PHASE_MIN_SAMPLES=LDdecode.DG_PHASE_MIN_SAMPLES,
         DG_PHASE_RELEASE=LDdecode.DG_PHASE_RELEASE,
         rf=types.SimpleNamespace(
+            system=system,
             DecoderParams={"chroma_dg_slope": current,
                            "chroma_dg_phase": current_phase}),
     )
@@ -367,7 +451,16 @@ def test_an_engaged_slope_that_falls_back_inside_releases_to_zero():
 
 
 def test_the_domesday_slope_is_well_above_the_threshold():
-    assert 0.0034 > 2 * LDdecode.DG_SLOPE_ENGAGE
+    assert 0.0034 > 2 * LDdecode.DG_SLOPE_ENGAGE["PAL"]
+
+
+@pytest.mark.parametrize("system, engaged", [("PAL", False), ("NTSC", True)])
+def test_ntsc_engages_nearer_its_limit(system, engaged):
+    """The NTC-7 estimate is close enough to trust at the doobie capture's
+    0.00125/IRE, which reads 0.130 against the 0.10 limit."""
+    it = servo_stub([0.00125] * 8, system=system)
+    run(it)
+    assert (slope_of(it) != 0.0) == engaged
 
 
 def test_a_clean_disc_never_calibrates():
@@ -736,3 +829,30 @@ def test_the_transform_length_is_a_fast_one_with_room_for_the_guard(length):
     # Guard either side, so neither end of the kept field is nearer the
     # padded array's wrap than the windows' tails reach.
     assert padded_len >= length + 2 * guard
+
+
+# ---------------------------------------------------------------------------
+# The NTSC CVBS write-time hook
+# ---------------------------------------------------------------------------
+
+def held_field(slope, phase):
+    f = field_module.Field.__new__(field_module.Field)
+    f.rf = types.SimpleNamespace(DecoderParams={"chroma_dg_slope": slope,
+                                                "chroma_dg_phase": phase})
+    return f
+
+
+def test_a_field_with_no_held_correction_hands_its_picture_back():
+    picture = np.arange(16, dtype=np.uint16)
+    assert held_field(0.0, 0.0).chroma_dg_cvbs_picture(picture) is picture
+
+
+@pytest.mark.parametrize("slope, phase", [(0.0021, 0.0), (0.0, 0.09)])
+def test_a_held_correction_is_applied_to_the_picture(monkeypatch, slope, phase):
+    calls = []
+    monkeypatch.setattr(
+        field_module, "apply_chroma_dg_correction_output",
+        lambda picture, field, s, p: calls.append((s, p)) or "corrected")
+    f = held_field(slope, phase)
+    assert f.chroma_dg_cvbs_picture(np.zeros(16, np.uint16)) == "corrected"
+    assert calls == [(slope, phase)]

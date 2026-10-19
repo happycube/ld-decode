@@ -337,6 +337,7 @@ def eq_stub(samples_, strength, flat_band=None, job_engine=None):
     """Enough of an LDdecode for the ceiling's publish-and-apply path."""
     it = types.SimpleNamespace(
         _veq_samples=samples_,
+        auto_chroma=True,
         VEQ_MIN_SAMPLES=6,
         CHROMA_BAND_PROBE_HZ=LDdecode.CHROMA_BAND_PROBE_HZ,
         imtf_strength_limit=STRENGTH_LIMIT,
@@ -439,6 +440,7 @@ def adopt_stub(samples_, strength, flat_band=None, calibrated=False,
         params["video_eq_auto"] = applied_eq
     it = types.SimpleNamespace(
         _veq_samples=samples_,
+        auto_chroma=True,
         VEQ_MIN_SAMPLES=6,
         VEQ_DEADBAND_DB=LDdecode.VEQ_DEADBAND_DB,
         VEQ_MIN_ADOPT_FIELDS=LDdecode.VEQ_MIN_ADOPT_FIELDS,
@@ -768,3 +770,12 @@ def test_a_burst_servo_trim_is_no_redo_in_either_mode(exact):
     assert LDdecode._deemp_calibrate(it) is False
     assert it.rf.DecoderParams["inverse_mtf_strength"] > 0.5 + it.imtf_strength_deadband
     assert it._discard_ahead is exact
+
+
+def test_with_the_chroma_correction_off_the_ceiling_stands_down():
+    """--no_auto_chroma means no inverse-MTF filter at all: the multiburst
+    may not cut the chroma band any more than the burst may boost it."""
+    it = eq_stub([], strength=0.0, flat_band=-1.0)
+    it.auto_chroma = False
+    assert LDdecode._apply_imtf_ceiling(it) is False
+    assert it.rf.DecoderParams["inverse_mtf_strength"] == 0.0

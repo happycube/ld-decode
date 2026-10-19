@@ -50,6 +50,8 @@ class StubDecoder:
     """
 
     mtf_response = RFDecode.mtf_response
+    mtf_response_at = RFDecode.mtf_response_at
+    mtf_model = "poles"
     _mtf_response_cache = None
 
     def __init__(self, mtf):
@@ -126,7 +128,7 @@ def test_rebuilding_the_filters_drops_the_held_response(system):
     # Raising the half is bit-for-bit the first half of raising the whole:
     # the power is elementwise, which is what lets demodblock filter the
     # rfft of the block against it (see demodblock).
-    np.testing.assert_array_equal(rebuilt, (rf.Filters["MTF"] ** 1.13)[: rf.blocklen // 2 + 1])
+    np.testing.assert_array_equal(rebuilt, rf.mtf_response_at(1.13))
 
 
 @parametrize_system

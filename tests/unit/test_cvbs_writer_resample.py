@@ -41,6 +41,7 @@ def make_writer(executor):
     w.logger = None
     w.frames_written = 0
     w._pal_shift = 0.0
+    w.legacy_origin = False
     w._lock_initialised = False
     w._lock_residuals = []
     w._resample_executor = executor
@@ -176,6 +177,18 @@ def test_the_first_frame_moves_the_lattice_to_put_0h_before_sample_0(h0, origin)
     assert w._pal_shift == origin
     assert f_b.downscale_cvbs.call_args_list[0].args[0] == origin
     assert origin - 1 < h0 <= origin
+
+
+def test_a_legacy_origin_leaves_0h_where_the_lock_puts_it():
+    """--cvbs-legacy-origin: the lattice the lock chose, 0H and all, as
+    written before frames were 0H-aligned."""
+    w = make_writer(RecordingExecutor())
+    w.legacy_origin = True
+    f_a, f_b = synced_lattice(-1.4), make_field(354689)
+    w._emit_frame((f_a, {}, None, None, None), (f_b, {}, None, None, None))
+
+    assert w._pal_shift == 0
+    assert f_b.downscale_cvbs.call_args_list[0].args[0] == 0
 
 
 def test_close_leaves_an_injected_executor_alone():

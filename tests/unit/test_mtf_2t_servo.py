@@ -33,25 +33,31 @@ NOISY_PRESSING_IRE = 8.0
 OLD_ABSOLUTE_GATE_IRE = 4.0
 
 
+NTSC_OUTFREQ = 14.318182
+NTSC_OUTLINELEN = 910
+
+
 def fake_field(system="PAL", lines=32):
+    outfreq, outlinelen = ((NTSC_OUTFREQ, NTSC_OUTLINELEN) if system == "NTSC"
+                           else (PAL_OUTFREQ, PAL_OUTLINELEN))
     rf = types.SimpleNamespace(
         system=system,
-        SysParams={"outfreq": PAL_OUTFREQ, "outlinelen": PAL_OUTLINELEN},
+        SysParams={"outfreq": outfreq, "outlinelen": outlinelen},
     )
 
     class FakeField:
         def __init__(self):
             self.rf = rf
-            self.dspicture = np.zeros(PAL_OUTLINELEN * lines)
+            self.dspicture = np.zeros(outlinelen * lines)
 
         def usectooutpx(self, us):
             return int(us * rf.SysParams["outfreq"])
 
         def lineslice_tbc(self, line, begin=None, length=None):
-            start = PAL_OUTLINELEN * (line - 1)
+            start = outlinelen * (line - 1)
             start += self.usectooutpx(begin) if begin is not None else 0
             count = (self.usectooutpx(length) if length is not None
-                     else PAL_OUTLINELEN)
+                     else outlinelen)
             return slice(start, start + count)
 
         def output_to_ire(self, output):
@@ -133,6 +139,35 @@ def test_a_line_with_no_bar_is_rejected():
     assert measure_its_2t_ratio(field) is None
 
 
+def draw_ntc7(field, line):
+    """NTSC NTC-7 composite: the 100 IRE bar from 12 to 30 us, then the
+    2T pulse at 34 us."""
+    base = NTSC_OUTLINELEN * (line - 1)
+    t_us = np.arange(NTSC_OUTLINELEN) / NTSC_OUTFREQ
+    row = np.zeros(NTSC_OUTLINELEN)
+    row[(t_us >= 12.0) & (t_us < 30.0)] = 100.0
+    offset = t_us - 34.0
+    inside = np.abs(offset) <= 0.25
+    row[inside] += 100.0 * np.cos(np.pi * offset[inside] / 0.5) ** 2
+    field.dspicture[base:base + NTSC_OUTLINELEN] = row
+    return field
+
+
+@pytest.mark.parametrize("carried, read", [
+    ((20,), 20),
+    ((13,), 13),           # Pioneer GGV discs
+    ((20, 13), 20),
+    ((19, 13), 19),
+])
+def test_ntsc_reads_line_13_only_when_lines_20_and_19_have_no_ntc7(carried, read):
+    field = fake_field("NTSC")
+    for line in carried:
+        draw_ntc7(field, line)
+    ratio, line = measure_its_2t_ratio(field)
+    assert line == read
+    assert ratio == pytest.approx(1.0, abs=0.05)
+
+
 # ---------------------------------------------------------------------------
 # What checkMTF does when the servo pool stops being usable
 # ---------------------------------------------------------------------------
@@ -168,7 +203,7 @@ def servo_stub(estimate, engaged, samples, level=0.0, bw_ratio=1.044,
         auto_deemp=False,
         deemp_calibrated=False,
         _job_engine=None,
-        rf=types.SimpleNamespace(DecoderParams={}),
+        rf=types.SimpleNamespace(DecoderParams={}, mtf_model="poles"),
     )
     stub._mtf_servo_estimate = lambda field: estimate
     return stub

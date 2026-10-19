@@ -3,7 +3,8 @@
 import numpy as np
 
 from .filters import inrange
-from .dsp import nb_mean, nb_median, rms, roundfloat
+from .dsp import (carrier_amplitude, nb_mean, nb_median, rms, roundfloat,
+                  tone_sideband_powers)
 
 
 def detect_levels(rf, field, output_lines):
@@ -296,6 +297,125 @@ def _metrics_fp_ntsc(metrics, f, fp):
     return metrics
 
 
+#: The FM sideband readings (burst_sideband_ratio, pilot_sideband_ratio):
+#: the lines they pool, past the vertical interval; how far in from each
+#: end of the tone the window stops, clear of its envelope's rise and fall;
+#: and how strong each sideband must stand against its noise floor (power
+#: ratio) for the field's reading to count.
+SIDEBAND_LINES = (20, 250)
+SIDEBAND_TRIM_US = 0.2
+SIDEBAND_MIN_SNR = 1.0
+
+#: Where the PAL pilot burst sits, in us from the line's sync edge: it
+#: rides the sync tip (IEC 60856-1986 9.1.2) and starts after the edge.
+PILOT_WINDOW_US = (0.8, 4.3)
+
+
+def _tone_sideband_ratio(rf, f, window_us, carrier_hz, tone_hz):
+    """H(carrier - tone) / H(carrier + tone) from a tone's two first FM
+    sidebands over the field's lines (dsp.tone_sideband_powers), or None
+    when either sideband does not clear its noise floor."""
+    b0, b1 = window_us
+    delay = int(rf.delays["video_sync"])
+    segs = []
+    for line in range(*SIDEBAND_LINES):
+        if line + f.lineoffset >= len(f.linelocs):
+            break
+        sl = f.lineslice(line, b0, b1 - b0)
+        start, stop = sl.start - delay, sl.stop - delay
+        if start >= 0 and stop <= len(f.rawdata):
+            segs.append(f.rawdata[start:stop])
+    if not segs:
+        return None
+    n = min(len(s) for s in segs)
+    powers = tone_sideband_powers(
+        np.stack([s[:n] for s in segs]), rf.freq_hz, carrier_hz, tone_hz)
+    if powers is None:
+        return None
+    lower, upper, lower_noise, upper_noise = powers
+    if (lower < SIDEBAND_MIN_SNR * lower_noise
+            or upper < SIDEBAND_MIN_SNR * upper_noise):
+        return None
+    return float(np.sqrt(lower / upper))
+
+
+def burst_sideband_ratio(rf, f):
+    """The channel's H(blanking - fsc) / H(blanking + fsc) from the colour
+    burst's two first FM sidebands, or None.
+
+    The burst is a subcarrier tone riding the blanking carrier, so its
+    sidebands stand in the readout's ratio at those two frequencies
+    whatever the burst's recorded amplitude (dsp.tone_sideband_powers):
+    the readout model's cutoff measurement (decoder checkMTF).  The upper
+    sideband lies beyond the cutoff on the innermost PAL radii, and close
+    to it on some NTSC discs; a field whose upper sideband does not clear
+    its noise floor gives no reading."""
+    b0, b1 = rf.SysParams["colorBurstUS"]
+    return _tone_sideband_ratio(
+        rf, f, (b0 + SIDEBAND_TRIM_US, b1 - SIDEBAND_TRIM_US),
+        rf.DecoderParams["ire0"], rf.SysParams["fsc_mhz"] * 1e6)
+
+
+def pilot_sideband_ratio(rf, f):
+    """The channel's H(tip - 3.75 MHz) / H(tip + 3.75 MHz) from the PAL
+    pilot burst's two first FM sidebands, or None (NTSC has no pilot).
+
+    The pilot rides the sync tip, 0.34 MHz below blanking, and is a lower
+    tone than the colour subcarrier, so its upper sideband (10.5 MHz)
+    stays under the readout's cutoff on inner radii where the burst's
+    (11.5 MHz) is gone - Domesday DD86 and the Industrial disc at 5 % of
+    their band, which the burst cannot read at all.  Its recorded
+    amplitude varies by some 3 dB between discs, which the ratio of its
+    sidebands does not see."""
+    if rf.system != "PAL":
+        return None
+    DP = rf.DecoderParams
+    return _tone_sideband_ratio(
+        rf, f, PILOT_WINDOW_US, rf.iretohz(DP["vsync_ire"]),
+        rf.SysParams["pilot_mhz"] * 1e6)
+
+
+#: Burst levels at or below this are no reading (a field with no burst,
+#: or one lost to dropouts) - the floor checkAutoDeemp already uses.
+MIN_USABLE_BURST_IRE = 5.0
+
+
+def chroma_correction_note(record, nominal_ire, db_per_unit_at_fsc, auto):
+    """The capture-notes record of the chroma level correction.
+
+    `record` is (burst IRE as written, inverse-MTF strength decoded
+    under) per written field; `db_per_unit_at_fsc` is what the inverse-MTF
+    filter adds at the subcarrier per unit of strength.  The correction is
+    written into the samples, so the notes say what it was and what the
+    burst read without it - the burst over the filter's gain at the
+    subcarrier, field by field - and the gain that would bring the burst
+    as written to nominal, for a reader that wants to apply or take out a
+    chroma gain of its own.  Medians over the usable fields; key=value
+    pairs joined by "; ", as the CVBS capture notes already are.
+    """
+    usable = [(float(b), float(s)) for b, s in record
+              if b is not None and np.isfinite(b) and b > MIN_USABLE_BURST_IRE]
+    parts = [f"chroma_correction={'auto' if auto else 'off'}"]
+    if not usable:
+        return "; ".join(parts)
+    bursts = np.array([b for b, _ in usable])
+    strengths = np.array([s for _, s in usable])
+    written = float(np.median(bursts))
+    uncorrected = float(np.median(
+        bursts / 10.0 ** (strengths * db_per_unit_at_fsc / 20.0)))
+    if auto:
+        strength = float(np.median(strengths))
+        parts.append(f"inverse_mtf_strength={strength:.3f} "
+                     f"({strengths.min():.3f}..{strengths.max():.3f})")
+        parts.append(f"inverse_mtf_gain_at_fsc_db={strength * db_per_unit_at_fsc:.2f}")
+    parts.append(f"median_burst_ire={written:.2f}")
+    if auto:
+        parts.append(f"median_burst_ire_uncorrected={uncorrected:.2f}")
+    parts.append(f"nominal_burst_ire={nominal_ire:.2f}")
+    parts.append(f"chroma_gain_to_nominal={nominal_ire / written:.4f}")
+    return "; ".join(parts)
+
+
 def computeMetrics(rf, f, fp=None, verbose=False, verboseVITS=False):
     system = f.rf.system
     if verboseVITS:
@@ -310,6 +430,7 @@ def computeMetrics(rf, f, fp=None, verbose=False, verboseVITS=False):
 
     # FIXME: these should probably be computed in the Field class
     f.whitesnr_slice = None
+    white_carrier = None
 
     for wl in f.rf.SysParams["LD_VITS_whitelocs"]:
         wl_slice = f.lineslice_tbc(*wl)
@@ -328,6 +449,7 @@ def computeMetrics(rf, f, fp=None, verbose=False, verboseVITS=False):
                 - int(rf.delays["video_white"])
             ]
             metrics["whiteRFLevel"] = np.std(rawdata)
+            white_carrier = carrier_amplitude(rawdata, rf.freq_hz)
 
             break
 
@@ -337,6 +459,7 @@ def computeMetrics(rf, f, fp=None, verbose=False, verboseVITS=False):
     delay = int(rf.delays["video_sync"])
     bl_sliceraw = slice(bl_slice.start - delay, bl_slice.stop - delay)
     metrics["blackLineRFLevel"] = np.std(f.rawdata[bl_sliceraw])
+    black_carrier = carrier_amplitude(f.rawdata[bl_sliceraw], rf.freq_hz)
 
     metrics["blackLinePreTBCIRE"] = rf.hztoire(
         np.mean(f.data["video"]["demod"][bl_slice])
@@ -354,6 +477,19 @@ def computeMetrics(rf, f, fp=None, verbose=False, verboseVITS=False):
         metrics["blackToWhiteRFRatio"] = (
             metrics["blackLineRFLevel"] / metrics["whiteRFLevel"]
         )
+        # The same ratio from the carrier alone (noise, the audio carriers
+        # and EFM taken out), which is the readout's own tilt between the
+        # blanking and white carriers: the readout MTF model's measure of
+        # the disc's cutoff (decoder.checkMTF).
+        if white_carrier and black_carrier:
+            metrics["carrierTiltRatio"] = black_carrier / white_carrier
+
+    if getattr(rf, "mtf_model", "poles") == "readout":
+        for key, reading in (("burstSidebandRatio", burst_sideband_ratio),
+                             ("pilotSidebandRatio", pilot_sideband_ratio)):
+            ratio = reading(rf, f)
+            if ratio is not None:
+                metrics[key] = ratio
 
     return _round_metrics(
         metrics, metrics.keys() if verbose else DEFAULT_OUTPUT_KEYS
@@ -414,12 +550,15 @@ def computeMetricsFP(rf, f, fp, base_metrics, verbose=False):
 ITS_FLATNESS_FRACTION = 0.15
 
 # 2T reference layouts: (bar, baseline, pulse) windows in us and the VITS
-# lines to search.  PAL: CCIR ITS (line 19, both parities).  NTSC: NTC-7
-# composite (line 20, first fields; the second-field combination signal at
-# the same line has no full bar and is rejected by the validity checks).
+# lines to search, in order.  PAL: CCIR ITS (line 19, both parities).
+# NTSC: NTC-7 composite (line 20, first fields; the second-field
+# combination signal at the same line has no full bar and is rejected by
+# the validity checks).  Pioneer's GGV discs carry NTC-7 on line 13
+# instead, searched last so that it is only read when lines 20 and 19
+# have no 2T pulse to give.
 _VITS_2T_LAYOUT = {
     "PAL": ((13.0, 19.0), (22.2, 24.4), (24.4, 26.4), (19, 18, 20)),
-    "NTSC": ((18.0, 28.0), (31.0, 33.0), (33.0, 35.0), (20, 19)),
+    "NTSC": ((18.0, 28.0), (31.0, 33.0), (33.0, 35.0), (20, 19, 13)),
 }
 
 

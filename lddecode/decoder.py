@@ -33,12 +33,14 @@ from .fileio import ldf_pipe
 from .filters import inrange
 from .metrics import (
     ITS_FLATNESS_FRACTION,
+    chroma_correction_note,
     detect_levels,
     measure_its_2t_ratio,
     measure_vits_multiburst,
     precompute_vits,
 )
-from .dsp import FieldInfo, concatenate_blocks, nb_abs, roundfloat
+from .dsp import (FieldInfo, concatenate_blocks, nb_abs, readout_cutoff_from_tilt,
+                  roundfloat)
 
 
 #: Seconds to let the RF TBC (.tbc.ldf) encoder drain after its stdin is
@@ -59,13 +61,36 @@ RFTBC_ENCODER_EXIT_TIMEOUT_S = 30
 _VITS_DG_ZONES_PAL = ((31.0, 39.0), (40.7, 43.3), (44.7, 47.3),
                       (48.7, 51.3), (52.7, 55.3), (56.7, 59.3))
 
+#: The same for NTSC's NTC-7 composite signal: the 20 IRE (peak)
+#: chrominance reference over blanking, then the five-step staircase to
+#: 90 IRE it continues across.  The discs place the treads 3.0 us apart
+#: from a first riser at 45.6 (Pioneer GGV) to 46.0 us (everything else
+#: in hand), with the subcarrier running from 41.7-42.2 to 60.3-60.9 us,
+#: so each window keeps 0.6 us clear of the risers on both placements
+#: and the last stops short of the earliest subcarrier end.
+_VITS_DG_ZONES_NTSC = ((42.8, 45.2), (46.6, 48.3), (49.6, 51.3),
+                       (52.6, 54.3), (55.6, 57.3), (58.6, 60.0))
+
+#: Per system: the zones, the lines searched in order, and the field
+#: parity carrying the modulated staircase (True for first fields).
+#: PAL's ITS is on line 19 of second fields, give or take a line between
+#: discs; NTSC's NTC-7 composite is on line 20 of first fields, except
+#: on Pioneer's GGV discs, which carry it on line 13 - searched last, so
+#: it is only read when neither 20 nor 19 carries a staircase.
+_VITS_DG_LAYOUT = {
+    "PAL": (_VITS_DG_ZONES_PAL, (19, 18, 20), False),
+    "NTSC": (_VITS_DG_ZONES_NTSC, (20, 19, 13), True),
+}
+
 
 def measure_vits_dg_staircase(field, lines=None):
     """Chroma gain slope against luminance from the ITS staircase, or None.
 
     Reads the modulated staircase the PAL insertion test signal carries
     on second fields (usually line 19; searched over neighbours like the
-    2T layout, because ITS placement varies by a line between discs).
+    2T layout, because ITS placement varies by a line between discs), or
+    the NTC-7 composite signal's on NTSC first fields (see
+    _VITS_DG_LAYOUT).
     Each zone yields the luminance it sits at and the subcarrier
     amplitude and phase riding on it, by the same fs/4 quadrature the
     analysis tree uses; straight-line fits against luminance then give
@@ -83,15 +108,19 @@ def measure_vits_dg_staircase(field, lines=None):
 
     Returns (slope_per_ire, phase_deg_per_ire, line) on success.
     """
-    if field.rf.system != "PAL" or field.isFirstField:
+    layout = _VITS_DG_LAYOUT.get(field.rf.system)
+    if layout is None:
+        return None
+    zones, default_lines, on_first_fields = layout
+    if bool(field.isFirstField) != on_first_fields:
         return None
     if field.dspicture is None:
         return None
     if lines is None:
-        lines = (19, 18, 20)
+        lines = default_lines
     for line in lines:
         lumas, amps, phasors = [], [], []
-        for start, end in _VITS_DG_ZONES_PAL:
+        for start, end in zones:
             try:
                 sl = field.lineslice_tbc(line, start, end - start,
                                          keepphase=True)
@@ -112,7 +141,7 @@ def measure_vits_dg_staircase(field, lines=None):
             lumas.append(luma)
             amps.append(float(2.0 * np.abs(phasor)))
             phasors.append(phasor)
-        if len(lumas) != len(_VITS_DG_ZONES_PAL):
+        if len(lumas) != len(zones):
             continue
 
         # Must look like the composite staircase: subcarrier over
@@ -315,12 +344,11 @@ class LDdecode:
                     fname_out, system, logger=_logger, version=self.version,
                     black_level=extra_options.get("cvbs_black_level"),
                     write_audio=bool(self.analog_audio),
-                    capture_notes=(
-                        "LaserDisc PAL: pilot burst may be present in blanking"
-                        if system == "PAL" else None),
+                    capture_notes=self._cvbs_capture_notes(system, extra_options),
                     has_nonstandard_values=True if system == "PAL" else None,
                     write_efm=bool(self.digital_audio),
                     sample_encoding=extra_options.get("cvbs_encoding"),
+                    legacy_origin=extra_options.get("cvbs_legacy_origin", False),
                 )
             else:
                 self.outfile_video = open(fname_out + ".tbc", "wb")
@@ -501,13 +529,19 @@ class LDdecode:
         # Closed-loop mtf_level servo from the ITS/NTC-7 2T pulse (the
         # b/w RF ratio mapping cannot predict the needed level across
         # discs, and the outer-radius droop needs negative levels it
-        # can't reach).  Disabled when the user overrides the MTF
-        # scaling, since the servo would just compensate the override
-        # away; when no valid 2T pulse is available the b/w mapping is
-        # the fallback.
+        # can't reach).  Disabled with --no_mtf_servo, and when the user
+        # overrides the MTF scaling, since the servo would just compensate
+        # the override away; when no valid 2T pulse is available the b/w
+        # mapping is the fallback.
         self.mtf_2t_servo = (
-            extra_options.get("MTF_level", 1.0) == 1.0
+            extra_options.get("mtf_servo", True)
+            and extra_options.get("MTF_level", 1.0) == 1.0
             and extra_options.get("MTF_offset", 0) == 0
+            # The readout model takes its cutoff from the carrier's tilt
+            # (checkMTF); the 2T servo's gain, clip and setpoint were all
+            # calibrated against the pole pair, so it stands down there
+            # until it is recalibrated.
+            and self.rf.mtf_model != "readout"
         )
         self._servo_samples = []   # (field readloc, level_used, pulse/bar)
         self._servo_last_adopt = None   # _servo_pos of last servo adoption
@@ -551,6 +585,11 @@ class LDdecode:
         # PAL curve was corrected (see IMTF_DEADBAND_DB).
         self.mtf_deemp_feedforward = (
             self.MTF_DEEMP_FEEDFORWARD_DB[system] / self._imtf_db_per_unit)
+        if self.rf.mtf_model == "readout":
+            # The feed-forward is the pole pair's chroma cost per level;
+            # the readout compensation holds unity at the blanking
+            # carrier, and the burst tracking takes what moves.
+            self.mtf_deemp_feedforward = 0.0
         # Multiburst-driven video EQ servo (primary response reference
         # when a VITS multiburst line exists, with the 2T servo keeping
         # mtf_level as the fallback/second reference).
@@ -580,6 +619,14 @@ class LDdecode:
         self.dg_calibrated = False
 
         self.auto_deemp = extra_options.get("auto_deemp", True)
+        # --no_auto_chroma: no inverse-MTF chroma correction at all - the
+        # burst servo (auto_deemp) and the multiburst's ceiling both stand
+        # down, so the strength stays at zero.
+        self.auto_chroma = extra_options.get("auto_chroma", True)
+        # (burst IRE as written, inverse-MTF strength decoded under) per
+        # committed field, in commit order (writeout): what the capture
+        # notes report of the chroma correction (chroma_correction_note).
+        self._chroma_record = []
         self.deemp_calibrated = not self.auto_deemp
         self._deemp_burst_samples = []
         self._deemp_burst_offset = None
@@ -709,6 +756,38 @@ class LDdecode:
         self.verboseVITS = extra_options.get("verboseVITS", False)
 
         self.bw_ratios = []
+        # The carrier's own blanking/white tilt (metrics carrierTiltRatio),
+        # pooled like bw_ratios: the readout model's cutoff measurement
+        # when the burst's sidebands give none.
+        self.tilt_ratios = []
+        # The burst's lower over upper FM sideband (metrics
+        # burstSidebandRatio): the readout model's cutoff measurement.
+        self.sideband_ratios = []
+        # The same from PAL's pilot burst on the sync tip (metrics
+        # pilotSidebandRatio), whose upper sideband outlasts the colour
+        # burst's on inner radii.
+        self.pilot_ratios = []
+
+    @staticmethod
+    def _cvbs_capture_notes(system, extra_options):
+        """The .meta capture_notes: PAL's pilot, and a legacy line origin,
+        which a reader cannot otherwise tell from a 0H-aligned file."""
+        notes = []
+        if system == "PAL":
+            notes.append("LaserDisc PAL: pilot burst may be present in blanking")
+        if extra_options.get("cvbs_legacy_origin"):
+            notes.append(
+                "ld-decode legacy line origin: frames are not 0H-aligned "
+                "(0H falls where the disc's SC/H puts it)")
+        return "; ".join(notes) or None
+
+    def _capture_notes(self, notes):
+        """`notes` with the chroma correction's record appended."""
+        chroma = chroma_correction_note(
+            self._chroma_record, self.rf.SysParams["burst_ire"],
+            self.rf.inverse_mtf_log_db(self.rf.SysParams["fsc_mhz"] * 1e6),
+            self.auto_chroma)
+        return "; ".join(n for n in (notes, chroma) if n) or None
 
     def __del__(self):
         try:
@@ -785,6 +864,8 @@ class LDdecode:
 
         if self.cvbs_writer is not None:
             try:
+                self.cvbs_writer.capture_notes = self._capture_notes(
+                    self.cvbs_writer.capture_notes)
                 self.cvbs_writer.close()
             except Exception:
                 # Keep shutting down, but a failed WAV header / .meta /
@@ -1108,17 +1189,23 @@ class LDdecode:
     DG_SLOPE_CLAMP_POS = 0.008
     #: Committed-decode adoption rate limit, as the other servos'.
     DG_MIN_ADOPT_FIELDS = 100
-    #: Engagement threshold.  A slope of 0.00105/IRE is the conformance
-    #: limit itself (0.105 peak-to-peak over the 100 IRE staircase), and
-    #: below about that size the pooled estimator cannot be trusted with
-    #: the sign, let alone the magnitude: GGV1011's colour-bar capture
-    #: measures -0.0010 in-decoder against a -0.0003 ground truth, and
-    #: its side-1 inner cut +0.0004 against +0.0011.  Correcting inside
-    #: the spec band on numbers that rough is as likely to put
-    #: differential gain in as take it out - the bar capture went 0.033
-    #: to 0.085 that way - so below this the servo holds zero and a
-    #: conforming disc is left exactly alone.
-    DG_SLOPE_ENGAGE = 0.0015
+    #: Engagement threshold, per system.  A slope of 0.00105/IRE is the
+    #: PAL conformance limit itself (0.105 peak-to-peak over the 100 IRE
+    #: staircase), and below about that size the pooled PAL estimator
+    #: cannot be trusted with the sign, let alone the magnitude:
+    #: GGV1011's colour-bar capture measures -0.0010 in-decoder against
+    #: a -0.0003 ground truth, and its side-1 inner cut +0.0004 against
+    #: +0.0011.  Correcting inside the spec band on numbers that rough is
+    #: as likely to put differential gain in as take it out - the bar
+    #: capture went 0.033 to 0.085 that way - so below this the servo
+    #: holds zero and a conforming disc is left exactly alone.
+    #: The NTC-7 staircase reads far tighter: over 25 NTSC captures
+    #: (20-90 fields each) the pooled in-decoder slope lands within
+    #: 0.0002/IRE of the conformance checker's own fit, sign always
+    #: right, so NTSC engages at the limit (0.10 over its 90 IRE
+    #: staircase is 0.0011/IRE) less that error: discs reading 0.104 to
+    #: 0.130 there at slopes of 0.0012-0.0013 went uncorrected at 0.0015.
+    DG_SLOPE_ENGAGE = {"PAL": 0.0015, "NTSC": 0.0010}
 
     #: The differential-phase constants, in degrees of chroma rotation
     #: per IRE of luminance, tracked from the same staircase readings and
@@ -1450,7 +1537,7 @@ class LDdecode:
         estimate = float(np.clip(
             np.median([slope for _, slope, _ in self._dg_samples]),
             self.DG_SLOPE_CLAMP_NEG, self.DG_SLOPE_CLAMP_POS))
-        if abs(estimate) < self.DG_SLOPE_ENGAGE:
+        if abs(estimate) < self.DG_SLOPE_ENGAGE[self.rf.system]:
             estimate = 0.0
         current = float(
             self.rf.DecoderParams.get("chroma_dg_slope", 0.0))
@@ -1669,6 +1756,8 @@ class LDdecode:
         Returns True when the strength moved, so the caller knows whether
         recompute_fvideo() is needed; this only moves the value.
         """
+        if not self.auto_chroma:
+            return False
         ceiling = self._imtf_ceiling(
             self.rf.DecoderParams.get("inverse_mtf_strength", 0.0))
         if ceiling is None:
@@ -1805,6 +1894,83 @@ class LDdecode:
         self._servo_engaged = True
         return float(np.clip(np.mean(meds), *self.mtf_servo_clip))
 
+    #: Readout model: the level dead-band (0.03 is a 3 % move in the
+    #: cutoff, about 0.3 dB of compensation at the upper chroma sideband
+    #: at inner radius) and its bounds (1.5: a cutoff two thirds of the
+    #: innermost CAV radius', below any disc in hand).
+    READOUT_LEVEL_DEADBAND = 0.03
+    READOUT_LEVEL_MAX = 1.5
+
+    #: A sideband pool (burst or pilot) must hold this many readings, and
+    #: at least half as many as the carrier tilt's, before it is preferred:
+    #: fields give no reading while the upper sideband sits in the noise,
+    #: so a sparse pool is the few whose noise happened to read high.
+    READOUT_SIDEBAND_MIN = 5
+
+    def _readout_measurement(self):
+        """What the readout model's cutoff is read from: (description,
+        ratio, f_lo, f_hi), the channel passing f_lo `ratio` times as
+        strongly as f_hi, or None while nothing is measured.
+
+        The burst's two first sidebands, either side of the blanking
+        carrier, stand in that ratio whatever the burst's recorded
+        amplitude, and they span 2 fsc where the carrier swing spans 1.2
+        MHz (NTSC), so they are preferred.  The carrier's own tilt between
+        blanking and white reads the player's and capture's electronic
+        droop as readout - on GGV1069's outer radius a 57 MHz cutoff where
+        the CAV radius gives 22.6 and the sidebands 19.9 - and stands in
+        while the burst gives no reading: the innermost PAL radii, where
+        the upper sideband is past the cutoff, or a disc without one.  The
+        raw-RF b/w ratio reads the same tilt diluted by everything else in
+        the band (noise, audio carriers, EFM) - the cutoff it gives is a
+        few per cent high - but it is what there is when the carrier
+        estimate never succeeded.
+
+        PAL reads its pilot burst first: a 3.75 MHz tone on the sync tip,
+        whose upper sideband (10.5 MHz) stays under the cutoff on inner
+        radii where the colour burst's (11.5 MHz) has gone."""
+        DP = self.rf.DecoderParams
+
+        def enough(pool):
+            return (len(pool) >= self.READOUT_SIDEBAND_MIN
+                    and 2 * len(pool) >= len(self.tilt_ratios))
+
+        if enough(self.pilot_ratios):
+            tip = self.rf.iretohz(DP["vsync_ire"])
+            pilot = self.rf.SysParams["pilot_mhz"] * 1e6
+            ratio = float(np.median(self.pilot_ratios))
+            return (f"pilot sidebands {ratio:.3f}", ratio,
+                    tip - pilot, tip + pilot)
+        if enough(self.sideband_ratios):
+            fsc = self.rf.SysParams["fsc_mhz"] * 1e6
+            ratio = float(np.median(self.sideband_ratios))
+            return (f"burst sidebands {ratio:.3f}", ratio,
+                    DP["ire0"] - fsc, DP["ire0"] + fsc)
+        pool = self.tilt_ratios or self.bw_ratios
+        if not pool:
+            return None
+        ratio = float(np.median(pool))
+        return (f"carrier tilt {ratio:.3f}", ratio, DP["ire0"],
+                self.rf.iretohz(100.0))
+
+    def _readout_level_estimate(self):
+        """The readout model's level from the pooled measurement (see
+        _readout_measurement), or None while there is none."""
+        measured = self._readout_measurement()
+        if measured is None:
+            return None
+        _, ratio, f_lo, f_hi = measured
+        DP = self.rf.DecoderParams
+        cutoff = readout_cutoff_from_tilt(
+            ratio, f_lo, f_hi, DP["readout_rim_intensity"])
+        if cutoff is None:
+            # No tilt (or none to measure) is a cutoff far above the band;
+            # a tilt steeper than any cutoff above f_hi gives is the
+            # deepest compensation the bound allows.
+            return self.READOUT_LEVEL_MAX if ratio > 1.0 else 0.0
+        return float(np.clip(DP["readout_ref_cutoff_hz"] / cutoff,
+                             0.0, self.READOUT_LEVEL_MAX))
+
     def checkMTF(self, field, pfield=None):
         if not self.autoMTF:
             oldmtf = self.mtf_level
@@ -1836,7 +2002,18 @@ class LDdecode:
             # so there is nothing better to hold.
             return True
 
-        if estimate is None:
+        if estimate is None and self.rf.mtf_model == "readout":
+            # The readout model: the cutoff at which the model passes the
+            # burst's lower sideband over its upper one (or the blanking
+            # carrier over the white one) as the disc does, as a level
+            # (the innermost CAV radius' cutoff over it).
+            estimate = self._readout_level_estimate()
+            if estimate is None:
+                return True
+            source = (f"{self._readout_measurement()[0]}, "
+                      f"cutoff {self.rf.DecoderParams['readout_ref_cutoff_hz'] / max(estimate, 1e-9) / 1e6:.2f} MHz")
+            deadband = self.READOUT_LEVEL_DEADBAND
+        elif estimate is None:
             # Fallback: open-loop mapping from the black/white carrier
             # ratio (scale for NTSC - 1.1 to 1.55).
             if len(self.bw_ratios) == 0:
@@ -2153,6 +2330,11 @@ class LDdecode:
         fi["efmTValues"] = 0
         fi["ac3Symbols"] = 0
         self.fieldinfo.append(fi)
+        # FieldInfo keeps only the last few fields; the capture notes'
+        # chroma record is over all of them, one entry per committed field.
+        self._chroma_record.append(
+            (fi.get("medianBurstIRE"),
+             float(getattr(f, "decoded_imtf_strength", 0.0) or 0.0)))
 
         field_id = self.fields_written
         self.fields_written += 1
@@ -2747,6 +2929,15 @@ class LDdecode:
             if m and "blackToWhiteRFRatio" in m:
                 self.bw_ratios.append(m["blackToWhiteRFRatio"])
                 self.bw_ratios = self.bw_ratios[-keep:]
+            if m and "carrierTiltRatio" in m:
+                self.tilt_ratios.append(m["carrierTiltRatio"])
+                self.tilt_ratios = self.tilt_ratios[-keep:]
+            if m and "burstSidebandRatio" in m:
+                self.sideband_ratios.append(m["burstSidebandRatio"])
+                self.sideband_ratios = self.sideband_ratios[-keep:]
+            if m and "pilotSidebandRatio" in m:
+                self.pilot_ratios.append(m["pilotSidebandRatio"])
+                self.pilot_ratios = self.pilot_ratios[-keep:]
 
             moved = not self.checkMTF(nf, prev)
             if moved and self.veq_calibrated:
@@ -2811,6 +3002,18 @@ class LDdecode:
             keep = 900 if self.isCLV else 30
             self.bw_ratios.append(metrics["blackToWhiteRFRatio"])
             self.bw_ratios = self.bw_ratios[-keep:]
+        if "carrierTiltRatio" in metrics and redos == 0:
+            keep = 900 if self.isCLV else 30
+            self.tilt_ratios.append(metrics["carrierTiltRatio"])
+            self.tilt_ratios = self.tilt_ratios[-keep:]
+        if "burstSidebandRatio" in metrics and redos == 0:
+            keep = 900 if self.isCLV else 30
+            self.sideband_ratios.append(metrics["burstSidebandRatio"])
+            self.sideband_ratios = self.sideband_ratios[-keep:]
+        if "pilotSidebandRatio" in metrics and redos == 0:
+            keep = 900 if self.isCLV else 30
+            self.pilot_ratios.append(metrics["pilotSidebandRatio"])
+            self.pilot_ratios = self.pilot_ratios[-keep:]
 
         # AGC first: it rewrites ire0/hz_ire, which the burst-based deemp
         # calibration measures against, so deemp only calibrates on a
@@ -3912,8 +4115,9 @@ class LDdecode:
                 field_width, field_height, number_of_sequential_fields,
                 colour_burst_start, colour_burst_end,
                 white_16b_ire, black_16b_ire, blanking_16b_ire,
-                is_mapped, is_subcarrier_locked, is_widescreen
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                is_mapped, is_subcarrier_locked, is_widescreen,
+                capture_notes
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(capture_id) DO UPDATE SET
                 system=excluded.system, decoder=excluded.decoder,
                 git_branch=excluded.git_branch, git_commit=excluded.git_commit,
@@ -3929,8 +4133,11 @@ class LDdecode:
                 blanking_16b_ire=excluded.blanking_16b_ire,
                 is_mapped=excluded.is_mapped,
                 is_subcarrier_locked=excluded.is_subcarrier_locked,
-                is_widescreen=excluded.is_widescreen
-        """, (self.capture_id,) + video_values)
+                is_widescreen=excluded.is_widescreen,
+                capture_notes=excluded.capture_notes
+        """, (self.capture_id,) + video_values
+            + (self._capture_notes(
+                self._cvbs_capture_notes(self.rf.system, {})),))
 
         if not self.capture_id:
             self.capture_id = cursor.lastrowid

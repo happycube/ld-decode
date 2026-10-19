@@ -107,6 +107,15 @@ def build_parser():
         help="sample encoding preset for CVBS output "
         "(default: CVBS_U10_4FSC for PAL, CVBS_U16_4FSC for NTSC)",
     )
+    parser.add_argument(
+        "--cvbs-legacy-origin",
+        dest="cvbs_legacy_origin",
+        action="store_true",
+        help="keep the decoder's own line origin in CVBS output, as written "
+        "before frames were 0H-aligned (NTSC 0H 0.3-1.9 samples after "
+        "sample 0), for readers built to that layout; not spec compliant, "
+        "and noted in the .meta capture_notes",
+    )
     # parser.add_argument('-c', '--cut', dest='cut', action='store_true', help='cut (to r16) instead of decode')
     parser.add_argument(
         "-m",
@@ -122,6 +131,13 @@ def build_parser():
         type=float,
         default=0,
         help="mtf compensation offset",
+    )
+    parser.add_argument(
+        "--no_mtf_servo",
+        action="store_true",
+        help="Do not adapt the MTF level from the 2T pulse; keep the level the "
+        "RF black-to-white ratio gives (the readout MTF model, NTSC's "
+        "default, never runs the servo)",
     )
     parser.add_argument(
         "-t",
@@ -269,13 +285,26 @@ def build_parser():
     )
 
     parser.add_argument(
+        "--no_auto_chroma",
+        dest="auto_chroma",
+        action="store_false",
+        default=True,
+        help="Disable the automatic chroma level correction (the inverse-MTF "
+             "chroma filter, its strength set from the colour burst and "
+             "bounded by the VITS multiburst).  The chroma is then written as "
+             "the filter chain demodulates it, and the burst level measured "
+             "is recorded in the output's capture notes either way",
+    )
+
+    parser.add_argument(
         "--no_chroma_dg",
         dest="chroma_dg",
         action="store_false",
         default=True,
         help="Disable the chroma differential gain/phase servo (measured "
-             "from the VITS modulated staircase, corrected on the TBC and "
-             "CVBS outputs at write time; PAL only)",
+             "from the VITS modulated staircase - the PAL ITS, NTSC's NTC-7 "
+             "composite - and corrected on the TBC and CVBS outputs at "
+             "write time)",
     )
 
     parser.add_argument(
@@ -357,7 +386,9 @@ def build_parser():
         metavar="deemp_str",
         type=float,
         default=None,
-        help="Strength of deemphasis (default: 1.0; disables auto inverse-MTF chroma calibration)",
+        help="Strength of deemphasis (default: NTSC 0.96, PAL 1.0; giving one "
+             "also stops the burst from setting the inverse-MTF chroma "
+             "strength, see --no_auto_chroma)",
     )
 
     parser.add_argument(
@@ -523,10 +554,12 @@ def build_options(args):
         "efm_eq_taps": args.efm_eq_taps,
         "deemp_coeff": (args.deemp_low, args.deemp_high),
         "deemp_str": args.deemp_strength if args.deemp_strength is not None else (1.0 if args.pal else 0.96),
-        "auto_deemp": args.deemp_strength is None,
+        "auto_deemp": args.auto_chroma and args.deemp_strength is None,
+        "auto_chroma": args.auto_chroma,
         "chroma_dg": args.chroma_dg,
         "MTF_level": args.MTF,
         "MTF_offset": args.MTF_offset,
+        "mtf_servo": not args.no_mtf_servo,
         # parse_frequency gives MHz; the audio filters take Hz
         "audio_filterwidth": (
             args.audio_filterwidth * 1000000 if args.audio_filterwidth is not None else None
@@ -569,6 +602,8 @@ def build_options(args):
             extra_options["cvbs_black_level"] = 240
         if args.cvbs_encoding:
             extra_options["cvbs_encoding"] = args.cvbs_encoding
+        if args.cvbs_legacy_origin:
+            extra_options["cvbs_legacy_origin"] = True
 
     DecoderParamsOverride = {}
     if args.vbpf_low is not None:

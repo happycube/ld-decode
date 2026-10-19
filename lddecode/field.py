@@ -606,6 +606,19 @@ class Field:
             (output - self.rf.SysParams["outputZero"]) / self.out_scale
         ) + self.rf.DecoderParams["vsync_ire"]
 
+    def chroma_dg_cvbs_picture(self, picture):
+        """This field's output picture under its chroma DG estimate, for
+        the NTSC CVBS writer, which takes the decoder's line-locked 4fsc
+        rows as they are (PAL's correction runs inside downscale_cvbs
+        instead).  Read at write time from this field's DecoderParams,
+        as the TBC path does; returns picture itself when no correction
+        is held."""
+        slope = float(self.rf.DecoderParams.get("chroma_dg_slope", 0.0))
+        phase = float(self.rf.DecoderParams.get("chroma_dg_phase", 0.0))
+        if slope == 0.0 and phase == 0.0:
+            return picture
+        return apply_chroma_dg_correction_output(picture, self, slope, phase)
+
 
     def lineslice_tbc(self, line, begin=None, length=None, linelocs=None, keepphase=False):
         """ return a slice corresponding with pre-TBC line l """

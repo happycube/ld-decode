@@ -205,7 +205,7 @@ Contains capture-level metadata (one record per capture/JSON file).
 | `white_16b_ire` | INTEGER | The white level IRE in a 16-bit scale |
 | `black_16b_ire` | INTEGER | The black level IRE in a 16-bit scale |
 | `blanking_16b_ire` | INTEGER | The blanking level IRE in a 16-bit scale |
-| `capture_notes` | TEXT | Notes about the capture (was JSON `tapeFormat` field describing tape media format like VHS, Betamax, Video8) |
+| `capture_notes` | TEXT | Notes about the capture (was JSON `tapeFormat` field describing tape media format like VHS, Betamax, Video8). ld-decode writes `key=value` pairs joined by `; `: on PAL a pilot-burst note, then the chroma level correction's record - `chroma_correction` (`auto` or `off`, see `--no_auto_chroma`); with it on, `inverse_mtf_strength` (median and range over the written fields) and `inverse_mtf_gain_at_fsc_db`; `median_burst_ire` as written; with it on, `median_burst_ire_uncorrected` (each field's burst over the correction's gain at the subcarrier); `nominal_burst_ire`; and `chroma_gain_to_nominal`, the gain that brings the written burst to nominal |
 
 ### Table: pcm_audio_parameters
 

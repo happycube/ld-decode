@@ -11,7 +11,7 @@ The writer measures 0H on the first frame and starts every frame that many
 whole samples into field A; dropout positions move with the samples.
 """
 
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import numpy as np
 import pytest
@@ -94,11 +94,46 @@ def test_a_frame_starts_the_shift_into_field_a_and_runs_on_into_field_b():
     assert frame[-1] == b[262 * SPL + 1]
 
 
+def test_each_field_is_written_under_its_chroma_dg_correction():
+    """NTSC has no resampler to correct in (PAL's downscale_cvbs), so the
+    writer asks each field for its corrected picture."""
+    w = make_writer()
+    w._ntsc_shift = 0
+    a, b = synced_field(1.91), synced_field(1.91)
+    f_a, f_b = Mock(), Mock()
+    f_a.chroma_dg_cvbs_picture.return_value = a + 7.0
+    f_b.chroma_dg_cvbs_picture.return_value = b + 9.0
+    w._emit_frame((f_a, {}, a, None, None), (f_b, {}, b, None, None))
+    frame = w._write_frame.call_args.args[0]
+
+    f_a.chroma_dg_cvbs_picture.assert_called_once_with(a)
+    assert frame[0] == a[0] + 7.0 and frame[263 * SPL] == b[0] + 9.0
+
+
 def test_the_shift_is_taken_once_and_kept():
     w = make_writer()
     emit(w, synced_field(1.91), synced_field(1.91))
     emit(w, synced_field(0.32), synced_field(0.32))
     assert w._ntsc_shift == 2
+
+
+def test_a_legacy_origin_copies_the_decoded_lines_straight_through():
+    """--cvbs-legacy-origin: no measurement, frames start at the decoded
+    lines' own origin as before 0H alignment."""
+    with patch("builtins.open"), patch("lddecode.cvbs.os.path.exists",
+                                       return_value=False):
+        w = CVBSWriter("out", "NTSC", legacy_origin=True)
+    for name in ("_measure_ntsc_lock", "_write_frame", "_collect_efm",
+                 "push_audio", "_ntsc_origin_shift"):
+        setattr(w, name, Mock())
+    w._to_spec_levels = lambda x, f: np.asarray(x, dtype=np.float64)
+    a, b = synced_field(1.91), synced_field(1.91, offset=1e6)
+
+    frame = emit(w, a, b)
+
+    w._ntsc_origin_shift.assert_not_called()
+    assert frame[0] == a[0] and frame[263 * SPL] == b[0]
+    assert dropouts(field_a=(10, 100, 150), shift=0) == [(0, 9 * SPL + 100, 50, 100)]
 
 
 def test_a_negative_shift_starts_inside_the_previous_frame():

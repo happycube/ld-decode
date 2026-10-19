@@ -24,6 +24,32 @@ Trims are adopted "tolerantly" — handed to future decode jobs without
 re-decoding in-flight fields — because a dead-band step changes chroma
 by under 2%.
 
+The boost is applied to the demodulated composite, so it lifts whatever
+shares the chroma band with the chroma, luminance detail and noise
+included. On NTSC the curve is held flat above the top of the chroma
+band (`inverse_mtf_hold_hz`, 4.2 MHz). PAL holds nothing, because its
+6.3 MHz 16th-order video low-pass ends the curve within 0.6 MHz of its
+band's top anyway. The NTSC curve used to keep rising, to +6.6 dB per unit at 7 MHz on NTSC, past a video low-pass
+only 7-17 dB down over 5-6 MHz, and at the 1.2 units an outer-radius
+NTSC disc asks for, that was most of the luminance noise the correction
+added (issue 1072).
+
+The correction is on by default; `--no_auto_chroma` turns it off
+entirely, the burst servo and the multiburst ceiling (below) both. It is
+written into the samples, so the output's capture notes record it either
+way: the strength, the burst as written and as it read before the
+correction, and the gain that would bring the burst to nominal (see
+`docs/technical/metadata-format.md`).
+
+Where the burst is low because the disc was mastered that way rather
+than because the channel lost it, the servo cannot tell the two apart
+and corrects both. Under the readout MTF model the channel loss is
+mostly made good before demodulation, so less is left for this filter.
+On five NTSC discs, the strength it holds drops from 0.84-1.27 to about
+0.5-0.65, and the burst before it is applied reads within 0.5 dB of the
+level the discs' sidebands say was recorded: 17.7 against 18.2 IRE on
+ve-monitor, 17.9 against 18.0 on ve-snw.
+
 ### 2. `mtf_level` (2T pulse servo)
 
 The black/white RF carrier ratio cannot predict the needed MTF level
@@ -31,7 +57,8 @@ across discs, and it clips at zero while real discs need HF *boost* at
 outer radius (PAL). When an insertion test signal with a 2T pulse is
 present — PAL: CCIR ITS on line 19 (bar 13–19 µs, 2T at ~25.2 µs, both
 parities); NTSC: NTC-7 composite on line 20 first fields (bar
-18–28 µs, 2T at ~34 µs) — the decoder measures the 2T pulse-to-bar
+18–28 µs, 2T at ~34 µs), read from line 19 or, failing both, line 13,
+where Pioneer's GGV discs carry it — the decoder measures the 2T pulse-to-bar
 ratio per field and servos `mtf_level` so the response is flat. On PAL
 negative levels invert the MTF filter into an HF boost; both
 directions are used in practice.
@@ -53,6 +80,10 @@ Key stability properties (they were all learned the hard way):
 Fallback: with no usable ITS (no line, noisy content, scattered
 estimates, or explicit `-m`/`--MTF_offset` overrides) the original
 black/white carrier-ratio mapping drives `mtf_level` as before.
+
+This servo runs under the pole-pair MTF model, which PAL uses. NTSC
+uses the readout model instead, and there the servo stands down; see
+"The readout MTF model" below.
 
 ### 3. Frequency-resolved video EQ (VITS multiburst servo)
 
@@ -152,7 +183,7 @@ magnitude corrects differential gain, its argument differential phase:
            · exp(−j·radians(phase)·max(L, 0))
 
 `measure_vits_dg_staircase()` reads the ITS modulated staircase (PAL
-second fields, line 19±1; six zones from the blanking-level subcarrier
+second fields, line 19±1 — NTSC below; six zones from the blanking-level subcarrier
 stretch to the 100 IRE tread, each guarded clear of the risers and of
 the subcarrier's own end at 60 µs) and fits chroma amplitude and
 quadrature phase against luminance (the zones share one line's
@@ -169,6 +200,25 @@ correction is applied to a write-time copy and `dspicture` keeps the
 raw decode). Measured on DD86-DS2 CommunityNorth frames 3000–3100:
 pooled differential gain 0.366 → 0.031, chroma flat 17.9–18.4 IRE
 across the staircase, luminance levels unchanged.
+
+NTSC reads the NTC-7 composite signal's staircase the same way: first
+fields, line 20, or 19, or — Pioneer's GGV discs — 13; the 20 IRE
+chrominance reference over blanking, then the five treads to 90 IRE
+3.0 µs apart (`_VITS_DG_ZONES_NTSC`, guarded for both the GGV placement
+and the one 0.35 µs later that the other discs use). The NTSC CVBS writer
+takes the decoder's line-locked rows directly rather than resampling
+them, so it asks each field for its corrected picture
+(`Field.chroma_dg_cvbs_picture()`) where PAL corrects inside
+`downscale_cvbs()`. The NTC-7 estimate is the tighter of the two:
+across 25 NTSC captures (20–90 fields each) the pooled in-decoder
+slope lands within 0.0002/IRE of the conformance checker's own fit,
+with the sign always right, so NTSC engages the gain at 0.0010/IRE —
+the limit (0.10 over a 90 IRE staircase) less that error — where PAL
+holds 0.0015. Captures that read 0.11–0.18 there went to 0.02–0.06
+(saveuniverse 0.182 → 0.039, a Doobie Brothers LD-V4400 capture
+0.130 → 0.059, dbcut 0.113 → 0.015); the phase servo's unchanged
+thresholds take GGV1016 from 5.7° to 3.9°. Conforming discs whose slope
+stays under 0.0010 (VE monitor, he010, GGV1069 middle) are untouched.
 
 Three properties carry the design:
 
@@ -549,6 +599,108 @@ boundary.
 It is disc-specific, not a property of the passband alone: on DD86-DS2
 middle, the pressing that replaced DS1 in the test data, the same pool
 passes the gate and the servo adopts.
+
+## The readout MTF model
+
+`FilterParams["MTF_model"]` selects the pre-demodulation MTF
+compensation: `"poles"` is the pole pair raised to `mtf_level` described
+above, and `"readout"` is a physical model of the disc's readout. NTSC
+uses the readout model, and PAL stays on the poles (see below).
+
+### What the model is
+
+The HF readout passes the disc's spatial frequencies through the overlap
+of the zero and first diffracted orders in the objective's pupil, the
+autocorrelation of the pupil amplitude. IEC 60857/60856 clause 11.1
+specify the reference readout as 632.8 nm, NA 0.40, with the pupil
+filled by a Gaussian 23 % (intensity) at its rim. The temporal cutoff is
+fc = (2 NA / λ) · v, so on a CAV disc it grows with radius from 13.09
+MHz (NTSC, r = 55 mm) or 10.92 MHz (PAL). `dsp.readout_otf` tabulates
+it. `mtf_level` names the cutoff as `readout_ref_cutoff_hz` over it.
+
+`dsp.readout_compensation` equalises the channel, readout times the
+decoder's own RF band-pass (`RFVideo`), to a straight line rather than
+to flat. The line is unity at the blanking carrier and reaches zero at
+0.95 fc. A zero-phase response affine in frequency multiplies an analytic
+FM signal by a real envelope and leaves its phase, which is the video,
+untouched, so only curvature distorts. A flat target put
+luminance-dependent gain on the chroma once the upper sideband crossed
+the cutoff (differential gain 0.31 on GGV1069 inner). Designing against
+the band-pass as well fixed the low burst (11-13 IRE) on discs whose
+lower chroma sideband the band-pass's low edge was cutting.
+
+### Measuring the cutoff
+
+The cutoff is read from the RF, field by field, and pooled like the
+other servos' samples. In order of preference:
+
+1. **The PAL pilot's sidebands** (`metrics.pilot_sideband_ratio`). IEC
+   60856 9.1.2 puts a 3.75 MHz pilot burst on the PAL sync tip. As FM
+   it is a line spectrum, with the two first sidebands at J1(β) H(f) and
+   |J₋₁| = |J₁|, so their ratio is H(tip − 3.75 MHz) / H(tip + 3.75
+   MHz) whatever the pilot's recorded amplitude. That amplitude varies
+   by about 3 dB between discs. The upper sideband, at 10.5 MHz, stays
+   under the cutoff on inner radii where the colour burst's has gone.
+2. **The colour burst's sidebands** (`metrics.burst_sideband_ratio`).
+   This is the same reading, the subcarrier either side of the blanking
+   carrier: 4.53 / 11.69 MHz on NTSC, 2.67 / 11.54 MHz on PAL.
+3. **The carrier's own tilt** between blanking and white
+   (`carrierTiltRatio`), with the raw b/w ratio before that is measured.
+
+A sideband pool is preferred once it holds five readings and at least
+half as many as the tilt's. A field gives no reading while either
+sideband fails to clear its noise floor, so a sparse pool is the few
+fields whose noise read high. `dsp.readout_cutoff_from_tilt` inverts
+whichever ratio is chosen through the model.
+
+The tilt is the fallback because it spans only the 1.2 MHz carrier
+swing (0.8 MHz on PAL), and the player's and capture's electronics tilt
+it too. On GGV1069 outer it reads a 57 MHz cutoff where the CAV radius
+gives 22.6 and the burst sidebands 19.9. Over an NTSC survey of 26
+captures (the radius cuts plus whole and partial disc captures, each
+decoded with `--exact-speculation`), the burst sidebands give 49 failing
+conformance checks, the tilt 53, and the pole pair with its 2T servo 79.
+
+### What the sidebands show about the channel
+
+The ratios that are independent of recorded level (pilot and burst,
+both systems) put middle and outer radii on the IEC optics at the CAV
+radius' cutoff to within 1-3 %, once a fixed droop of about 0.28 dB/MHz
+is allowed for. Most of that droop is the Domesday Duplicator 2.2.1
+board. The board's measured response is −0.45 dB at 4.5 MHz, −2.0 dB at
+11.7 MHz and −4.0 dB at 20 MHz, relative to 1 MHz, with linear phase.
+That is 1.56 dB of the roughly 2 dB measured across the burst's
+sidebands; the rest is the player. The droop costs no information: the
+noise at 11.7 MHz sits about 20 dB above the 18-20 MHz floor, so it
+enters before the board and is attenuated with the signal. Inner radii
+read a cutoff 3-10 % above the CAV formula.
+
+An earlier channel probe identified the system against an FM reference
+rebuilt from the capture's own phase. That reference is biased wherever
+the upper sideband is lost, and it read PAL's low end up to 10 dB short
+of the optics, which was wrong. The sideband readings replace it.
+
+### Why PAL stays on the poles
+
+PAL's carrier swings to within 3.5 MHz of the cutoff at inner radius,
+so luminance detail and chroma above that ride on one sideband alone.
+That sideband's level against the carrier varies by disc, and the
+pole pair's 2T servo follows it while an open-loop physical model
+cannot. Over 15 PAL captures (failing checks, pole pair 93):
+
+| Readout variant | Failing checks |
+|---|---|
+| Cutoff from the carrier tilt | 124 |
+| Cutoff from the CAV radius | 123 |
+| Cutoff from the pilot sidebands | 142 |
+| CAV cutoff, with the pole pair's 2T servo on top | 113 |
+| 2T servo driving the readout level | 134-137 |
+
+The last is unstable: the 2T pulse's response to the level changes sign
+between inner and outer radius. Differential gain improves under every
+variant (GGV1011 inner 0.106 → about 0.045). The PAL parameter set
+carries the readout parameters, and the pilot reading only runs under
+the readout model, so switching PAL over takes only `MTF_model`.
 
 ## Measured results (2026-08-31)
 

@@ -8,7 +8,7 @@ ld-decode [-h] [--start file-location] [--length frames] [--seek frame] [--PAL] 
                  [--start_fileloc start_fileloc] [--ignoreleadout] [--verboseVITS] [--RF_TBC] [--lowband]
                  [--NTSC_color_notch_filter] [--V4300D_notch_filter] [--V4300D_coherent_subtract] [--V4300D_no_defer]
                  [--deemp_low deemp_low] [--deemp_high deemp_high]
-                 [--deemp_strength deemp_str] [-t threads] [-f FREQ] [--analog_audio_frequency AFREQ]
+                 [--deemp_strength deemp_str] [--no_auto_chroma] [--no_mtf_servo] [-t threads] [-f FREQ] [--analog_audio_frequency AFREQ]
                  [--video_bpf_low FREQ] [--video_bpf_high FREQ] [--video_lpf FREQ] [--video_lpf_order VLPF_ORDER]
                  [--audio_filterwidth FREQ] [--use_profiler] [--write-test-ldf output.ldf]
                  infile outfile
@@ -308,13 +308,44 @@ ld-decode --deemp_high 10.0 input.ldf output
 #### `--deemp_strength deemp_str`
 Strength of deemphasis filter.
 - **Type:** Float
-- **Default:** 1.0
+- **Default:** NTSC 0.96, PAL 1.0
 - **Range:** Typically 0.0 to 2.0
-- **Note:** Multiplier for deemphasis effect; 1.0 is standard, <1.0 reduces effect, >1.0 increases effect
+- **Note:** Multiplier for deemphasis effect; 1.0 is standard, <1.0 reduces effect, >1.0 increases effect.  Giving a value also stops the colour burst from setting the automatic chroma correction's strength (see `--no_auto_chroma`)
 
 **Example:**
 ```bash
 ld-decode --deemp_strength 0.8 input.ldf output
+```
+
+#### `--no_auto_chroma`
+Disable the automatic chroma level correction.
+- **Default:** Enabled
+- **Note:** By default the decoder restores the chroma the disc's optics and the
+  RF filters took away with an inverse-MTF filter on the demodulated video,
+  limited to the chroma band.  The colour burst sets its strength, so the burst
+  is brought to its nominal level (20 IRE NTSC, 21.4 IRE PAL), and the VITS
+  multiburst, where a disc carries one, bounds it.  The correction is written
+  into the `.tbc` and `.cvbs` samples.  With this switch the chroma is written
+  as the filter chain demodulates it, so a disc mastered with a low chroma level
+  keeps it.  Either way the output's capture notes (`capture.capture_notes` in
+  the `.tbc.db`, `cvbs_file.capture_notes` in the `.cvbs.meta`) record the
+  correction's strength, the median burst level as written and as it read
+  before the correction, and the gain that would bring the burst to nominal
+  (`chroma_gain_to_nominal`), for a later decoder to apply or take out.
+
+**Example:**
+```bash
+ld-decode --no_auto_chroma input.ldf output
+```
+
+#### `--no_mtf_servo`
+Do not adapt the MTF level from the 2T pulse of the vertical-blanking test signal.
+- **Default:** The servo runs when the disc carries the pulse, and the RF black-to-white ratio gives the level otherwise
+- **Note:** The servo is already off when `-m` is not 1.0 or `--MTF_offset` is not 0; this flag turns it off without changing the level.  It only acts under the pole-pair MTF model (PAL); NTSC's readout MTF model takes its level from the RF and never runs the servo
+
+**Example:**
+```bash
+ld-decode --no_mtf_servo input.ldf output
 ```
 
 ### Audio Decoding Options

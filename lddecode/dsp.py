@@ -365,6 +365,189 @@ def compute_mtf(freq, cavframe=0, laser=780, na=0.52, fps=30.0):
     )
 
 
+# ---------------------------------------------------------------------------
+# The disc readout's transfer function (the "readout" MTF model)
+# ---------------------------------------------------------------------------
+#
+# The HF readout carries spatial frequency nu through the overlap of the
+# zero and first diffracted orders in the objective's pupil, so its
+# transfer function is the autocorrelation of the pupil's amplitude.  IEC
+# 60857/60856 clause 11.1 define the reference readout the discs are
+# specified against: 632.8 nm, NA 0.40, a Gaussian beam whose intensity
+# at the pupil rim is 23 % of the centre's.  (Amendment 1's 780 nm, NA
+# 0.50 pickup is only for the push-pull radial signal.)  The spatial
+# cutoff is 2 NA / lambda, reached in time at the track velocity, so the
+# temporal cutoff scales with radius on CAV and is fixed on CLV.
+# Measured on GGV1069 and Checking Dolby Surround captures, the channel
+# follows this model to within 1-1.5 dB out to 12.6 MHz at inner radius,
+# with a gentle radius-independent electronic roll-off on top.
+
+READOUT_RIM_INTENSITY = 0.23
+
+_readout_otf_tables = {}
+
+
+def readout_otf_table(rim_intensity=READOUT_RIM_INTENSITY, n=257):
+    """(s, otf): the pupil-amplitude autocorrelation of a circular pupil
+    filled with a Gaussian of the given rim intensity, at normalised
+    spatial frequency s = nu / nu_cutoff in [0, 1], unity at s = 0."""
+    key = (round(float(rim_intensity), 6), n)
+    got = _readout_otf_tables.get(key)
+    if got is not None:
+        return got
+    a = -math.log(rim_intensity) / 2 if rim_intensity < 1 else 0.0
+    g = np.linspace(-1.0, 1.0, n)
+    x, y = np.meshgrid(g, g)
+    r2 = x * x + y * y
+    pupil = np.where(r2 <= 1.0, np.exp(-a * r2), 0.0)
+    spec = np.fft.rfft2(pupil, s=(2 * n, 2 * n))
+    ac = np.fft.irfft2(np.abs(spec) ** 2, s=(2 * n, 2 * n))
+    # a shift of one pupil diameter (n - 1 samples) is the cutoff
+    profile = ac[0, :n] / ac[0, 0]
+    s = np.arange(n) / (n - 1)
+    profile[-1] = 0.0
+    got = (s, np.clip(profile, 0.0, 1.0))
+    _readout_otf_tables[key] = got
+    return got
+
+
+def readout_otf(freq_hz, cutoff_hz, rim_intensity=READOUT_RIM_INTENSITY):
+    """The readout's transfer function at freq_hz for a temporal cutoff."""
+    s, otf = readout_otf_table(rim_intensity)
+    return np.interp(np.abs(np.asarray(freq_hz, dtype=np.float64)) / cutoff_hz,
+                     s, otf, right=0.0)
+
+
+def readout_cutoff_from_tilt(ratio, f_lo, f_hi,
+                             rim_intensity=READOUT_RIM_INTENSITY):
+    """The temporal cutoff at which the readout passes f_lo `ratio` times
+    as strongly as f_hi (f_lo < f_hi), or None if no cutoff between one
+    and fifty times f_hi gives that tilt.  The ratio falls monotonically
+    towards 1 as the cutoff rises, so a bisection finds it."""
+    if not np.isfinite(ratio) or ratio <= 1.0:
+        return None
+
+    def tilt(fc):
+        return readout_otf(f_lo, fc, rim_intensity) / max(
+            readout_otf(f_hi, fc, rim_intensity), 1e-12)
+
+    lo, hi = f_hi * 1.0001, f_hi * 50.0
+    if tilt(hi) > ratio or tilt(lo) < ratio:
+        return None
+    for _ in range(60):
+        mid = math.sqrt(lo * hi)
+        if tilt(mid) > ratio:
+            lo = mid
+        else:
+            hi = mid
+    return math.sqrt(lo * hi)
+
+
+def readout_compensation(freq_hz, cutoff_hz, ref_hz, zero_fraction=0.95,
+                         max_boost_db=26.0,
+                         rim_intensity=READOUT_RIM_INTENSITY, chain=None):
+    """Zero-phase pre-demodulation compensation for the readout, unity at
+    ref_hz (the blanking carrier).
+
+    It equalises the channel to a straight line, not to flat.  A
+    zero-phase response affine in frequency, a + b f, multiplies an
+    analytic FM signal by the real envelope a + b f_inst and leaves its
+    phase - the FM - exactly alone, so only the readout's curvature
+    distorts the demodulated video.  The line passes through ref_hz and
+    reaches zero at zero_fraction times the cutoff: at inner radius the
+    readout itself is near zero there, so the compensation stays modest,
+    and the sidebands either side of every carrier the luminance swings
+    across stay balanced (the differential gain a flat target puts in
+    when the upper chroma sideband crosses the cutoff).  A Wiener floor
+    bounds the boost at max_boost_db where the readout has nothing left.
+
+    chain, if given, is the magnitude of the rest of the pre-demodulation
+    chain at freq_hz (the RF band-pass and its notches): the line is the
+    target for everything the FM passes through before the demodulator,
+    so the compensation makes up what the band-pass skirts take too - at
+    inner radius the low skirt sits under the chroma lower sideband the
+    picture is then carried on.
+    """
+    f = np.abs(np.asarray(freq_hz, dtype=np.float64))
+    h = readout_otf(f, cutoff_hz, rim_intensity)
+    h_ref = readout_otf(ref_hz, cutoff_hz, rim_intensity)
+    if h_ref <= 0:
+        return np.ones_like(f)
+    h = h / h_ref
+    if chain is not None:
+        chain = np.abs(np.asarray(chain, dtype=np.float64))
+        chain_ref = np.interp(ref_hz, f, chain)
+        if chain_ref > 0:
+            h = h * chain / chain_ref
+    zero = zero_fraction * cutoff_hz
+    target = np.clip((zero - f) / (zero - ref_hz), 0.0, None)
+    eps = 10 ** (-max_boost_db / 10) / 4
+    comp = target * h / (h * h + eps)
+    comp_ref = 1.0 / (1.0 + eps)
+    return comp / comp_ref
+
+
+def carrier_amplitude(segment, fs_hz, lo_hz=5e6, hi_hz=12e6):
+    """The FM carrier's amplitude over a stretch of raw RF where it holds
+    still (a flat video level), with additive noise taken out.
+
+    The band-limited analytic envelope z of a steady tone A plus noise of
+    power s2 has E|z|^2 = A^2 + s2 and var|z|^2 = 2 A^2 s2 + s2^2, so
+    A^2 = sqrt(m^2 - v) from the mean m and variance v of |z|^2.  Returns
+    None for a segment too short or too noisy to separate."""
+    x = np.asarray(segment, dtype=np.float64)
+    n = len(x)
+    if n < 64:
+        return None
+    x = x - x.mean()
+    spec = np.fft.fft(x * np.hanning(n))
+    freqs = np.fft.fftfreq(n, 1.0 / fs_hz)
+    spec[(freqs < lo_hz) | (freqs > hi_hz)] = 0.0
+    z = np.fft.ifft(2.0 * spec)
+    # the Hann taper's ends are unreliable: keep the middle half
+    p = np.abs(z[n // 4: 3 * n // 4]) ** 2
+    w = np.hanning(n)[n // 4: 3 * n // 4] ** 2
+    p = p / w
+    m = float(np.mean(p))
+    v = float(np.var(p))
+    if m <= 0 or m * m <= v:
+        return None
+    return (m * m - v) ** 0.25
+
+
+def tone_sideband_powers(segments, fs_hz, carrier_hz, tone_hz,
+                         probe_hz=1.0e6):
+    """The mean powers of the first lower and upper FM sidebands of a tone,
+    with the noise floor taken out, over stretches of raw RF that each
+    carry the carrier at carrier_hz modulated by the tone (a colour burst
+    on blanking, say).
+
+    A sinusoidally modulated carrier is a line spectrum at carrier_hz +
+    n tone_hz, the n-th line J_n(beta) H(f) strong, and |J_-1| = |J_1|,
+    so the two first sidebands' amplitudes stand in the channel's ratio
+    H(carrier - tone) / H(carrier + tone) whatever the modulation depth.
+    Each segment's lines are read by a Hann-windowed DFT at the sideband
+    frequencies; the noise under each is the mean of the same DFT probe_hz
+    either side, subtracted from the line's mean power.  Returns (lower,
+    upper, lower_noise, upper_noise) - a sideband lost in the noise may
+    come out zero or negative - or None for no usable segments."""
+    x = np.asarray(segments, dtype=np.float64)
+    if x.ndim != 2 or x.shape[0] == 0 or x.shape[1] < 16:
+        return None
+    x = x - x.mean(axis=1, keepdims=True)
+    n = x.shape[1]
+    w = np.hanning(n)
+    t = np.arange(n) / fs_hz
+    lo, hi = carrier_hz - tone_hz, carrier_hz + tone_hz
+    freqs = np.array([lo, hi, lo - probe_hz, lo + probe_hz,
+                      hi - probe_hz, hi + probe_hz])
+    basis = w * np.exp(-2j * np.pi * freqs[:, None] * t) * (2.0 / w.sum())
+    p = np.mean(np.abs(x @ basis.T) ** 2, axis=0)
+    noise_lo, noise_hi = 0.5 * (p[2] + p[3]), 0.5 * (p[4] + p[5])
+    return (float(p[0] - noise_lo), float(p[1] - noise_hi),
+            float(noise_lo), float(noise_hi))
+
+
 def roundfloat(fl, places=3):
     """ round float to (places) decimal places """
     r = 10 ** places

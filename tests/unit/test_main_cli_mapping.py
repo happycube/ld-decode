@@ -235,6 +235,23 @@ def test_an_explicit_deemphasis_strength_disarms_the_servo():
     assert result["auto_deemp"] is False
 
 
+def test_the_chroma_correction_is_on_unless_turned_off():
+    """--no_auto_chroma stops the inverse-MTF chroma correction outright -
+    the burst servo and the multiburst's bound on it - and leaves the
+    de-emphasis strength at its default."""
+    assert extra()["auto_chroma"] is True
+    assert extra()["auto_deemp"] is True
+
+    off = extra("--no_auto_chroma")
+    assert off["auto_chroma"] is False
+    assert off["auto_deemp"] is False
+    assert off["deemp_str"] == 0.96
+
+    # an explicit strength still disarms the burst servo alone
+    chosen = extra("--deemp_strength", "0.8")
+    assert chosen["auto_chroma"] is True and chosen["auto_deemp"] is False
+
+
 def test_the_deemphasis_time_constants_are_passed_as_a_pair():
     result = extra("--deemp_low", "1.3", "--deemp_high", "4.7")
 
@@ -350,6 +367,11 @@ def test_the_mtf_controls_reach_the_decoder():
 
     assert result["MTF_level"] == 1.4
     assert result["MTF_offset"] == 0.5
+
+
+def test_the_mtf_servo_runs_unless_switched_off():
+    assert extra()["mtf_servo"] is True
+    assert extra("--no_mtf_servo")["mtf_servo"] is False
 
 
 def test_the_diagnostic_outputs_are_off_by_default():

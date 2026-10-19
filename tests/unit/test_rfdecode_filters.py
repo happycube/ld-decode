@@ -455,7 +455,24 @@ def test_the_inverse_mtf_base_is_a_real_boost_above_the_crossover(rf):
     assert not np.iscomplexobj(base)
     assert np.all(base[binf < 2.0e6] == 1.0)
     assert np.all(base >= 1.0)
-    assert base.max() == pytest.approx(20.0)       # the 0.05 clip on the MTF
+    if rf.system == "PAL":
+        assert base.max() == pytest.approx(20.0)   # the 0.05 clip on the MTF
+
+
+def test_the_inverse_mtf_base_is_held_flat_above_the_chroma_band():
+    """It gives back chrominance; above the top of NTSC's chroma band there
+    is none, only luminance detail and noise for it to lift."""
+    rf = RFDecode(system="NTSC")
+    base = rf.Filters["Finverse_mtf_base"]
+    binf = np.abs(binfreqs(rf))
+    hold = rf.DecoderParams["inverse_mtf_hold_hz"]
+    above = base[binf >= hold]
+    top = base[np.argmin(np.abs(binf - hold))]
+
+    assert np.all(np.isclose(above, above.max())) and above.max() == pytest.approx(top, rel=1e-3)
+    assert base.max() == pytest.approx(top, rel=1e-3)
+    inside = (binf > 2.0e6) & (binf < hold)
+    assert np.all(np.diff(base[inside][np.argsort(binf[inside])]) >= 0)
 
 
 @parametrize_system

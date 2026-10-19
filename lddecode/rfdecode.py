@@ -43,7 +43,7 @@ from .filters import (
     sqsum,
     unwrap_hilbert,
 )
-from .dsp import compute_mtf, genwave
+from .dsp import compute_mtf, genwave, readout_compensation
 
 
 try:
@@ -814,11 +814,21 @@ class RFDecode:
         # compute_mtf's NTSC default, PAL modelled a cutoff 20 % high and a
         # curve half again too shallow: 2.69 dB per unit of strength at
         # 4.43 MHz where the disc's own response gives 3.48.
+        # The curve is held flat above the top of the chroma band
+        # (inverse_mtf_hold_hz, NTSC only): there it has no chrominance left to give
+        # back, only luminance detail and noise, and on NTSC it kept rising
+        # to +6.6 dB per unit at 7 MHz past a video low-pass that is only
+        # -7 to -17 dB down over 5-6 MHz.  At the 1.2 units the burst asks
+        # of an outer-radius NTSC disc that was most of the luminance noise
+        # the correction added (ve-monitor: black-line noise over 5-6 MHz
+        # x3, against x1.6 inside the chroma band).
         freq_array = np.abs(np.fft.fftfreq(self.blocklen, 1.0 / self.freq_hz))
         crossover = 2.0e6
         disc_fps = SP["FPS"]
+        hold_hz = DP.get("inverse_mtf_hold_hz") or np.inf
         mtf_at_crossover = compute_mtf(crossover, cavframe=0, fps=disc_fps)
-        mtf_vals = compute_mtf(freq_array.copy(), cavframe=0, fps=disc_fps)
+        mtf_vals = compute_mtf(np.minimum(freq_array, hold_hz), cavframe=0,
+                               fps=disc_fps)
         mtf_norm = np.clip(mtf_vals / mtf_at_crossover, 0.05, 1.0)
         SF["Finverse_mtf_base"] = 1.0 / mtf_norm
 
@@ -1102,11 +1112,77 @@ class RFDecode:
         """The exponent demodblock raises MTF_half to for a decoder MTF level:
         the level through the disc/player MTF model (--MTF, --MTF_offset and
         the system's MTF_basemult).  mtf_response() is keyed by this, not by
-        the decoder's level."""
+        the decoder's level.  Under the readout model it is the level
+        through --MTF and --MTF_offset alone: the innermost-radius cutoff
+        over the cutoff to compensate for."""
+        if self.mtf_model == "readout":
+            return mtf_level * self.mtf_mult + self.mtf_offset
         return (mtf_level * self.mtf_mult + self.mtf_offset) * self.DecoderParams["MTF_basemult"]
 
+    @property
+    def mtf_model(self):
+        return self.DecoderParams.get("MTF_model", "poles")
+
+    #: How far outside readout_chain_band_hz the compensation's view of
+    #: the band-pass returns to the reference carrier's (_readout_chain).
+    READOUT_CHAIN_TAPER_HZ = 0.4e6
+
+    def _readout_chain(self):
+        """|the rest of the pre-demod chain| on the positive half: the RF
+        band-pass with its notches (RFVideo carries the Hilbert factor,
+        flat across the band, which the normalisation at the reference
+        carrier takes out), and PAL's per-block audio notch when the
+        carriers are present - the compensation is designed against all
+        of it (dsp.readout_compensation).
+
+        Only across the band the video's sidebands occupy
+        (readout_chain_band_hz).  Beyond each end, over a raised-cosine
+        taper READOUT_CHAIN_TAPER_HZ wide, the chain the design sees
+        returns to its value at the reference carrier, so out there the
+        compensation leaves the band-pass's own response alone: it neither
+        lifts the stopband - the notches at NTSC's analog audio carriers,
+        the skirt over EFM - back towards the passband, nor carries the
+        band edge's few dB of make-up onto noise no sideband shares."""
+        chain = np.abs(self.Filters["RFVideo_half"])
+        DP = self.DecoderParams
+        lo_hz, hi_hz = DP["readout_chain_band_hz"]
+        freqs = np.arange(len(chain)) * (self.freq_hz / self.blocklen)
+        ref = np.interp(DP["readout_ref_hz"], freqs, chain)
+        taper = self.READOUT_CHAIN_TAPER_HZ
+        # weight 1 inside the band, falling to 0 a taper's width outside
+        dist = np.maximum(lo_hz - freqs, freqs - hi_hz).clip(0.0, taper)
+        w = 0.5 + 0.5 * np.cos(np.pi * dist / taper)
+        edge = np.where(freqs < lo_hz, np.interp(lo_hz, freqs, chain),
+                        np.interp(hi_hz, freqs, chain))
+        outside = (freqs < lo_hz) | (freqs > hi_hz)
+        held = np.exp(w * np.log(np.maximum(edge, 1e-12))
+                      + (1.0 - w) * np.log(max(ref, 1e-12)))
+        return np.where(outside, held, chain)
+
+    def mtf_response_at(self, scaled_level):
+        """The pre-demod MTF compensation (positive half spectrum) for a
+        scaled level, in MTF_half's dtype: the pole pair raised to the
+        level, or the readout model's compensation at the cutoff the
+        level names (dsp.readout_compensation)."""
+        base = self.Filters["MTF_half"]
+        if self.mtf_model != "readout":
+            return base ** scaled_level
+        if scaled_level <= 0:
+            return np.ones_like(base)
+        DP = self.DecoderParams
+        cutoff = DP["readout_ref_cutoff_hz"] / scaled_level
+        freqs = np.arange(len(base)) * (self.freq_hz / self.blocklen)
+        comp = readout_compensation(
+            freqs, cutoff, DP["readout_ref_hz"],
+            zero_fraction=DP["readout_zero_fraction"],
+            max_boost_db=DP["readout_max_boost_db"],
+            rim_intensity=DP["readout_rim_intensity"],
+            chain=self._readout_chain())
+        return comp.astype(base.dtype)
+
     def mtf_response(self, mtf_level):
-        """``Filters["MTF_half"] ** mtf_level``, held across blocks.
+        """``mtf_response_at(mtf_level)`` (the pole pair raised to the level,
+        or the readout model at the cutoff it names), held across blocks.
 
         The exponent is constant within a field and, past warm-up, moves at
         most once every ``MTF_SERVO_MIN_ADOPT_FIELDS`` fields, so one entry is
@@ -1121,7 +1197,7 @@ class RFDecode:
         cached = self._mtf_response_cache
         if cached is not None and cached[0] == mtf_level:
             return cached[1]
-        response = self.Filters["MTF_half"] ** mtf_level
+        response = self.mtf_response_at(mtf_level)
         self._mtf_response_cache = (mtf_level, response)
         return response
 
@@ -1254,7 +1330,8 @@ class RFDecode:
             # differs on NTSC, MTF_basemult 0.4) it never matched, and
             # priming the worker's held response with it evicted the one
             # demodblock had just rebuilt, once a job.
-            return {"MTF_response": base ** self.scaled_mtf_level(key)}
+            return {"MTF_response": self.mtf_response_at(
+                self.scaled_mtf_level(key))}
 
         if family == "video":
             imtf_strength, veq = key

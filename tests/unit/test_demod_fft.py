@@ -196,7 +196,13 @@ def _legacy_inverse_input(rf, signal, mtf_level, notch):
     filt = npfft.fft(signal) * rf.Filters["RFVideo"]
     if notch:
         filt *= rf.Filters["FcutPAL"]
-    if mtf_level:
+    if mtf_level and rf.mtf_model == "readout":
+        # The readout model is built on the positive half only; RFVideo's
+        # Hilbert factor zeroes the negative half whatever multiplies it.
+        full = np.zeros(rf.blocklen, dtype=filt.dtype)
+        full[: rf.blocklen // 2 + 1] = rf.mtf_response_at(mtf_level)
+        filt *= full
+    elif mtf_level:
         filt *= rf.Filters["MTF"] ** mtf_level
     return filt
 

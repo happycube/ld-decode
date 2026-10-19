@@ -36,12 +36,19 @@ CROSSOVER_HZ = 2.0e6
 NA = 0.52
 
 
+#: The top of NTSC's chroma band, above which its curve is held flat: the
+#: subcarrier plus its 0.6 MHz upper chrominance band.  PAL's video
+#: low-pass ends the curve itself, so PAL holds nothing.
+HOLD_HZ = {NTSC_FPS: 4.2e6, PAL_FPS: np.inf}
+
+
 def reference_db_per_unit(freq_hz, fps):
     """dB the inverse-MTF curve adds at freq_hz per unit of strength.
 
     Restated from the curve's definition rather than imported, so a change
     to how rfdecode builds it has to be made deliberately in both places.
     """
+    freq_hz = min(freq_hz, HOLD_HZ[fps])
     norm = (compute_mtf(freq_hz, fps=fps)
             / compute_mtf(CROSSOVER_HZ, fps=fps))
     return float(-20.0 * np.log10(norm))
@@ -107,9 +114,11 @@ def decoders():
 @pytest.mark.parametrize("system, fps", [("PAL", PAL_FPS),
                                          ("NTSC", NTSC_FPS)])
 def test_the_curve_is_built_at_the_disc_rotation_rate(decoders, system, fps):
-    """Each system's curve, at three frequencies across the video band."""
+    """Each system's curve, at four frequencies across the video band -
+    5 and 6 MHz above NTSC's chroma band, where it is held."""
     rf = decoders[system]
-    for freq_hz in (3.0e6, rf.SysParams["fsc_mhz"] * 1e6, 5.0e6):
+    assert (rf.DecoderParams["inverse_mtf_hold_hz"] or np.inf) == HOLD_HZ[fps]
+    for freq_hz in (3.0e6, rf.SysParams["fsc_mhz"] * 1e6, 5.0e6, 6.0e6):
         assert rf.inverse_mtf_log_db(freq_hz) == pytest.approx(
             reference_db_per_unit(freq_hz, fps), abs=0.01)
 

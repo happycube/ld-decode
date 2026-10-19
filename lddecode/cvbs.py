@@ -281,7 +281,8 @@ class CVBSWriter:
                  black_level=None, write_audio=False,
                  audio_description="Analogue stereo", capture_notes=None,
                  has_nonstandard_values=None, write_efm=False,
-                 sample_encoding=None, resample_executor=None):
+                 sample_encoding=None, resample_executor=None,
+                 legacy_origin=False):
         self.system = system
         self.params = CVBSParams_PAL if system == "PAL" else CVBSParams_NTSC
         self.fname_out = fname_out
@@ -323,6 +324,13 @@ class CVBSWriter:
         # starts a frame inside the previous one)
         self._ntsc_shift = None
         self._ntsc_prev_tail = None
+        # legacy_origin keeps the decoder's own line origin, as written
+        # before frames were 0H-aligned: 0H 0.3-1.9 samples after sample 0
+        # on NTSC, -0.1 to -1.04 on PAL, which a spec reader can take for
+        # the wrong colour frame
+        self.legacy_origin = legacy_origin
+        if legacy_origin:
+            self._ntsc_shift = 0
         self._lock_initialised = False
         self._lock_residuals = []      # per-frame residual, degrees
 
@@ -425,6 +433,11 @@ class CVBSWriter:
         f_b, fi_b, pic_b, efm_b, aud_b = second
 
         if self.system == "NTSC":
+            # the chroma DG correction PAL makes in downscale_cvbs
+            if f_a is not None:
+                pic_a = f_a.chroma_dg_cvbs_picture(pic_a)
+            if f_b is not None:
+                pic_b = f_b.chroma_dg_cvbs_picture(pic_b)
             a = self._to_spec_levels(self._as_u16(pic_a), f_a)
             b = self._to_spec_levels(self._as_u16(pic_b), f_b)
             spl = self.params["samples_per_line"]
@@ -462,7 +475,8 @@ class CVBSWriter:
                 # where the disc's Sc-H puts it, and the origin rule wants
                 # it in the sample before sample 0.  Whole lattice samples
                 # move it there and keep the lock (90 degrees each).
-                origin = self._origin_shift(a_raw, PAL_FRAME_SAMPLES / 625)
+                origin = (None if self.legacy_origin else
+                          self._origin_shift(a_raw, PAL_FRAME_SAMPLES / 625))
                 if origin:
                     self._pal_shift += origin
                     a_raw = f_a.downscale_cvbs(self._pal_shift)
