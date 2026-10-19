@@ -73,10 +73,15 @@ def compute_expected_bars(amplitude_pct, saturation_pct=100, setup_ire=7.5):
         g = amp * (g100 if g100 else (1 - sat) * 100) / 100.0
         b = amp * (b100 if b100 else (1 - sat) * 100) / 100.0
 
+        # Setup lifts black to setup_ire and leaves white at 100, so the
+        # whole signal - chroma with luma - spans 100 - setup_ire IRE:
+        # 75% bars with 7.5 IRE setup carry 62 IRE p-p of chroma on yellow,
+        # not 67 (SMPTE EG 1).
+        span = 100 - setup_ire
         y_norm = 0.299 * r + 0.587 * g + 0.114 * b
-        y = y_norm * (100 - setup_ire) + setup_ire
-        i = (0.596 * r - 0.275 * g - 0.321 * b) * 100
-        q = (0.212 * r - 0.523 * g + 0.311 * b) * 100
+        y = y_norm * span + setup_ire
+        i = (0.596 * r - 0.275 * g - 0.321 * b) * span
+        q = (0.212 * r - 0.523 * g + 0.311 * b) * span
 
         chroma = np.sqrt(i ** 2 + q ** 2)
         phase = np.degrees(np.arctan2(i, q)) % 360 if chroma > 0.1 else 0.0
@@ -114,6 +119,9 @@ def compute_expected_bars_pal(amplitude_pct):
         }
     return expected
 
+
+# NTSC burst: 40 IRE p-p (SMPTE 170M), as a peak amplitude like the bars'
+NTSC_BURST_EXPECTED = 20.0
 
 # PAL burst: 300 mV p-p on a 700 mV scale
 PAL_BURST_EXPECTED = 150.0 / 7.0
@@ -191,9 +199,15 @@ def measure_bars_ntsc(params, field, comb, line_range):
 
 
 def measure_burst_ntsc(params, field, comb, line_range):
-    """Measure average colour burst amplitude and phase via splitIQ."""
-    burst_iq_start = params.colour_burst_start // 2
-    burst_iq_end = params.colour_burst_end // 2
+    """Measure average colour burst amplitude and phase via splitIQ.
+
+    Read over the middle two-thirds of the burst window: the window spans
+    the whole 9-cycle burst, envelope rise and fall included, and the mean
+    over all of it reads ~12% under the burst's flat top - the amplitude
+    NTSC_BURST_EXPECTED is."""
+    margin = (params.colour_burst_end - params.colour_burst_start) // 6
+    burst_iq_start = (params.colour_burst_start + margin) // 2
+    burst_iq_end = (params.colour_burst_end - margin) // 2
 
     amps = []
     phases = []
@@ -340,7 +354,7 @@ def print_report(system, bar_results, burst_amp, burst_phase, amplitude_pct,
         expected = compute_expected_bars(amplitude_pct, saturation_pct, setup_ire)
         title = (f"SMPTE Color Bar Analysis (NTSC)  --  "
                  f"{amplitude_pct}/{saturation_pct}% bars, setup = {setup_ire} IRE")
-        burst_note = "(expected ~14.14)"
+        burst_note = f"(expected ~{NTSC_BURST_EXPECTED:.2f}, i.e. 40 IRE p-p)"
         comp_names = ("I", "Q")
         phase_hdr = "Phase"
     else:
