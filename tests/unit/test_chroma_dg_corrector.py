@@ -835,10 +835,12 @@ def test_the_transform_length_is_a_fast_one_with_room_for_the_guard(length):
 # The NTSC CVBS write-time hook
 # ---------------------------------------------------------------------------
 
-def held_field(slope, phase):
+def held_field(slope, phase, gain=None):
     f = field_module.Field.__new__(field_module.Field)
-    f.rf = types.SimpleNamespace(DecoderParams={"chroma_dg_slope": slope,
-                                                "chroma_dg_phase": phase})
+    params = {"chroma_dg_slope": slope, "chroma_dg_phase": phase}
+    if gain is not None:
+        params["luma_level_gain"] = gain
+    f.rf = types.SimpleNamespace(DecoderParams=params)
     return f
 
 
@@ -847,12 +849,15 @@ def test_a_field_with_no_held_correction_hands_its_picture_back():
     assert held_field(0.0, 0.0).chroma_dg_cvbs_picture(picture) is picture
 
 
-@pytest.mark.parametrize("slope, phase", [(0.0021, 0.0), (0.0, 0.09)])
-def test_a_held_correction_is_applied_to_the_picture(monkeypatch, slope, phase):
+@pytest.mark.parametrize("slope, phase, gain",
+                         [(0.0021, 0.0, None), (0.0, 0.09, None),
+                          (0.0, 0.0, 0.99)])
+def test_a_held_correction_is_applied_to_the_picture(monkeypatch, slope, phase,
+                                                     gain):
     calls = []
     monkeypatch.setattr(
         field_module, "apply_chroma_dg_correction_output",
-        lambda picture, field, s, p: calls.append((s, p)) or "corrected")
-    f = held_field(slope, phase)
+        lambda picture, field, s, p, g: calls.append((s, p, g)) or "corrected")
+    f = held_field(slope, phase, gain)
     assert f.chroma_dg_cvbs_picture(np.zeros(16, np.uint16)) == "corrected"
-    assert calls == [(slope, phase)]
+    assert calls == [(slope, phase, 1.0 if gain is None else gain)]

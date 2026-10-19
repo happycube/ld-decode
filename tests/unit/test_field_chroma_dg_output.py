@@ -42,17 +42,18 @@ def corrector(monkeypatch):
     """Replace the FFT corrector with a recorder that tags its input."""
     calls = []
 
-    def fake(picture, field, slope, phase):
-        calls.append((picture, slope, phase))
+    def fake(picture, field, slope, phase, luma_gain=1.0):
+        calls.append((picture, slope, phase, luma_gain))
         return np.asarray(picture) + 1000
 
     monkeypatch.setattr(F, "apply_chroma_dg_correction_output", fake)
     return calls
 
 
-def test_key_is_slope_phase_and_the_agc_vsync_level():
+def test_key_is_slope_phase_the_agc_vsync_level_and_the_white_level_gain():
     rf = types.SimpleNamespace(DecoderParams={"vsync_ire": -43.0})
-    assert F.chroma_dg_output_key(rf, 0.002, 0.04) == (0.002, 0.04, -43.0)
+    assert F.chroma_dg_output_key(rf, 0.002, 0.04) == (0.002, 0.04, -43.0, 1.0)
+    assert F.chroma_dg_output_key(rf, 0.0, 0.0, 0.99) == (0.0, 0.0, -43.0, 0.99)
 
 
 def test_no_correction_needed_returns_the_picture_itself(corrector):
@@ -66,12 +67,12 @@ def test_inline_field_is_corrected_at_write_time(corrector):
     f = stub_field()
     out = F.chroma_dg_output_picture(f.dspicture, f, 0.002, 0.0)
     assert len(corrector) == 1
-    assert corrector[0][0] is f.dspicture and corrector[0][1:] == (0.002, 0.0)
+    assert corrector[0][0] is f.dspicture and corrector[0][1:] == (0.002, 0.0, 1.0)
     np.testing.assert_array_equal(out, f.dspicture + 1000)
 
 
 def test_worker_correction_under_the_current_key_is_kept(corrector):
-    f = stub_field(applied=(0.002, 0.04, VSYNC_IRE))
+    f = stub_field(applied=(0.002, 0.04, VSYNC_IRE, 1.0))
     corrected = np.full(8, 7, dtype=np.uint16)
     assert F.chroma_dg_output_picture(corrected, f, 0.002, 0.04) is corrected
     assert corrector == []
@@ -80,9 +81,9 @@ def test_worker_correction_under_the_current_key_is_kept(corrector):
 @pytest.mark.parametrize(
     "stale",
     [
-        (0.001, 0.04, VSYNC_IRE),   # servo adopted a new slope
-        (0.002, 0.00, VSYNC_IRE),   # servo adopted a phase
-        (0.002, 0.04, -43.0),       # AGC moved the vsync level
+        (0.001, 0.04, VSYNC_IRE, 1.0),   # servo adopted a new slope
+        (0.002, 0.00, VSYNC_IRE, 1.0),   # servo adopted a phase
+        (0.002, 0.04, -43.0, 1.0),       # AGC moved the vsync level
     ],
 )
 def test_stale_worker_correction_is_redone_from_the_raw_picture(corrector, stale):
@@ -98,7 +99,7 @@ TOL = (0.0008, 0.01)
 
 
 def test_tolerant_mode_keeps_a_correction_within_the_allowance(corrector):
-    f = stub_field(applied=(0.0020, 0.04, VSYNC_IRE))
+    f = stub_field(applied=(0.0020, 0.04, VSYNC_IRE, 1.0))
     corrected = np.full(8, 7, dtype=np.uint16)
     out = F.chroma_dg_output_picture(corrected, f, 0.0025, 0.045, tolerance=TOL)
     assert out is corrected
@@ -108,9 +109,9 @@ def test_tolerant_mode_keeps_a_correction_within_the_allowance(corrector):
 @pytest.mark.parametrize(
     "applied",
     [
-        (0.0030, 0.040, VSYNC_IRE),  # slope moved by more than the allowance
-        (0.0020, 0.000, VSYNC_IRE),  # the phase term engaged
-        (0.0020, 0.040, -43.0),      # a level change is never tolerated
+        (0.0030, 0.040, VSYNC_IRE, 1.0),  # slope moved by more than the allowance
+        (0.0020, 0.000, VSYNC_IRE, 1.0),  # the phase term engaged
+        (0.0020, 0.040, -43.0, 1.0),      # a level change is never tolerated
     ],
 )
 def test_tolerant_mode_still_redoes_a_correction_outside_it(corrector, applied):
@@ -122,10 +123,26 @@ def test_tolerant_mode_still_redoes_a_correction_outside_it(corrector, applied):
 
 
 def test_servo_returning_to_zero_discards_the_worker_correction(corrector):
-    f = stub_field(applied=(0.002, 0.0, VSYNC_IRE))
+    f = stub_field(applied=(0.002, 0.0, VSYNC_IRE, 1.0))
     corrected = np.full(8, 7, dtype=np.uint16)
     assert F.chroma_dg_output_picture(corrected, f, 0.0, 0.0) is f.dspicture
     assert corrector == []
+
+
+def test_a_white_level_gain_alone_is_applied_at_write_time(corrector):
+    f = stub_field()
+    out = F.chroma_dg_output_picture(f.dspicture, f, 0.0, 0.0, luma_gain=0.99)
+    assert len(corrector) == 1 and corrector[0][1:] == (0.0, 0.0, 0.99)
+    np.testing.assert_array_equal(out, f.dspicture + 1000)
+
+
+def test_a_white_level_gain_change_is_never_tolerated(corrector):
+    f = stub_field(applied=(0.0020, 0.040, VSYNC_IRE, 1.0))
+    corrected = np.full(8, 7, dtype=np.uint16)
+    out = F.chroma_dg_output_picture(corrected, f, 0.0020, 0.040,
+                                     tolerance=TOL, luma_gain=0.99)
+    assert len(corrector) == 1 and corrector[0][0] is f.dspicture
+    np.testing.assert_array_equal(out, f.dspicture + 1000)
 
 
 def test_no_field_means_no_correction(corrector):

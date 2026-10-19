@@ -1170,6 +1170,23 @@ def equalise_chroma_gain_phase(ire, level, cos_rotation, sin_rotation,
     return out
 
 
+@njit(cache=True, nogil=True, fastmath=True)
+def scale_luma_above_blanking(out, ire, chroma, gain):
+    """out += (gain - 1) * max(ire - chroma, 0), in place.
+
+    ire less its chroma band is the luminance (with whatever luminance
+    detail shares the band left out); scaling its part above blanking by
+    gain, about blanking, moves every picture level and leaves sync and
+    blanking (at or below zero) and the chroma band exactly where they
+    are.
+    """
+    g = gain - 1.0
+    for i in range(ire.shape[0]):
+        level = ire[i] - chroma[i]
+        if level > 0.0:
+            out[i] += g * level
+
+
 if __name__ == "__main__":
     print("Nothing to see here, move along ;)")
 

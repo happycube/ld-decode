@@ -35,7 +35,9 @@ from .metrics import (
     ITS_FLATNESS_FRACTION,
     chroma_correction_note,
     detect_levels,
+    ITS_WHITE_NOMINAL_IRE,
     measure_its_2t_ratio,
+    measure_its_white_level,
     measure_vits_multiburst,
     precompute_vits,
 )
@@ -611,6 +613,12 @@ class LDdecode:
         self.useAGC = extra_options.get("useAGC", True)
         self.wow_level_adjust_smoothing = extra_options.get("wow_level_adjust_smoothing", 0)
         self.wow_interpolation_method = extra_options.get("wow_interpolation_method", "linear")
+
+        # VITS white-level servo state (checkLumaLevel); opt-in.
+        self.luma_level_servo = extra_options.get("vits_white_level", False)
+        self._level_samples = []   # (field readloc, white bar IRE)
+        self._level_last_adopt = None
+        self.level_calibrated = False
 
         # Chroma differential-gain servo state (checkChromaDG).
         self.chroma_dg_servo = extra_options.get("chroma_dg", True)
@@ -1590,6 +1598,84 @@ class LDdecode:
         if engine is not None:
             engine.set_chroma_dg(self._engine_chroma_dg())
 
+    # VITS white-level servo (--vits_white_level, off by default): pools
+    # the ITS / NTC-7 white bar's level above blanking per field
+    # (metrics.measure_its_white_level) and holds
+    # DecoderParams["luma_level_gain"], the factor the write-time
+    # corrector scales the luminance above blanking by so that the bar
+    # reads ITS_WHITE_NOMINAL_IRE.  Discs are mastered a percent or so
+    # either side of nominal (98.8-101.7 IRE across the NTSC captures in
+    # hand), and the white bar is the level the disc itself was made to.
+    # Like the chroma DG servo it never touches decoding, so an adoption
+    # needs no redo; its gain rides to the field jobs with the DG pair.
+    #: Pool size and age horizon, as the chroma DG servo's.
+    LEVEL_KEEP = 24
+    LEVEL_MAX_AGE_FIELDS = 240
+    #: Samples before an adoption: 3 for the first, LEVEL_MIN_SAMPLES after.
+    LEVEL_MIN_SAMPLES = 6
+    #: Dead-band on the gain: 0.2%, 0.2 IRE at white - above the pooled
+    #: median's own scatter, below anything a level tolerance cares about.
+    LEVEL_DEADBAND = 0.002
+    #: Hard bound on the correction either way.  The worst capture in
+    #: hand is 1.7% off; a bar reading further out than this is not a
+    #: mastering tolerance.
+    LEVEL_CLAMP = 0.05
+    #: Committed-decode adoption rate limit, as the other servos'.
+    LEVEL_MIN_ADOPT_FIELDS = 100
+
+    def checkLumaLevel(self, field):
+        """Track the VITS white bar's level and adopt the luminance gain
+        that puts it at nominal (DecoderParams["luma_level_gain"]).
+
+        The pooled median of the per-field bar readings sets the gain;
+        the write-time corrector applies it to the TBC and CVBS outputs
+        (field._correct_chroma_vs_luma) and every servo keeps measuring
+        the raw decode, so adopting never invalidates a field.  Serial
+        and threaded decodes pool the same committed fields at the same
+        points and adopt identically.  A disc with no ITS never feeds
+        the pool and the gain stays 1.0.
+        """
+        if not self.luma_level_servo:
+            return
+        measured = measure_its_white_level(field)
+        if measured is not None:
+            entry = (field.readloc, measured[0])
+            if self._level_samples and self._level_samples[-1][0] == entry[0]:
+                self._level_samples[-1] = entry
+            else:
+                self._level_samples.append(entry)
+                self._level_samples = self._level_samples[-self.LEVEL_KEEP:]
+        horizon = (self._servo_pos
+                   - self.LEVEL_MAX_AGE_FIELDS * self.bytes_per_field)
+        self._level_samples = [x for x in self._level_samples if x[0] >= horizon]
+        need = 3 if not self.level_calibrated else self.LEVEL_MIN_SAMPLES
+        if len(self._level_samples) < need:
+            return
+
+        white = float(np.median([level for _, level in self._level_samples]))
+        gain = float(np.clip(ITS_WHITE_NOMINAL_IRE / white,
+                             1.0 - self.LEVEL_CLAMP, 1.0 + self.LEVEL_CLAMP))
+        current = float(self.rf.DecoderParams.get("luma_level_gain", 1.0))
+        if abs(gain - current) < self.LEVEL_DEADBAND:
+            self.level_calibrated = True
+            return
+        if self.level_calibrated and self.fields_written > 0:
+            if (self._level_last_adopt is not None
+                    and (self._servo_pos - self._level_last_adopt)
+                    < self.LEVEL_MIN_ADOPT_FIELDS * self.bytes_per_field):
+                return
+            self._level_last_adopt = self._servo_pos
+
+        logs.logger.debug(
+            f"VITS white level servo: white bar {white:.2f} IRE, "
+            f"luminance gain {current:.4f} \u2192 {gain:.4f}"
+        )
+        self.level_calibrated = True
+        self.rf.DecoderParams["luma_level_gain"] = gain
+        engine = getattr(self, "_job_engine", None)
+        if engine is not None:
+            engine.set_chroma_dg(self._engine_chroma_dg())
+
     def checkVideoEQ(self, field):
         """Adopt the multiburst-derived video EQ when it drifts past
         the dead-band.  Returns True if no redo is needed (holds, and
@@ -2396,7 +2482,8 @@ class LDdecode:
         args = (picture, view,
                 float(dp.get("chroma_dg_slope", 0.0)),
                 float(dp.get("chroma_dg_phase", 0.0)),
-                self.dg_speculation_tolerance)
+                self.dg_speculation_tolerance,
+                float(dp.get("luma_level_gain", 1.0)))
         if self._output_pool is not None:
             return self._output_pool.submit(chroma_dg_output_picture, *args)
         return chroma_dg_output_picture(*args)
@@ -3088,10 +3175,13 @@ class LDdecode:
         if changed:
             # The staircase was measured under parameters that just
             # moved; slope samples pooled across the change would mix
-            # two different channels.
+            # two different channels.  Likewise the white bar's level,
+            # which the AGC moves outright.
             self._dg_samples.clear()
+            self._level_samples.clear()
         else:
             self.checkChromaDG(f)
+            self.checkLumaLevel(f)
         return changed
 
     def validate_chain(self, f, prevfield):
@@ -3515,14 +3605,15 @@ class LDdecode:
         self._job_rejects = 0
 
     def _engine_chroma_dg(self):
-        """The chroma DG (slope, phase) field jobs should correct the TBC
-        picture under - None for CVBS output, whose writer applies the
-        correction itself on the 4fsc lattice."""
+        """The chroma DG (slope, phase) and VITS white-level gain field jobs
+        should correct the TBC picture under - None for CVBS output, whose
+        writer applies the correction itself on the 4fsc lattice."""
         if self.output_cvbs:
             return None
         return (
             float(self.rf.DecoderParams.get("chroma_dg_slope", 0.0)),
             float(self.rf.DecoderParams.get("chroma_dg_phase", 0.0)),
+            float(self.rf.DecoderParams.get("luma_level_gain", 1.0)),
         )
 
     def _log_speculation(self, reason, detail=""):

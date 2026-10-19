@@ -69,7 +69,7 @@ def stub_decoder(lane=None, pool=None, cvbs=None, dbconn=None):
 def corrector(monkeypatch):
     calls = []
 
-    def fake(picture, field, slope, phase, tolerance=None):
+    def fake(picture, field, slope, phase, tolerance=None, luma_gain=1.0):
         calls.append((picture, field, slope, phase, tolerance))
         return np.asarray(picture) + 1
 
@@ -183,7 +183,7 @@ def test_cvbs_output_does_not_send_the_correction_to_the_field_jobs():
     assert LDdecode._engine_chroma_dg(it) is None
 
     it.output_cvbs = False
-    assert LDdecode._engine_chroma_dg(it) == (0.002, 0.04)
+    assert LDdecode._engine_chroma_dg(it) == (0.002, 0.04, 1.0)
 
 
 def test_a_cvbs_frame_is_written_under_its_second_fields_parameters(corrector):

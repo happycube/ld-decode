@@ -327,6 +327,11 @@ def test_the_audio_carrier_canceller_is_opt_in_and_ntsc_only():
     assert "AudioCarrierCancel" not in extra("-p", "--audio_carrier_cancel")
 
 
+def test_the_vits_white_level_servo_is_opt_in():
+    assert extra()["vits_white_level"] is False
+    assert extra("--vits_white_level")["vits_white_level"] is True
+
+
 def test_lowband_selects_the_reduced_bandwidth_parameter_set():
     assert "lowband" not in extra()
     assert extra("--lowband")["lowband"] is True

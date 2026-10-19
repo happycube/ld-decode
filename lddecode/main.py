@@ -307,6 +307,18 @@ def build_parser():
     )
 
     parser.add_argument(
+        "--vits_white_level",
+        dest="vits_white_level",
+        action="store_true",
+        default=False,
+        help="Scale the luminance so that the VITS white bar (the PAL ITS's, "
+             "NTSC's NTC-7) reads 100 IRE: corrects a disc mastered a "
+             "percent or so hot or cold.  Applied at write time to the "
+             "TBC and CVBS outputs; sync, burst and chroma are left as "
+             "they are.  No effect on discs without that bar",
+    )
+
+    parser.add_argument(
         "--no_chroma_dg",
         dest="chroma_dg",
         action="store_false",
@@ -577,6 +589,7 @@ def build_options(args):
         "auto_deemp": args.auto_chroma and args.deemp_strength is None,
         "auto_chroma": args.auto_chroma,
         "chroma_dg": args.chroma_dg,
+        "vits_white_level": args.vits_white_level,
         "MTF_level": args.MTF,
         "MTF_offset": args.MTF_offset,
         "mtf_servo": not args.no_mtf_servo,

@@ -327,7 +327,7 @@ def _decode_field_worker(seq, start, raw_span, span_begin, mtf_level,
     import sys
 
     from .field import (FieldNTSC, FieldPAL, apply_chroma_dg_correction_output,
-                        chroma_dg_output_key)
+                        chroma_dg_output_key, output_correction_active)
     from .metrics import computeMetrics, detect_levels, precompute_vits
 
     try:
@@ -426,17 +426,19 @@ def _decode_field_worker(seq, start, raw_span, span_begin, mtf_level,
 
         picture, _, efm = f.downscale(linesout=cfg["output_lines"], final=True)
 
-        # The TBC output's chroma differential gain/phase correction is
-        # a pure function of the picture and the servo's (slope, phase),
-        # so it runs here on a copy - f.dspicture stays raw for the
-        # servos - and rides the result with the key it was computed
-        # under; the writer keeps it only while that key is current
-        # (see field.chroma_dg_output_picture).
+        # The TBC output's chroma differential gain/phase correction (and
+        # the VITS white-level gain riding it) is a pure function of the
+        # picture and the servos' (slope, phase, gain), so it runs here
+        # on a copy - f.dspicture stays raw for the servos - and rides
+        # the result with the key it was computed under; the writer
+        # keeps it only while that key is current (see
+        # field.chroma_dg_output_picture).
         f.chroma_dg_applied = None
-        if chroma_dg is not None and any(chroma_dg):
-            slope, phase = chroma_dg
-            picture = apply_chroma_dg_correction_output(picture, f, slope, phase)
-            f.chroma_dg_applied = chroma_dg_output_key(rf, slope, phase)
+        if chroma_dg is not None and output_correction_active(*chroma_dg):
+            slope, phase, gain = chroma_dg
+            picture = apply_chroma_dg_correction_output(picture, f, slope,
+                                                        phase, gain)
+            f.chroma_dg_applied = chroma_dg_output_key(rf, slope, phase, gain)
 
         metrics = computeMetrics(rf, f, None, verbose=True)
         f.precomputed_metrics = metrics
@@ -740,7 +742,8 @@ class FieldJobEngine:
                 self.filter_slots.publish(family, key, arrays)
 
     def set_chroma_dg(self, chroma_dg):
-        """Adopt a new chroma DG (slope, phase) for future dispatches.
+        """Adopt a new write-time correction (chroma DG slope, phase and
+        VITS white-level gain) for future dispatches.
         Jobs in flight keep the old pair; the writer re-corrects those
         from the raw picture, so nothing needs discarding."""
         with self._cond:

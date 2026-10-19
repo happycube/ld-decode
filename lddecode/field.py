@@ -34,6 +34,7 @@ from .dsp import (
     compute_linelocs_kernel,
     equalise_chroma_gain,
     equalise_chroma_gain_phase,
+    scale_luma_above_blanking,
     hz_to_output_array,
     nb_absmax,
     nb_mean,
@@ -224,7 +225,7 @@ def _chroma_dg_band(spectrum, band, padded_len, quadrature=False):
     return spfft.irfft(selected, padded_len)
 
 
-def _correct_chroma_vs_luma(ire, fs_mhz, slope, phase):
+def _correct_chroma_vs_luma(ire, fs_mhz, slope, phase, luma_gain=1.0):
     """Core of the differential gain/phase corrector, in IRE.
 
     out = composite + Re[(G(luma) - 1) * chroma_analytic]
@@ -245,6 +246,12 @@ def _correct_chroma_vs_luma(ire, fs_mhz, slope, phase):
     spectrum.  The elementwise arithmetic -- the clip, the gain, the
     rotation and the combination -- is one pass per field in
     equalise_chroma_gain[_phase] rather than a whole-field temporary each.
+
+    luma_gain, when not 1, also scales the composite less its chroma band
+    by that factor about blanking (scale_luma_above_blanking): the VITS
+    white-level correction, which rides the same split so that it scales
+    the luminance and leaves sync, burst and the chrominance - whose level
+    the burst servo has already set - where they are.
     """
     # Transformed at a fast length rather than the field's own, which is
     # prime on one PAL lattice and near enough on the others (see
@@ -263,18 +270,21 @@ def _correct_chroma_vs_luma(ire, fs_mhz, slope, phase):
     luma = _chroma_dg_band(spectrum, low, padded_len)[field]
     chroma = _chroma_dg_band(spectrum, band, padded_len)[field]
     if phase == 0.0:
-        return equalise_chroma_gain(ire, luma, chroma, slope,
-                                    CHROMA_DG_ANCHOR_IRE)
+        out = equalise_chroma_gain(ire, luma, chroma, slope,
+                                   CHROMA_DG_ANCHOR_IRE)
+    else:
+        quadrature = _chroma_dg_band(spectrum, band, padded_len, True)[field]
+        level = np.clip(luma, 0.0, None)
+        rotation = level * np.float32(-np.deg2rad(phase))
+        out = equalise_chroma_gain_phase(
+            ire, level, np.cos(rotation), np.sin(rotation), chroma, quadrature,
+            slope, CHROMA_DG_ANCHOR_IRE)
+    if luma_gain != 1.0:
+        scale_luma_above_blanking(out, ire, chroma, luma_gain)
+    return out
 
-    quadrature = _chroma_dg_band(spectrum, band, padded_len, True)[field]
-    level = np.clip(luma, 0.0, None)
-    rotation = level * np.float32(-np.deg2rad(phase))
-    return equalise_chroma_gain_phase(
-        ire, level, np.cos(rotation), np.sin(rotation), chroma, quadrature,
-        slope, CHROMA_DG_ANCHOR_IRE)
 
-
-def apply_chroma_dg_correction(hz_samples, rf, slope, phase=0.0):
+def apply_chroma_dg_correction(hz_samples, rf, slope, phase=0.0, luma_gain=1.0):
     """Equalise chroma gain and phase across luminance on a 4fsc stream.
 
     The FM channel scales and rotates recovered chrominance by the
@@ -290,7 +300,9 @@ def apply_chroma_dg_correction(hz_samples, rf, slope, phase=0.0):
     `slope` is the measured fractional chroma-gain change per IRE of
     luminance and `phase` the measured chroma rotation in degrees per
     IRE (both from decoder.measure_vits_dg_staircase); the correction is
-    exact for the linear dependence the staircase measures.  The
+    exact for the linear dependence the staircase measures.  `luma_gain`
+    is the VITS white-level correction (decoder.checkLumaLevel), applied
+    in the same pass (see _correct_chroma_vs_luma).  The
     subcarrier bandpass and the luminance low-pass are zero-phase and
     G(blanking-and-below) is a constant, so luminance levels and sync
     are untouched; burst gains the same factor as all other
@@ -308,11 +320,13 @@ def apply_chroma_dg_correction(hz_samples, rf, slope, phase=0.0):
     dp = rf.DecoderParams
     ire0, hz_ire = dp["ire0"], dp["hz_ire"]
     ire = (np.asarray(hz_samples, dtype=np.float64) - ire0) / hz_ire
-    ire = _correct_chroma_vs_luma(ire, rf.SysParams["outfreq"], slope, phase)
+    ire = _correct_chroma_vs_luma(ire, rf.SysParams["outfreq"], slope, phase,
+                                  luma_gain)
     return (ire * hz_ire + ire0).astype(np.float32)
 
 
-def apply_chroma_dg_correction_output(picture, field, slope, phase=0.0):
+def apply_chroma_dg_correction_output(picture, field, slope, phase=0.0,
+                                      luma_gain=1.0):
     """The same correction on output-unit (uint16 TBC) samples.
 
     The TBC picture is downscaled on worker threads before the servo's
@@ -326,22 +340,29 @@ def apply_chroma_dg_correction_output(picture, field, slope, phase=0.0):
         samples = np.frombuffer(samples, dtype=np.uint16)
     ire = field.output_to_ire(samples.astype(np.float64))
     ire = _correct_chroma_vs_luma(
-        ire, field.rf.SysParams["outfreq"], slope, phase)
+        ire, field.rf.SysParams["outfreq"], slope, phase, luma_gain)
     out = ((ire - field.rf.DecoderParams["vsync_ire"]) * field.out_scale
            + field.rf.SysParams["outputZero"] + 0.5)
     return np.clip(out, 0, 65535).astype(np.uint16)
 
 
-def chroma_dg_output_key(rf, slope, phase):
+def chroma_dg_output_key(rf, slope, phase, luma_gain=1.0):
     """Everything apply_chroma_dg_correction_output's result depends on
-    beyond the picture: the servo's estimate and the AGC's vsync level
+    beyond the picture: the servos' estimates and the AGC's vsync level
     (out_scale and outputZero are per-system constants).  A worker
     stamps the key it corrected under on the field (chroma_dg_applied);
     the writer compares it with the current one."""
-    return (float(slope), float(phase), float(rf.DecoderParams["vsync_ire"]))
+    return (float(slope), float(phase), float(rf.DecoderParams["vsync_ire"]),
+            float(luma_gain))
 
 
-def chroma_dg_output_picture(picture, field, slope, phase, tolerance=None):
+def output_correction_active(slope, phase, luma_gain):
+    """Whether the write-time correction changes anything."""
+    return slope != 0.0 or phase != 0.0 or luma_gain != 1.0
+
+
+def chroma_dg_output_picture(picture, field, slope, phase, tolerance=None,
+                             luma_gain=1.0):
     """The TBC picture to write for a field under the current chroma DG
     estimate, applying apply_chroma_dg_correction_output only when the
     field does not already carry it.
@@ -359,23 +380,27 @@ def chroma_dg_output_picture(picture, field, slope, phase, tolerance=None):
     each within it of the current estimate (and whose vsync level is
     the same) is kept rather than redone, as an in-flight field decoded
     under a slightly stale MTF level is.  None demands the exact key.
+    luma_gain (the VITS white-level correction) is always matched
+    exactly: it moves every picture level, and adoptions are rare.
     Returns picture itself when no correction applies."""
     if field is None:
         return picture
-    key = chroma_dg_output_key(field.rf, slope, phase)
+    key = chroma_dg_output_key(field.rf, slope, phase, luma_gain)
     applied = getattr(field, "chroma_dg_applied", None)
     if applied is not None and applied != key:
         close_enough = (
             tolerance is not None
             and applied[2] == key[2]
+            and applied[3] == key[3]
             and abs(applied[0] - key[0]) <= tolerance[0]
             and abs(applied[1] - key[1]) <= tolerance[1]
         )
         if not close_enough:
             picture = field.dspicture
             applied = None
-    if applied is None and (slope != 0.0 or phase != 0.0):
-        picture = apply_chroma_dg_correction_output(picture, field, slope, phase)
+    if applied is None and output_correction_active(slope, phase, luma_gain):
+        picture = apply_chroma_dg_correction_output(
+            picture, field, slope, phase, luma_gain)
     return picture
 
 
@@ -607,17 +632,19 @@ class Field:
         ) + self.rf.DecoderParams["vsync_ire"]
 
     def chroma_dg_cvbs_picture(self, picture):
-        """This field's output picture under its chroma DG estimate, for
-        the NTSC CVBS writer, which takes the decoder's line-locked 4fsc
+        """This field's output picture under its chroma DG estimate and
+        VITS white-level gain, for the NTSC CVBS writer, which takes the decoder's line-locked 4fsc
         rows as they are (PAL's correction runs inside downscale_cvbs
         instead).  Read at write time from this field's DecoderParams,
         as the TBC path does; returns picture itself when no correction
         is held."""
         slope = float(self.rf.DecoderParams.get("chroma_dg_slope", 0.0))
         phase = float(self.rf.DecoderParams.get("chroma_dg_phase", 0.0))
-        if slope == 0.0 and phase == 0.0:
+        gain = float(self.rf.DecoderParams.get("luma_level_gain", 1.0))
+        if not output_correction_active(slope, phase, gain):
             return picture
-        return apply_chroma_dg_correction_output(picture, self, slope, phase)
+        return apply_chroma_dg_correction_output(picture, self, slope, phase,
+                                                 gain)
 
 
     def lineslice_tbc(self, line, begin=None, length=None, linelocs=None, keepphase=False):
@@ -2123,8 +2150,9 @@ class FieldPAL(Field):
 
         slope = float(self.rf.DecoderParams.get("chroma_dg_slope", 0.0))
         phase = float(self.rf.DecoderParams.get("chroma_dg_phase", 0.0))
-        if slope != 0.0 or phase != 0.0:
-            out = apply_chroma_dg_correction(out, self.rf, slope, phase)
+        gain = float(self.rf.DecoderParams.get("luma_level_gain", 1.0))
+        if output_correction_active(slope, phase, gain):
+            out = apply_chroma_dg_correction(out, self.rf, slope, phase, gain)
 
         return self.hz_to_output(out)
 

@@ -8,7 +8,7 @@ ld-decode [-h] [--start file-location] [--length frames] [--seek frame] [--PAL] 
                  [--start_fileloc start_fileloc] [--ignoreleadout] [--verboseVITS] [--RF_TBC] [--lowband]
                  [--NTSC_color_notch_filter] [--audio_carrier_cancel] [--V4300D_notch_filter] [--V4300D_coherent_subtract] [--V4300D_no_defer]
                  [--deemp_low deemp_low] [--deemp_high deemp_high]
-                 [--deemp_strength deemp_str] [--no_auto_chroma] [--no_mtf_servo] [-t threads] [-f FREQ] [--analog_audio_frequency AFREQ]
+                 [--deemp_strength deemp_str] [--no_auto_chroma] [--vits_white_level] [--no_mtf_servo] [-t threads] [-f FREQ] [--analog_audio_frequency AFREQ]
                  [--video_bpf_low FREQ] [--video_bpf_high FREQ] [--video_lpf FREQ] [--video_lpf_order VLPF_ORDER]
                  [--audio_filterwidth FREQ] [--use_profiler] [--write-test-ldf output.ldf]
                  infile outfile
@@ -353,6 +353,24 @@ Disable the automatic chroma level correction.
 **Example:**
 ```bash
 ld-decode --no_auto_chroma input.ldf output
+```
+
+#### `--vits_white_level`
+Scale the luminance so that the disc's VITS white bar reads 100 IRE.
+- **Default:** Disabled
+- **Note:** Discs are mastered a percent or so either side of nominal level
+  (the NTSC captures tested read their white bar at 98.8-101.7 IRE).  With this
+  switch the decoder reads the white bar of the insertion test signal (PAL's
+  ITS, NTSC's NTC-7 composite) over the first few fields and scales the
+  luminance above blanking by the factor that brings it to 100 IRE.  Sync,
+  burst and chroma are left as they are; the chroma's level is set from the
+  burst (see `--no_auto_chroma`).  The correction is written into the `.tbc`
+  and `.cvbs` samples, and the first few fields, written before the reading
+  settles, are not corrected.  A disc without that test signal is left alone.
+
+**Example:**
+```bash
+ld-decode --vits_white_level input.ldf output
 ```
 
 #### `--no_mtf_servo`

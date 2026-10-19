@@ -649,6 +649,37 @@ def measure_its_2t_ratio(field, lines=None):
     return None
 
 
+#: The ITS / NTC-7 white bar's level above blanking, in IRE (100 IRE is
+#: the PAL ITS's 700 mV as well as NTC-7's white reference).
+ITS_WHITE_NOMINAL_IRE = 100.0
+
+
+def measure_its_white_level(field, lines=None):
+    """The insertion test signal's white bar above its blanking baseline,
+    in IRE, or None.
+
+    Read only from the line measure_its_2t_ratio accepts as the ITS (a
+    flat bar over a blanking baseline with an isolated 2T pulse after
+    it), so a bright content line cannot pass for it, and from the same
+    bar and baseline windows (_VITS_2T_LAYOUT).  The baseline is
+    subtracted, so a blanking-level offset does not read as a gain.
+
+    Returns (level_ire, line) on success, else None.
+    """
+    found = measure_its_2t_ratio(field, lines)
+    if found is None:
+        return None
+    line = found[1]
+    bar_win, base_win, _, _ = _VITS_2T_LAYOUT[field.rf.system]
+
+    def median(a, b):
+        sl = field.lineslice_tbc(line, a, b - a)
+        return float(np.median(field.output_to_ire(
+            field.dspicture[sl].astype(np.float64))))
+
+    return median(*bar_win) - median(*base_win), line
+
+
 def _multiburst_window_scan(y, fs_mhz, W, step):
     """Single-tone windows along a VBI line: (freq_hz, amp_ire_pp, start).
 
