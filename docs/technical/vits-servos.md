@@ -96,7 +96,7 @@ and corrects — shape errors, such as GGV's recorded −1 dB dip at 2 MHz
 at inner radius (both the PAL and NTSC pressings show it).
 
 The servo measures each packet's amplitude with a least-squares sine fit
-over the packet's central span (per-window RMS under-reads short
+over the packet's steady interior (per-window RMS under-reads short
 low-frequency packets and biases everything), then builds a zero-phase
 magnitude EQ with anchors at the packet frequencies **below 3.6 MHz
 (PAL) / 2.8 MHz (NTSC)**, gains set to cancel the deviation from the
@@ -110,9 +110,33 @@ region.
 Discs without a multiburst line simply never engage the EQ. The NTC-7
 combination multiburst (NTSC line 20 second fields) is deliberately
 not used: its ~3 µs packets are as short as the scan window at NTSC
-4fsc, so the single-line amplitude fit under-reads by up to 2.5 dB
-with the wrong sign (measured on he010 and issue176) — only the
-long-packet FCC line 22 variant is trusted.
+4fsc, so the single-line amplitude fit as it then was under-read them by
+up to 2.5 dB with the wrong sign (measured on he010 and issue176) — only
+the long-packet FCC line 22 variant is trusted.
+
+**Where the fit looks (2026-10-20).** The scan slides a 44-sample window
+along the line and keeps the windows holding one clean tone; a packet is
+a group of them. Two things went wrong with short packets, and NTSC's
+FCC line is all short packets above 1.25 MHz (about 4 µs, with 1.5 µs
+gaps):
+
+- Windows were grouped while each frequency stayed within 0.3 MHz of
+  the *previous* one. A window straddling the gap between two packets
+  reads a frequency in between, and chained the 3.58 and 4.1 MHz packets
+  into one 4.05 MHz "packet" fitted across the gap. They are now grouped
+  against the group's median.
+- The fit ran over the accepted windows' span less a fifth at each end.
+  A window hanging into the gap after a packet is still mostly tone, so
+  that span overran the packet. The fit now runs over the packet's own
+  steady interior: where its envelope, demodulated at its frequency, is
+  at 70 % or more of its 90th percentile, less an eighth at each end
+  (`metrics._packet_interior`).
+
+Against a fit over each packet's settled amplitude, the old reading was
+0.7 dB low at 2.0 MHz and up to 2 dB low at 4.1 MHz relative to the
+1.25 MHz reference, and the EQ answered with +1.6 dB at 2 MHz on the GGV
+FCC pressings where +0.4-0.7 dB levels that packet with its reference.
+PAL's packets are longer and moved by 0.05-0.1 dB.
 
 ## Which pulse the 2T servo holds
 
@@ -417,6 +441,43 @@ returns 1.4 dB of the 10.3, so it does not change the verdict; the packet's
 recorded deviation was re-taken against the corrected decode instead.
 Removing an unjustified lift is not allowed to be judged by the packet it
 happened to flatter, in this direction either.
+
+## When the multiburst may cap a boost on NTSC
+
+Read correctly, NTSC's FCC multiburst puts the chroma band flat 0.5-1.0
+dB short of where the burst and the VITS chrominance references (NTC-7,
+VIRS) put it, on every Pioneer pressing in hand that carries one:
+GGV1069 inner on both players and the GGV multiburst disc. With the
+ceiling binding there the strength fell from 0.62 to 0.38 (GGV1069
+inner) and from 0.83 to 0.54 (GGV multiburst disc). The 3.58 and
+4.1 MHz packets and the luma/chroma gain ratio failed with it, and the
+chrominance references read low. The old fit had read that band low by
+about as much, so the ceiling never engaged on these discs and the
+disagreement did not show.
+
+That is a disc whose multiburst and chrominance were mastered a little
+apart, not a channel the boost would overdrive. So on NTSC the boost
+side gets the same kind of gate as the cut: `IMTF_CEILING_ENGAGE_DB`,
+1.5 dB at the subcarrier. The burst must ask for more than that past the
+multiburst's flat-band strength before the multiburst caps it, and once
+it does the cap is the flat-band strength, not flat plus the margin. At
+1.0 dB the GGV multiburst disc (0.97 dB) capped and released by turns;
+1.5 dB leaves half a dB either side of it. PAL caps on any excess, as it
+was validated, and the BBC AIV discs the ceiling exists for ask for about
+2 dB past flat on either system's terms.
+
+With the gate the strengths are back where they were (0.636, 0.590,
+0.832). What the corrected fit still changes on these discs is the 2 MHz
+EQ. Their FCC multiburst is recorded low: the 1.25 MHz reference reads
+25.7-26.4 IRE against 30, and the 2.0 MHz packet now sits level with it
+instead of 1.6 dB above it. Twenty packet-level checks went to the
+known-deviation list as recorded low, while the 2.0 MHz response checks
+and the GGV1069 inner 2T (102.1 and 102.5 to 101.0 and 100.5) passed.
+On Domesday DD86-DS2 the few hundredths of a dB the PAL readings moved
+were enough to tip three coupled loops at their thresholds. At middle
+radius the 2T servo ran to its -1.0 limit, so the 4.0 MHz response,
+saturation ceiling and staircase DG now fail. The inner cut passes three
+checks it failed. The list carries both.
 
 ## The curve the correction rides
 

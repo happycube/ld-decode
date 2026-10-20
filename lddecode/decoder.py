@@ -1281,6 +1281,23 @@ class LDdecode:
     #: still a blowout.
     IMTF_CUT_ENGAGE_DB = 1.0
 
+    #: How far, in dB at the subcarrier, the burst must ask past the
+    #: multiburst's flat-band strength before the multiburst caps it -
+    #: the boost side of IMTF_CUT_ENGAGE_DB, and like it a gate and not
+    #: a subtraction: once engaged the cap is the flat-band strength.
+    #: PAL caps on any excess, as it was validated.  NTSC's FCC
+    #: multiburst, read without the fit errors that had it 0.5-0.8 dB low
+    #: at 3.58 MHz against its 1.25 MHz reference, finds the chroma band
+    #: flat 0.5-1.0 dB short of where the burst and the VITS chrominance
+    #: references (NTC-7, VIRS) both put it on every Pioneer pressing in
+    #: hand that carries one (GGV1069 on two players, the GGV multiburst
+    #: disc) - a disc whose multiburst and chrominance were mastered a
+    #: little apart, not a channel the boost would overdrive.  At 1.0 dB
+    #: the GGV multiburst disc (0.97) capped and released by turns; 1.5
+    #: leaves half a dB either side.  The BBC AIV discs the cap exists for
+    #: ask for about 2 dB past flat.
+    IMTF_CEILING_ENGAGE_DB = {"PAL": 0.0, "NTSC": 1.5}
+
     #: What a first calibration counts as a non-trivial correction, in dB
     #: at the subcarrier: below it the burst pool has found the channel
     #: flat and the filter stays out of the signal path entirely.  Small
@@ -1490,6 +1507,16 @@ class LDdecode:
         if flat < 0.0 and not self._imtf_cut_engaged(flat):
             return 0.0
         return float(max(-self.imtf_strength_limit, flat))
+
+    def _imtf_ceiling_binds(self, wanted, ceiling):
+        """Whether a strength above the multiburst's ceiling is capped:
+        by more than IMTF_CEILING_ENGAGE_DB at the subcarrier."""
+        if wanted <= ceiling:
+            return False
+        per_unit = self.rf.inverse_mtf_log_db(
+            self.rf.SysParams["fsc_mhz"] * 1e6)
+        engage = self.IMTF_CEILING_ENGAGE_DB.get(self.rf.system, 0.0)
+        return per_unit <= 0.0 or (wanted - ceiling) * per_unit > engage
 
     def _imtf_cut_engaged(self, flat):
         """Whether a negative flat-band strength is big enough to act on.
@@ -1849,7 +1876,7 @@ class LDdecode:
         if ceiling is None:
             return False
         current = self.rf.DecoderParams.get("inverse_mtf_strength", 0.0)
-        if current <= ceiling:
+        if not self._imtf_ceiling_binds(current, ceiling):
             return False
         logs.logger.debug(
             f"Auto inverse-MTF chroma: inverse_mtf_strength "
@@ -2293,7 +2320,7 @@ class LDdecode:
         # where it finds the band hot, carries the strength below the
         # floor the burst estimate was clipped at.
         ceiling = self._imtf_ceiling(current)
-        if ceiling is not None and estimate > ceiling:
+        if ceiling is not None and self._imtf_ceiling_binds(estimate, ceiling):
             estimate = ceiling
 
         if first:
@@ -2306,7 +2333,7 @@ class LDdecode:
                 or np.abs(estimate - current) < self.imtf_strength_deadband):
             return False
 
-        capped = "" if ceiling is None or estimate < ceiling else (
+        capped = "" if ceiling is None or estimate != ceiling else (
             f", capped at {ceiling:.3f} by the multiburst chroma band")
         logs.logger.debug(
             f"Auto inverse-MTF chroma: burst {measured:.1f} IRE "

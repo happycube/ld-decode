@@ -722,6 +722,48 @@ def _multiburst_window_scan(y, fs_mhz, W, step):
     return list(zip(freqs.tolist(), pp.tolist(), starts.tolist()))
 
 
+def _packet_interior(y, freq_hz, fs_mhz, lo, hi):
+    """(start, stop) of the steady part of the freq_hz packet in y[lo:hi].
+
+    The windows the scan accepts for a packet run past both its ends -
+    a window hanging into the gap after it is still mostly tone - so
+    their span is not the packet.  The packet is where its own envelope
+    is: the line demodulated at freq_hz and averaged over whole cycles
+    (about 12 samples), the longest run at 70 % or more of the envelope's
+    90th percentile, less an eighth of its length (and half the averaging
+    length) at each end for the edges' transients.  None if under 16
+    samples are left.  Fitting over the accepted windows' span less a
+    fifth at each end took in the gap after short packets: NTSC FCC's
+    2.0 MHz packet read 0.7 dB low against its 1.25 MHz reference, and
+    its 4.1 MHz packet up to 2 dB low.
+    """
+    lo, hi = max(0, lo), min(len(y), hi)
+    seg = y[lo:hi]
+    if len(seg) < 16:
+        return None
+    per = fs_mhz * 1e6 / freq_hz
+    length = max(4, int(round(per * max(1, round(12 / per)))))
+    n = np.arange(lo, hi)
+    bb = (seg - np.median(seg)) * np.exp(-2j * np.pi * freq_hz / (fs_mhz * 1e6) * n)
+    env = 2.0 * np.abs(np.convolve(bb, np.ones(length) / length, "same"))
+    on = env >= 0.7 * np.percentile(env, 90)
+    best = (0, 0, 0)
+    run = start = 0
+    for i, v in enumerate(on):
+        if v:
+            if run == 0:
+                start = i
+            run += 1
+            if run > best[0]:
+                best = (run, start, i + 1)
+        else:
+            run = 0
+    run, a, b = best
+    trim = max(length // 2, run // 8)
+    a, b = a + trim, b - trim
+    return (lo + a, lo + b) if b - a >= 16 else None
+
+
 def measure_vits_multiburst(field, lines=None):
     """One-line VITS multiburst from a VBI line, or None.
 
@@ -768,7 +810,12 @@ def measure_vits_multiburst(field, lines=None):
         cands.sort()
         groups = []
         for f, a, i0 in cands:
-            if groups and f - groups[-1][0][-1] < 0.3e6:
+            # Against the group's median, not its last member: windows
+            # straddling the gap between two packets read a frequency in
+            # between, and chained one packet into the next (NTSC FCC's
+            # 3.58 and 4.1 MHz fitted as one 4.05 MHz packet across the
+            # gap, 2 dB low).
+            if groups and abs(f - np.median(groups[-1][0])) < 0.3e6:
                 groups[-1][0].append(f)
                 groups[-1][2].append(i0)
             else:
@@ -779,15 +826,12 @@ def measure_vits_multiburst(field, lines=None):
                 continue
             fmed = float(np.median(fl))
             # amplitude from a least-squares sine fit over the packet's
-            # central span: unbiased for any (non-integer) cycle count,
+            # steady interior: unbiased for any (non-integer) cycle count,
             # unlike the per-window rms the scan uses
-            lo, hi = min(il), max(il) + W
-            span = hi - lo
-            lo += span // 5
-            hi -= span // 5
-            seg = y[lo:hi]
-            if len(seg) < 24:
+            extent = _packet_interior(y, fmed, fs_mhz, min(il), max(il) + W)
+            if extent is None:
                 continue
+            seg = y[extent[0]:extent[1]]
             t = 2 * np.pi * fmed / (fs_mhz * 1e6) * np.arange(len(seg))
             A = np.column_stack([np.sin(t), np.cos(t), np.ones(len(seg))])
             coef, *_ = np.linalg.lstsq(A, seg, rcond=None)
