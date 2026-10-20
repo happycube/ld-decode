@@ -563,15 +563,14 @@ class LoadLDF:
         if sample > 0:
             # Seek a little before the target; the reader thread discards the
             # lead-in so the buffer starts exactly at `sample`.
-            # The container sample_rate is stored at 40k (an audio-friendly
-            # rate), while the actual RF data is 40 MHz -- 1000x difference.
-            # Convert RF sample offset to stream time_base units:
-            #   1 RF sample = 1/40_000_000 sec
-            #   1 stream unit = 1/40_000 sec
-            #   -> 1 RF sample = 1/1000 stream units
-            seek_offset = sample // 1000
-            seek_offset = max(0, seek_offset - self._stream.sample_rate)
-            self._container.seek(seek_offset, any_frame=True)
+            # The .ldf container stores the 40 MHz RF samples as a 40 kHz
+            # stream, but samples map 1:1 -- RF sample n is stream sample n,
+            # and the FLAC stream's time_base is 1/sample_rate.  So `sample`
+            # is already an offset in stream time_base units, which seek()
+            # only uses when it is given the stream (without it, the offset
+            # is read as AV_TIME_BASE microseconds).
+            seek_offset = max(0, sample - self._stream.sample_rate)
+            self._container.seek(seek_offset, stream=self._stream, any_frame=True)
 
         self._decode_iter = self._container.decode(audio=0)
 
@@ -610,12 +609,12 @@ class LoadLDF:
 
                 if skip_samples is None:
                     # The first decoded frame tells us where decoding actually
-                    # resumed after the seek, via its presentation timestamp.
-                    # Scale by 1000: container stores 40k rate, RF data is 40 MHz.
+                    # resumed after the seek, via its presentation timestamp
+                    # (in stream samples, which are RF samples -- see above).
                     if frame.pts is not None:
                         base_sample = round(
                             float(frame.pts * self._stream.time_base)
-                            * self._stream.sample_rate * 1000
+                            * self._stream.sample_rate
                         )
                     else:
                         base_sample = target_sample
