@@ -168,3 +168,14 @@ LDDECODE_NO_SHARED_FILTERS=1   # disable the shared filter segment; every worker
 `LDDECODE_NO_SHARED_FILTERS` is the bisect control for the shared filter segment. Sharing changes where the filter bank lives — one read-only mapping per decode rather than one private copy per worker — and never what it contains, so a decode with the segment off must be byte-identical to one with it on. That is what makes it useful: any difference in output with this set is a bug in the sharing, and any difference in *counters* is what the sharing is worth (measured at 3.3% of DRAM fills per frame at `-t 4` and `-t 6`, and nothing in throughput).
 
 Counters for the last of these need `perf` or `report_decode_traffic.py`; resident size will not show them, because the effect is on cache traffic among concurrent workers rather than on how much memory is held.
+
+## Player video-chain simulations
+
+`scripts/player_chains/` simulates the video paths of LaserDisc players from component values read off their service-manual schematics: the Pioneer PR-7820 and PR-8210-A, Pioneer CLD-S180/CLD-D406, Panasonic LX-1000U and Sony LDP-1500P. Each script prints its filters' response and group delay at the multiburst frequencies; `ldd_chain.py` splits ld-decode's own NTSC chain into the same factors through `RFDecode.demodblock`. They need numpy and scipy (and `lddecode` for `ldd_chain.py`) and are run from the repository root:
+
+```
+python3 scripts/player_chains/pr8210.py
+python3 scripts/player_chains/ldd_chain.py 0.816 0.741   # MTF level, inverse-MTF strength
+```
+
+The findings, sources and caveats are in [Player video chains](../technical/player-video-chains.md); `scripts/player_chains/README.md` lists every script.
