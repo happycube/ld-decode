@@ -9,6 +9,7 @@ from math import tau
 
 import numpy as np
 import scipy.fft
+import scipy.interpolate
 from numba import njit
 from scipy.special import i0
 
@@ -1349,3 +1350,24 @@ def _wow_median_mad(breaks, coeffs, xq):
     _piecewise_poly_eval(breaks, coeffs, xq, values, slopes)
     median = np.median(slopes)
     return median, np.median(np.abs(slopes - median))
+
+
+def video_eq_db(points, freq_hz, top_hz):
+    """Gain in dB of the zero-phase video EQ at freq_hz.
+
+    points are (freq_hz, gain_db) anchors in rising frequency.  The curve
+    is a monotone cubic (PCHIP) in dB against frequency through 0 dB at
+    DC, the anchors, and 0 dB from the last anchor + 0.5 MHz up to top_hz
+    (the Nyquist frequency the EQ is built to).  freq_hz may be an array
+    and is folded to its magnitude and clipped to [0, top_hz].  No anchors
+    is 0 dB everywhere.
+    """
+    f = np.clip(np.abs(np.asarray(freq_hz, dtype=np.float64)), 0, top_hz)
+    if not points:
+        return np.zeros_like(f)
+    freqs = np.array([0.0] + [p[0] for p in points]
+                     + [points[-1][0] + 0.5e6, top_hz])
+    gains = np.array([0.0] + [p[1] for p in points] + [0.0, 0.0])
+    interp = scipy.interpolate.PchipInterpolator(freqs, gains,
+                                                 extrapolate=False)
+    return np.nan_to_num(interp(f), nan=0.0)

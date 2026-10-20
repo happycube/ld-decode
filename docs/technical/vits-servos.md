@@ -107,12 +107,26 @@ while chroma is recorded low, and a composite-domain filter cannot
 serve both — the burst calibration keeps ownership of the subcarrier
 region.
 
-Discs without a multiburst line simply never engage the EQ. The NTC-7
-combination multiburst (NTSC line 20 second fields) is deliberately
-not used: its ~3 µs packets are as short as the scan window at NTSC
-4fsc, so the single-line amplitude fit as it then was under-read them by
-up to 2.5 dB with the wrong sign (measured on he010 and issue176) — only
-the long-packet FCC line 22 variant is trusted.
+Discs without a multiburst line simply never engage the EQ. Where a
+disc has no FCC line 22, the NTC-7 combination multiburst (second
+fields, line 13 or 20) is read instead. It had been left out because its
+~3 µs packets are as short as the scan window at NTSC 4fsc, and the fit
+over the scan windows' span under-read them by up to 2.5 dB with the
+wrong sign (measured on he010 and issue176). Fitted over their own
+interiors (below), the 2.0–4.2 MHz packets agree with the conformance
+checker to 0.3 dB on the GGV and Video Essentials pressings. The line
+also carries three-level chrominance at the subcarrier frequency after
+its 4.2 MHz packet, so the packets taken are the run along the line that
+rises in frequency (`metrics._rising_run`). Dolby Surround's ~2.5 µs
+packets leave under 16 samples of interior and are still refused.
+
+The servo's bookkeeping reads what each pooled field was decoded under
+off the EQ curve itself (`decoder.applied_eq_db`, the same
+`dsp.video_eq_db` the filter is built from), not from the anchor list.
+A packet between anchors - the 3.0 MHz key past a 2.75 MHz last anchor,
+where the curve is still releasing - had read 0. It also moves each
+sample's inverse-MTF share from the strength the field had to the
+current one, as the flat-band estimate already did.
 
 **Where the fit looks (2026-10-20).** The scan slides a 44-sample window
 along the line and keeps the windows holding one clean tone; a packet is

@@ -764,24 +764,50 @@ def _packet_interior(y, freq_hz, fs_mhz, lo, hi):
     return (lo + a, lo + b) if b - a >= 16 else None
 
 
+def _rising_run(fitted):
+    """The longest subsequence of (position, freq, amp), in line order,
+    whose frequency rises strictly: a multiburst's packets.  Returned as
+    (freq, amp) pairs.  Earliest wins a tie."""
+    n = len(fitted)
+    if not n:
+        return []
+    length, prev = [1] * n, [-1] * n
+    for i in range(n):
+        for j in range(i):
+            if fitted[j][1] < fitted[i][1] and length[j] + 1 > length[i]:
+                length[i], prev[i] = length[j] + 1, j
+    i = max(range(n), key=lambda k: (length[k], -k))
+    out = []
+    while i >= 0:
+        out.append((fitted[i][1], fitted[i][2]))
+        i = prev[i]
+    return out[::-1]
+
+
 def measure_vits_multiburst(field, lines=None):
     """One-line VITS multiburst from a VBI line, or None.
 
     PAL (first fields): GGV carries one on line 13 (0.5-5.8 MHz
-    packets), the Louvre disc on line 20 (0.6-5.9 MHz).  NTSC (both
-    parities): the FCC multiburst some discs carry on line 22
-    (1.25-4.1 MHz).  The NTC-7 combination multiburst (line 20 second
-    fields) is deliberately NOT used: its packets are only ~3 us — as
-    short as the scan window at NTSC 4fsc — so nearly every window
-    straddles a packet edge and the amplitude fit under-reads by up to
-    2.5 dB (measured on he010/issue176), with the wrong sign vs the
-    averaged-field analysis measurement.  Returns (packets, line)
-    where packets is a list of
-    (freq_hz, amp_ire_pp) for at least 4 packets at monotonically
-    increasing frequencies including a reference packet near 1 MHz.
-    Validity checks reject picture content and plain reference lines,
-    so discs without a multiburst line yield None and the EQ servo
-    stays inactive.
+    packets), the Louvre disc on line 20 (0.6-5.9 MHz).  NTSC: the FCC
+    multiburst some discs carry on line 22 (1.25-4.1 MHz, both
+    parities), and failing that the NTC-7 combination multiburst
+    (0.5-4.2 MHz, second fields, on line 13 or 20).  Returns
+    (packets, line) where packets is a list of (freq_hz, amp_ire_pp)
+    for at least 4 packets at monotonically increasing frequencies
+    including a reference packet near 1 MHz.  Validity checks reject
+    picture content and plain reference lines, so discs without a
+    multiburst line yield None and the EQ servo stays inactive.
+
+    The packets taken are the longest run along the line that rises in
+    frequency (_rising_run): NTC-7's three-level chrominance follows its
+    4.2 MHz packet at the subcarrier frequency, and without that its
+    largest bar was taken for the 3.58 MHz packet (+4 dB).  The NTC-7
+    line had been left out because the fit over the scan windows' span
+    under-read its ~3 us packets by up to 2.5 dB; over their own
+    interiors its 2.0-4.2 MHz packets agree with the conformance checker
+    to 0.3 dB on the GGV and Video Essentials pressings.  The ~2.5 us
+    packets of some discs (dolby-surround) leave under 16 samples of
+    interior and are refused.
     """
     if field.dspicture is None:
         return None
@@ -791,7 +817,8 @@ def measure_vits_multiburst(field, lines=None):
         if lines is None:
             lines = (13, 20)
     elif lines is None:
-        lines = (22,)
+        lines = ((22,) if getattr(field, "isFirstField", True)
+                 else (22, 13, 20))
     fs_mhz = field.rf.SysParams["outfreq"]
     for line in lines:
         try:
@@ -820,10 +847,22 @@ def measure_vits_multiburst(field, lines=None):
                 groups[-1][2].append(i0)
             else:
                 groups.append(([f], a, [i0]))
-        packets = []
+        # A group's windows split where they stop being contiguous along
+        # the line: one frequency can occur twice (NTC-7's subcarrier
+        # packet and its chrominance bars).
+        runs = []
         for fl, _, il in groups:
-            if len(fl) < 2:
-                continue
+            order = np.argsort(il)
+            fl = [fl[i] for i in order]
+            il = [il[i] for i in order]
+            start = 0
+            for k in range(1, len(il) + 1):
+                if k == len(il) or il[k] - il[k - 1] > W:
+                    if k - start >= 2:
+                        runs.append((fl[start:k], il[start:k]))
+                    start = k
+        fitted = []
+        for fl, il in runs:
             fmed = float(np.median(fl))
             # amplitude from a least-squares sine fit over the packet's
             # steady interior: unbiased for any (non-integer) cycle count,
@@ -840,7 +879,8 @@ def measure_vits_multiburst(field, lines=None):
             resid = seg - A @ coef
             if np.var(resid) > 0.35 * np.var(seg - seg.mean()):
                 continue
-            packets.append((fmed, amp))
+            fitted.append((extent[0], fmed, amp))
+        packets = _rising_run(sorted(fitted))
         if len(packets) < 4:
             continue
         freqs = [p[0] for p in packets]

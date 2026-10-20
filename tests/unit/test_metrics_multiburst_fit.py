@@ -8,8 +8,10 @@ against the ~1 MHz reference packet.  On NTSC's FCC multiburst the packets
 above 2 MHz are about 4 us long with 1.5 us gaps between them; the fit used
 to run over the scan's accepted windows, which hang past a packet's end, and
 to chain the 3.58 and 4.1 MHz packets into one across their gap, reading
-those packets 0.7 to 2 dB low.  The line here has the FCC layout with known
-packet amplitudes.
+those packets 0.7 to 2 dB low.  The lines here have the FCC and NTC-7
+layouts with known packet amplitudes; NTC-7's three-level chrominance at the
+subcarrier frequency follows its 4.2 MHz packet, and must not be taken for
+the 3.58 MHz packet.
 """
 
 import types
@@ -54,7 +56,7 @@ def fcc_line(noise_ire=0.0, seed=1):
     return tone_line(PACKETS, 40.0, noise_ire, seed)
 
 
-def field_with(line_ire, line=LINE):
+def field_with(line_ire, line=LINE, first_field=True):
     picture = np.zeros(LINELEN * 30)
     picture[LINELEN * (line - 1):LINELEN * line] = line_ire
 
@@ -62,6 +64,7 @@ def field_with(line_ire, line=LINE):
         rf = types.SimpleNamespace(system="NTSC",
                                    SysParams={"outfreq": OUTFREQ})
         dspicture = picture
+        isFirstField = first_field
 
         def lineslice_tbc(self, line, begin, length):
             start = LINELEN * (line - 1) + int(begin * OUTFREQ)
@@ -91,3 +94,34 @@ def test_adjacent_packets_are_not_merged():
     freqs = sorted(fr / 1e6 for fr, _ in packets)
     assert any(abs(f - 3.58) < 0.05 for f in freqs)
     assert any(abs(f - 4.1) < 0.05 for f in freqs)
+
+
+#: NTC-7 combination, second fields: ~3 us packets on a 50 IRE pedestal,
+#: then the three-level chrominance at the subcarrier frequency.
+NTC7_PACKETS = [
+    (24.5, 27.5, 1.0, 50.0),
+    (28.5, 31.5, 2.0, 46.0),
+    (32.5, 35.5, 3.0, 54.0),
+    (36.5, 39.5, 3.58, 48.0),
+    (40.5, 43.5, 4.2, 56.0),
+]
+NTC7_CHROMA = [(46.0, 50.0, 3.579545, 20.0), (50.0, 54.0, 3.579545, 40.0),
+               (54.0, 58.0, 3.579545, 80.0)]
+
+
+def test_the_ntc7_multiburst_is_read_on_second_fields():
+    line = tone_line(NTC7_PACKETS + NTC7_CHROMA, 50.0)
+    result = measure_vits_multiburst(field_with(line, 20, first_field=False))
+    assert result is not None
+    packets, at = result
+    assert at == 20
+    for _, _, f, pp in NTC7_PACKETS:
+        near = [a for fr, a in packets if abs(fr / 1e6 - f) < 0.1]
+        assert len(near) == 1, (f, packets)
+        # the subcarrier packet, not the 80 IRE chrominance bar after it
+        assert 20 * np.log10(near[0] / pp) == pytest.approx(0.0, abs=0.25), f
+
+
+def test_first_fields_look_only_for_the_fcc_line():
+    line = tone_line(NTC7_PACKETS + NTC7_CHROMA, 50.0)
+    assert measure_vits_multiburst(field_with(line, 20, first_field=True)) is None

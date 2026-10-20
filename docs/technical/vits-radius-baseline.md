@@ -236,8 +236,9 @@ loop is already asking for the correction in the right direction and is not bein
 own convergence time inside a cut.
 
 **`luma_chroma_ratio` on NTSC now passes at the inner radius** and still fails at the middle and
-outer ones — 0.96×, 1.67×, 1.34×, from the third edition's 1.85×, 2.46×, 1.80×, with 3 of 9
-readings failing where 7 did. Phase 4 measured it on the
+outer ones — 0.96×, 1.67×, 1.34×, from the third edition's 1.85×, 2.46×, 1.80×, with 2 of 9
+readings failing where 7 did (3 until the NTC-7 multiburst was read; see "What the fourth edition
+moved"). Phase 4 measured it on the
 NTSC CI capture alone, where it passed. It is the second finding here that only a radius sweep
 could produce. The worst reading is still at the middle radius and still on the second GGV1069
 capture rather than the first (1.67× against 0.87× on the same pressing read on a different
@@ -513,6 +514,13 @@ the multiburst ceiling only caps a boost more than 1.5 dB past flat (`IMTF_CEILI
   settled 0.03 strength units lower: `luma_chroma_ratio` 1.63× → 1.78× and `luma_level` 4.44× →
   4.59×. The inner cut moves the other way: three failures pass, `luma_level` inner 1.20× → 1.02×
   and `chroma_level` PAL inner 5.07× → 4.96×.
+- **The NTC-7 multiburst read as well.** Fitted over their own interiors, the NTC-7 combination's
+  packets on NTSC second fields agree with the conformance checker to 0.3 dB, so the EQ servo now
+  reads them where a disc has no FCC line; the subcarrier packet is told from the three-level
+  chrominance after it by taking the run of packets that rises in frequency. Dolby Surround's
+  ~2.5 µs packets are too short and still go unread. On the GGV1069 middle and outer cuts the EQ's
+  estimate stays inside its dead-band. The LDV4300D outer cut's gain ratio passes (2 of 9 NTSC
+  readings fail where 3 did), and off the sweep ve-monitor's 2T goes 1.38× → 1.14× of its band.
 
 ## What the coherence gate changed
 

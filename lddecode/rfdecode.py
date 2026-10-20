@@ -51,6 +51,7 @@ from .dsp import (
     compute_mtf,
     genwave,
     readout_compensation,
+    video_eq_db,
 )
 
 
@@ -1371,13 +1372,8 @@ class RFDecode:
         """
         if not points:
             return np.ones(self.blocklen)
-        freqs = np.array([0.0] + [p[0] for p in points]
-                         + [points[-1][0] + 0.5e6, self.freq_hz_half])
-        gains = np.array([0.0] + [p[1] for p in points] + [0.0, 0.0])
-        interp = spi.PchipInterpolator(freqs, gains, extrapolate=False)
         freq_array = np.abs(np.fft.fftfreq(self.blocklen, 1.0 / self.freq_hz))
-        db = interp(np.clip(freq_array, 0, self.freq_hz_half))
-        db = np.nan_to_num(db, nan=0.0)
+        db = video_eq_db(points, freq_array, self.freq_hz_half)
         return 10.0 ** (db / 20.0)
 
     def computeaudiofilters(self):

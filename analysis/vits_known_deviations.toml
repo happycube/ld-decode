@@ -1059,20 +1059,6 @@ owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "Luminance and chrominance are not scaled by the same factor, so the ratio between the colour bar and its luminance reference is out even where each level passes on its own."
 
 
-# ggv1069-side1-ldv4300d-outer (NTSC): 1 of its checks fails.
-
-[[deviation]]
-capture = "ggv1069-side1-ldv4300d-outer"
-check = "gain_ratio/NTSC"
-parity = "first"
-measured = 0.211
-unit = "ratio"
-band_used = 1.05
-ceiling = 1.16
-owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
-reason = "Luminance and chrominance are not scaled by the same factor, so the ratio between the colour bar and its luminance reference is out even where each level passes on its own."
-
-
 # ggv1069-side1-outer (NTSC): 1 of its checks fails.
 
 [[deviation]]
@@ -1461,9 +1447,9 @@ capture = "ve-monitor"
 check = "ntsc-ntc7-composite/pulse_2t"
 field_line = 20
 parity = "first"
-measured = 97.231
+measured = 97.726
 unit = "IRE"
-band_used = 1.38
-ceiling = 1.52
+band_used = 1.14
+ceiling = 1.25
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "The 2T pulse and the luminance references it is judged against. Worst allowance in the radius baseline on both systems, and it grows outwards; see docs/technical/vits-radius-baseline.md, \"The 2T pulse was judged against the wrong reference\"."

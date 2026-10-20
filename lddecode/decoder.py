@@ -42,7 +42,21 @@ from .metrics import (
     precompute_vits,
 )
 from .dsp import (FieldInfo, concatenate_blocks, nb_abs, readout_cutoff_from_tilt,
-                  roundfloat)
+                  roundfloat, video_eq_db)
+
+
+def applied_eq_db(applied_eq, freq_hz):
+    """dB the video EQ described by the anchors applied_eq gave at freq_hz.
+
+    The curve is 0 dB from half a megahertz past its last anchor up, so any
+    top frequency beyond that builds the same curve; one is taken there
+    rather than the decoder's Nyquist so this needs nothing but the
+    anchors.
+    """
+    if not applied_eq:
+        return 0.0
+    top = max(applied_eq[-1][0] + 1.0e6, freq_hz)
+    return float(video_eq_db(applied_eq, freq_hz, top))
 
 
 #: Seconds to let the RF TBC (.tbc.ldf) encoder drain after its stdin is
@@ -1363,15 +1377,25 @@ class LDdecode:
         if len(self._veq_samples) < need:
             return None
 
+        strength_now = float(
+            self.rf.DecoderParams.get("inverse_mtf_strength", 0.0) or 0.0)
         by_key = {}
-        for _, applied_eq, devs, _ in self._veq_samples:
-            adb = dict(applied_eq)
+        for _, applied_eq, devs, strength in self._veq_samples:
             for fkey, dev in devs.items():
                 if fkey > self.veq_max_freq:
                     continue
-                # correction that would zero this deviation
+                # Correction that would zero this deviation under the
+                # strength in force now: the EQ the field was decoded with
+                # is read off its curve (a packet need not sit on an
+                # anchor - the 0.25 MHz grid's 3.0 MHz key past a 2.75 MHz
+                # last anchor read 0 where the curve was still releasing),
+                # and the inverse MTF's share is moved from the strength
+                # the field had to the one it will get, as the flat-band
+                # estimate already did.
                 by_key.setdefault(fkey, []).append(
-                    adb.get(fkey, 0.0) - dev)
+                    applied_eq_db(applied_eq, fkey) - dev
+                    + (strength - strength_now)
+                    * self.rf.inverse_mtf_log_db(fkey))
         half = len(self._veq_samples) // 2
         anchors = []
         for fkey in sorted(by_key):
@@ -1421,7 +1445,6 @@ class LDdecode:
             return None
         pooled = []
         for _, applied_eq, devs, strength in self._veq_samples:
-            applied_db = dict(applied_eq)
             # Each packet's reading taken back to what it would have been
             # with no video EQ and no inverse MTF applied.
             bare = []
@@ -1429,7 +1452,7 @@ class LDdecode:
                 if not low <= fkey <= high:
                     continue
                 bare.append((float(fkey),
-                             dev - applied_db.get(fkey, 0.0)
+                             dev - applied_eq_db(applied_eq, fkey)
                              - strength * self.rf.inverse_mtf_log_db(fkey)))
             if not bare:
                 continue
