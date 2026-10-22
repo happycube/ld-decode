@@ -332,6 +332,13 @@ def test_the_vits_white_level_servo_is_opt_in():
     assert extra("--vits_white_level")["vits_white_level"] is True
 
 
+def test_the_calibration_pass_is_off_unless_asked_for():
+    assert extra()["calibration_frames"] == 0
+    assert extra("--calibration_frames", "10")["calibration_frames"] == 10
+    assert extra("--calibration_frames", "25")["calibration_frames"] == 25
+    assert extra("--calibration_frames", "-3")["calibration_frames"] == 0
+
+
 def test_lowband_selects_the_reduced_bandwidth_parameter_set():
     assert "lowband" not in extra()
     assert extra("--lowband")["lowband"] is True

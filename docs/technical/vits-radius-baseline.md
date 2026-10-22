@@ -86,27 +86,27 @@ above it is a failure. A blank cell means nothing of that kind was judged at tha
 | Allowance | System | Unit | Worst inner | Worst middle | Worst outer | Worst check |
 |---|---|---|---|---|---|---|
 | `blanking_level` | PAL | IRE | +1.166 (1.17×) | +1.093 (1.09×) | +1.120 (1.12×) | `pal-blanked-field2/blanked` (ggv1011-side1) |
-| `chroma_level` | NTSC | IRE | -5.640 (1.41×) | +1.828 (0.61×) | -2.230 (0.45×) | `ntsc-fcc-multiburst/packet_6` (ggv1069-side1-ldv4300d) |
-| `chroma_level` | PAL | IRE | -21.318 (4.96×) | -19.844 (4.61×) | -19.439 (4.52×) | `pal-multiburst-field1/packet_6` (domesday-ds2-community-north) |
+| `chroma_level` | NTSC | IRE | -5.789 (1.45×) | +1.828 (0.61×) | -2.230 (0.45×) | `ntsc-fcc-multiburst/packet_6` (ggv1069-side1-ldv4300d) |
+| `chroma_level` | PAL | IRE | -21.694 (5.05×) | -19.844 (4.61×) | -19.439 (4.52×) | `pal-multiburst-field1/packet_6` (domesday-ds2-community-north) |
 | `chroma_nonlinearity` | NTSC | fraction | +0.038 (0.38×) | +0.027 (0.27×) | +0.018 (0.18×) | `ntsc-ntc7-combination/chroma_nonlinearity` (dolby-surround-side1) |
-| `chroma_nonlinearity` | PAL | fraction | +0.061 (0.61×) | +0.122 (1.22×) | +0.050 (0.50×) | `pal-multiburst-field2/chroma_nonlinearity` (domesday-ds2-community-north) |
+| `chroma_nonlinearity` | PAL | fraction | +0.059 (0.59×) | +0.123 (1.23×) | +0.050 (0.50×) | `pal-multiburst-field2/chroma_nonlinearity` (domesday-ds2-community-north) |
 | `differential_gain` | NTSC | fraction | +0.085 (0.85×) | +0.043 (0.43×) | +0.049 (0.49×) | `ntsc-ntc7-composite/chroma_reference/differential_gain` (ggv1069-side1) |
-| `differential_gain` | PAL | fraction | +0.106 (1.01×) | +0.110 (1.04×) | +0.075 (0.72×) | `pal-its-field2/staircase_subcarrier/differential_gain` (domesday-ds2-community-north) |
-| `differential_phase` | NTSC | degrees | +4.197 (0.84×) | +2.486 (0.50×) | +2.461 (0.49×) | `ntsc-ntc7-composite/chroma_reference/differential_phase` (ggv1069-side1-ldv4300d) |
-| `differential_phase` | PAL | degrees | +3.141 (0.60×) | +2.169 (0.42×) | +2.660 (0.51×) | `pal-its-field2/staircase_subcarrier/differential_phase` (domesday-ds2-community-north) |
+| `differential_gain` | PAL | fraction | +0.106 (1.01×) | +0.119 (1.13×) | +0.095 (0.90×) | `pal-its-field2/staircase_subcarrier/differential_gain` (domesday-ds2-community-north) |
+| `differential_phase` | NTSC | degrees | +4.215 (0.84×) | +2.500 (0.50×) | +2.461 (0.49×) | `ntsc-ntc7-composite/chroma_reference/differential_phase` (dolby-surround-side1) |
+| `differential_phase` | PAL | degrees | +3.133 (0.60×) | +2.169 (0.42×) | +2.654 (0.51×) | `pal-its-field2/staircase_subcarrier/differential_phase` (domesday-ds2-community-north) |
 | `level_ceiling` | NTSC | IRE/percent | +100.975 (0.91×) | +101.606 (0.92×) | +102.163 (0.92×) | `ntsc-ntc7-composite/ceiling/luminance` (ggv1069-side1) |
-| `level_ceiling` | PAL | IRE/percent | +102.952 (0.93×) | +102.796 (1.02×) | +96.519 (0.96×) | `pal-multiburst-field2/ceiling/saturation` (domesday-ds2-community-north) |
-| `luma_chroma_ratio` | NTSC | ratio | -0.010 (0.96×) | +0.017 (1.67×) | -0.013 (1.34×) | `gain_ratio/NTSC` (ggv1069-side1-ldv4300d) |
-| `luma_chroma_ratio` | PAL | ratio | -0.023 (1.06×) | -0.012 (0.56×) | -0.038 (1.78×) | `gain_ratio/PAL` (domesday-ds2-community-north) |
-| `luma_level` | NTSC | IRE | -9.463 (4.73×) | -8.003 (4.00×) | -8.800 (4.40×) | `ntsc-ntc7-composite/pulse_2t` (dolby-surround-side1) |
-| `luma_level` | PAL | IRE | -2.541 (1.02×) | -13.477 (5.39×) | -11.464 (4.59×) | `pal-its-field1/pulse_2t` (domesday-ds2-community-north) |
+| `level_ceiling` | PAL | IRE/percent | +102.952 (0.93×) | +108.339 (1.07×) | +96.843 (0.96×) | `pal-multiburst-field2/ceiling/saturation` (domesday-ds2-community-north) |
+| `luma_chroma_ratio` | NTSC | ratio | -0.010 (0.99×) | +0.017 (1.67×) | -0.013 (1.34×) | `gain_ratio/NTSC` (ggv1069-side1-ldv4300d) |
+| `luma_chroma_ratio` | PAL | ratio | -0.023 (1.05×) | +0.028 (1.29×) | -0.038 (1.78×) | `gain_ratio/PAL` (domesday-ds2-community-north) |
+| `luma_level` | NTSC | IRE | -9.463 (4.73×) | -7.956 (3.98×) | -8.800 (4.40×) | `ntsc-ntc7-composite/pulse_2t` (dolby-surround-side1) |
+| `luma_level` | PAL | IRE | -2.544 (1.02×) | -12.327 (4.93×) | -11.464 (4.59×) | `pal-its-field1/pulse_2t` (domesday-ds2-community-north) |
 | `multiburst_flatness` | NTSC | dB | -0.326 (0.43×) | — | — | `ntsc-fcc-multiburst/packet_3/response` (ggv1069-side1-ldv4300d) |
-| `multiburst_flatness` | PAL | dB | -0.121 (0.16×) | +0.240 (0.32×) | +0.479 (0.64×) | `pal-multiburst-field1/packet_3/response` (domesday-ds2-community-north) |
+| `multiburst_flatness` | PAL | dB | -0.121 (0.16×) | +0.301 (0.40×) | +0.479 (0.64×) | `pal-multiburst-field1/packet_3/response` (domesday-ds2-community-north) |
 | `multiburst_frequency` | NTSC | MHz | -0.030 (0.61×) | +0.011 (0.22×) | +0.012 (0.23×) | `ntsc-ntc7-combination/packet_6/frequency` (dolby-surround-side1) |
 | `multiburst_frequency` | PAL | MHz | +0.230 (1.69×) | +0.227 (1.67×) | +0.227 (1.67×) | `pal-multiburst-field1/packet_6/frequency` (industrial-lv-side1) |
-| `multiburst_out_of_band_response` | NTSC | dB | +0.757 (0.61×) | — | — | `ntsc-fcc-multiburst/packet_1/response` (ggv1069-side1-ldv4300d) |
-| `multiburst_out_of_band_response` | PAL | dB | -10.067 (8.05×) | -8.743 (6.99×) | -8.523 (6.82×) | `pal-multiburst-field1/packet_6/response` (domesday-ds2-community-north) |
-| `step_inequality` | NTSC | fraction | +0.070 (0.70×) | +0.070 (0.70×) | +0.068 (0.68×) | `ntsc-ntc7-composite/staircase/nonlinearity` (dolby-surround-side1) |
+| `multiburst_out_of_band_response` | NTSC | dB | +0.758 (0.61×) | — | — | `ntsc-fcc-multiburst/packet_1/response` (ggv1069-side1-ldv4300d) |
+| `multiburst_out_of_band_response` | PAL | dB | -10.451 (8.36×) | -8.743 (6.99×) | -8.523 (6.82×) | `pal-multiburst-field1/packet_6/response` (domesday-ds2-community-north) |
+| `step_inequality` | NTSC | fraction | +0.072 (0.72×) | +0.070 (0.70×) | +0.068 (0.68×) | `ntsc-ntc7-composite/staircase/nonlinearity` (dolby-surround-side1) |
 | `step_inequality` | PAL | fraction | +0.041 (0.39×) | +0.027 (0.26×) | +0.033 (0.31×) | `pal-its-field2/staircase/nonlinearity` (ggv1011-side1) |
 
 Two rows used to read from one cut only. `ntsc-fcc-multiburst` is the sole NTSC train whose
@@ -137,18 +137,18 @@ match. See "What the fourth edition moved".
 **Three allowances hold across a whole side.** `step_inequality` has held in every edition, and
 `differential_phase` and `multiburst_flatness` join it in this one, on both systems. `level_ceiling`
 held until the corrected multiburst fit, which tipped Domesday DS2 middle's saturation ceiling to
-1.02×. `multiburst_frequency`, lost in the third edition, is still lost.
+1.02× (1.01× since the calibration pass). `multiburst_frequency`, lost in the third edition, is still lost.
 
 | Allowance | Second edition (12 cuts) | Third edition (18 cuts) | This edition (18 cuts) | Allowed | Holds |
 |---|---|---|---|---|---|
 | `step_inequality` | 0.72× | 0.72× | 0.70× | 0.100 | yes |
 | `differential_phase` | 2.22× | 2.13× | 0.84× | 5.0° NTSC, 5.2° PAL | yes |
-| `level_ceiling` | 1.23× | 1.31× | **1.02×** | 101 IRE / 111 % | no |
-| `multiburst_flatness` | 0.86× | **1.08×** | 0.64× | 0.75 dB | yes |
+| `level_ceiling` | 1.23× | 1.31× | **1.01×** | 101 IRE / 111 % | no |
+| `multiburst_flatness` | 0.86× | **1.08×** | 0.43× | 0.75 dB | yes |
 | `multiburst_frequency` | 0.75× | **1.71×** | **1.69×** | 0.020–0.051 MHz | no |
 
-`differential_gain` misses joining them by two readings: GGV1011 inner on PAL at 1.01×, where the
-third edition's worst was 3.22×, and Domesday DS2 middle at 1.04× since the corrected multiburst fit. What moved the three new rows is the decoder, not the sample set;
+`differential_gain` misses joining them on two cuts: GGV1011 inner on PAL at 1.01×, where the
+third edition's worst was 3.22×, and Domesday DS2 outer at 1.19× since the calibration pass. What moved the three new rows is the decoder, not the sample set;
 see "What the fourth edition moved".
 
 Neither loss is the determinism fix. `multiburst_flatness` NTSC went 0.46× → 0.55× on the flag and
@@ -521,6 +521,121 @@ the multiburst ceiling only caps a boost more than 1.5 dB past flat (`IMTF_CEILI
   ~2.5 µs packets are too short and still go unread. On the GGV1069 middle and outer cuts the EQ's
   estimate stays inside its dead-band. The LDV4300D outer cut's gain ratio passes (2 of 9 NTSC
   readings fail where 3 did), and off the sweep ve-monitor's 2T goes 1.38× → 1.14× of its band.
+
+**The calibration pass (2026-10-20) moves Domesday DS2 and the NTSC phase.** The decoder now decodes
+at least ten frames ahead before writing, until no servo has moved for six fields, where it had
+stopped after two (see [`vits-servos.md`](vits-servos.md), "Calibrating before the first frame"). It
+also raises the multiburst's cut threshold from 1.0 to 1.5 dB. Settled, DS2's middle and outer cuts
+read their chroma band 1.24 and 1.16 dB hot: the 2T servo's pre-demod boost on a disc whose 2T reads
+low, with Domesday's mastered 4–4.8 MHz peak on top. A 1.0 dB threshold cut them and took the
+chrominance under its references (gain ratio 0.266).
+- **NTSC differential phase.** `differential_phase` NTSC inner 0.84× → 0.60× (Dolby Surround inner
+  4.19° → 2.14°, GGV1069 inner 3.80° → 2.15°, the LDV4300D cut 4.20° → 3.00°). The phase decision
+  needs sixteen pooled fields, and on these cuts it now arrives two to five frames into the clip
+  rather than about frame 16 — but not because the pass collected them. The staircase is on one field
+  in two, so ten frames give the pool at most ten. The committed decode then goes back over the
+  pass's fields, and each servo's pool replaces a reading only when it is the pool's last entry, so
+  those fields are pooled a second time and the pool reaches sixteen early. Pooling each field once
+  puts all three back where they were; having the pass wait for sixteen distinct fields takes them
+  to 1.3–1.7°, but stretches the pass to 17–25 frames, longer than most of the sweep's clips.
+- **Domesday DS2.** At outer radius `luma_chroma_ratio` PAL 1.78× → 0.61× (0.262 → 0.299) and the
+  chroma bars pass. DG goes 0.72× → 1.19× and the 4.0 MHz response, no longer cut, reads +1.37 dB.
+  At middle radius `level_ceiling` PAL 1.02× → 1.01×. The 2T servo still runs to its −1.0 limit there,
+  and its second-field 2T reads 97.6 against a 98.2 floor.
+- **Dolby Surround outer DG** 0.049 → 0.080 (0.49× → 0.80×). Its slope sits on the corrector's
+  engage line: the pass adopts −0.00112/IRE, and four frames in the pool's median dips to −0.00095
+  and the correction is released for the rest of the clip.
+- Net, the list holds 110 entries where it held 113.
+
+**The DG slope's hysteresis (2026-10-20) keeps Dolby Surround outer corrected.** An engaged slope
+correction now releases only under 0.0008/IRE on NTSC and 0.0010 on PAL, where it engages at 0.0010
+and 0.0015, as the phase correction already did (see [`vits-servos.md`](vits-servos.md), "4. Chroma
+differential gain and phase"). Dolby Surround outer's pooled median wanders between −0.00095 and
+−0.00118, so it held the correction only until the first dip under 0.0010, and the rate limit kept
+it off from there.
+- `differential_gain` NTSC outer 0.80× → 0.44× (Dolby Surround outer 0.080 → 0.034). The LDV4300D
+  inner cut had released the same way, and goes 0.051 → 0.035.
+- The correction moves those cuts' chroma a little. `luma_chroma_ratio` NTSC outer 1.43× → 1.52×,
+  and `chroma_level` NTSC inner 1.40× → 1.45× (the LDV4300D cut's 4.1 MHz packet, recorded low, a
+  further 0.2 IRE under), both inside their listed ceilings.
+- No verdict changes; the list still holds 110 entries.
+
+**Each field pooled once, and the pass waits for the phase decision (2026-10-20).** The committed
+decode goes back over the fields the calibration pass read, and every servo's pool now replaces a
+field's reading wherever it stands (`decoder.pool_reading`) where it used to compare against its last
+entry only, so the pass's fields are no longer pooled twice. On a disc with a modulated staircase the
+pass also waits, up to 25 frames, until the DG corrector's phase pool holds the sixteen readings its
+decision takes; the staircase discs now write from 17–25 frames (see
+[`vits-servos.md`](vits-servos.md), "Calibrating before the first frame").
+- `differential_phase` NTSC inner 0.60× → 0.33×, corrected from the first frame: Dolby Surround
+  inner 2.14° → 1.66°, GGV1069 inner 2.15° → 1.29°, the LDV4300D cut 2.98° → 1.35°.
+- `differential_gain` NTSC inner 0.85× → 0.60×: GGV1069 inner's slope is corrected now that the
+  pass pools enough of it, 0.085 → 0.035. Its multiburst's 3.0 MHz packet, recorded low, goes
+  26.03 → 25.77 IRE against a 26 floor on two more lines, now listed with its other lines.
+- **DD86-DS2 middle** is no longer DG-corrected. Read once per field its PAL slope pools +0.0012 to
+  +0.0013/IRE, under the 0.0015 engage line, which it had crossed only on doubled readings:
+  `differential_gain` PAL middle 0.94× → 1.27× (0.099 → 0.133). Its multiburst's 4.0 and 4.8 MHz
+  packets, which straddle the subcarrier, read 1.6× and 1.5× of their band; its first-field 2T
+  improves, `luma_level` PAL middle 5.63× → 4.60×, and the 5.8 MHz packet 5.01× → 4.22×. All four
+  new entries are listed with their reasons.
+- GGV1011 inner, the PAL control the phase thresholds keep untouched, still reads 1.31°.
+- Net, the list holds 114 entries where it held 110.
+
+**The calibration pass made opt-in (2026-10-20).** `--calibration_frames` now defaults to 0, and the
+sweep judges the default decode again; the table above is that decode, with the change below. Five cuts are decoded a
+second time with a 10-frame pass and judged against their own list
+(`analysis/vits_known_deviations_calibrated.toml`), where the figures in the three paragraphs above
+still hold. Against the last decoder without the pass (7ceee4eb), the default decode differs only
+on DD86-DS2 middle, where each field being pooled once stops the 2T servo at −0.86 rather than its
+−1.0 limit:
+- `luma_level` PAL middle 5.39× → 4.93× (its first-field 2T) and the 5.8 MHz packet's response
+  4.92× → 4.52×.
+- The chroma strength fed forward with the MTF level leaves the chroma band 0.47 dB higher:
+  `luma_chroma_ratio` PAL middle 0.56× → 1.29× (0.311 → 0.328), `level_ceiling` PAL middle 1.02× →
+  1.07×, and the 4.8 MHz packet 1.06 → 1.51 dB over the reference. Both new failures are listed.
+- `differential_gain` PAL middle 1.04× → 1.13×.
+- Net, the default list holds 115 entries where 7ceee4eb's held 113.
+
+**The DG slope decided before the first frame (2026-10-21).** The default warm-up now pools the
+staircase too, and waits for the DG corrector's slope decision, so the opening frames are
+gain-corrected where they used to go out with the corrector off. Five cuts adopt before writing:
+Dolby Surround inner (−0.00153/IRE) and middle (−0.00102), the LDV4300D inner cut (−0.00101),
+Industrial inner (+0.00208) and DD86-DS2 inner (+0.00367). The table above is this decode with
+the change below. The
+differential checks fit every field of the clip, so the opening frames weigh little in them:
+- `differential_phase` PAL inner 2.80° → 1.18° on Industrial inner, 1.84° → 1.49° on Industrial
+  middle; ve-monitor's NTSC 2.27° → 1.67°.
+- `differential_gain` PAL on DD86-DS2 inner 0.044 → 0.059 (0.42× → 0.56×). Its warm-up adopts
+  +0.00367, and the clip ends before the commit path trims it to the +0.00320 it reached before.
+- The LDV4300D inner cut's `gain_ratio/NTSC` 0.53× → 0.38×, and its multiburst packets about 0.06×
+  of their bands either way.
+- Dolby Surround inner's 12.5T luma bar reads 48.51 IRE where it read 48.47 and passes; its entry
+  is deleted, and the default list holds 114.
+
+**The first frame written once the servos agree (2026-10-21).** With no pass, the warm-up used to
+run its whole 40-field budget on most cuts: the video EQ only counted as decided once it adopted,
+and a disc that needs no EQ never adopts. It now also stops for an EQ estimate inside its
+dead-band, and waits for the 2T servo until four fields decoded at its level would hold it there.
+The nine cuts that ran the full 20 frames now write after 4–8, pal-cvbs after 9.5 and ve-monitor
+after 5.5. DD86-DS2 inner waits 14.5 frames for its servo to reach −1.0, where stopping on the EQ
+alone would have written it at −0.711. The first frame carries the same parameters as before on
+every other cut, Industrial inner's DG slope aside (+0.00188 where it was +0.00208). The table
+above is this decode. What moved is what the 20-frame budget had been settling as a side effect:
+- The DG phase decision. It needs 16 staircase fields, which 40 fields of warm-up reached and 4–8
+  frames do not, so it is taken a few frames into the decode again. The differential-phase gains
+  credited to the slope change above were this: Industrial inner 1.18° → 2.79° (0.54×), Industrial
+  middle 1.49° → 1.84°, ve-monitor's NTSC 1.67° → 2.27°, all back where they were before it and
+  inside their band.
+- The later steps of slow servos. A smaller pool carried into the decode moves the 2T servo
+  sooner, inside the four fields per parity the levels are averaged over: DD86-DS1 outer steps to
+  −1.0 at field 6 rather than 12, and its 4.0 MHz packet reads 1.38 dB over the reference (1.07
+  before); Industrial outer takes a step to −0.225 that it did not take before, and its
+  second-field 2T reads 103.15 IRE (102.64). DD86-DS2 inner's first frame goes out with the
+  chroma-band ceiling at −1.428 where 20 frames trimmed it to −1.293, and its 100 % bar reads
+  42.70 IRE (43.84). Three entries are recorded or re-recorded, and the default list holds 116.
+- pal-cvbs is six frames, so the 20-frame budget had been calibrating it from frames it never
+  writes; the ceiling's 0.000 → 0.066 lift found there is not reached, the first-field 4.0 MHz
+  packet reads 25.50 IRE against its 25.7 edge, and the clip's pinned count is 6 of 46.
 
 ## What the coherence gate changed
 

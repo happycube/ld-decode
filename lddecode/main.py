@@ -150,6 +150,16 @@ def build_parser():
         "default, never runs the servo)",
     )
     parser.add_argument(
+        "--calibration_frames",
+        metavar="frames",
+        type=int,
+        default=0,
+        help="Run a calibration pass: decode at least this many frames ahead "
+        "to settle the calibration servos (MTF, chroma, video EQ, chroma DG) "
+        "before the first frame is written; 10 is a good choice (default 0: "
+        "no pass, write as soon as they are stable)",
+    )
+    parser.add_argument(
         "-t",
         "--threads",
         metavar="threads",
@@ -589,6 +599,7 @@ def build_options(args):
         "auto_deemp": args.auto_chroma and args.deemp_strength is None,
         "auto_chroma": args.auto_chroma,
         "chroma_dg": args.chroma_dg,
+        "calibration_frames": max(0, args.calibration_frames),
         "vits_white_level": args.vits_white_level,
         "MTF_level": args.MTF,
         "MTF_offset": args.MTF_offset,

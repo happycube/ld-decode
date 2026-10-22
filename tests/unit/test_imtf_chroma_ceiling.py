@@ -212,6 +212,17 @@ def test_a_band_hot_by_less_than_a_dB_does_not_authorise_a_cut():
     assert ceiling == 0.0
 
 
+def test_domesday_ds2_middle_is_not_cut():
+    """BBC Domesday DD86-DS2 middle reads 1.24 dB hot once the 2T servo's
+    pre-demod boost is in, with the disc's mastered 4-4.8 MHz peak on
+    top; cutting it took the chrominance under its references."""
+    hot_db = 1.24
+    ceiling = LDdecode._imtf_ceiling(
+        stub(samples({4.0e6: hot_db, 4.75e6: hot_db})), current=0.5)
+    assert hot_db < LDdecode.IMTF_CUT_ENGAGE_DB
+    assert ceiling == 0.0
+
+
 def test_the_threshold_is_a_gate_and_not_a_subtraction():
     """Once the band is measurably hot the whole excess is spent.
 

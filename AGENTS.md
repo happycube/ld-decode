@@ -398,6 +398,7 @@ ld-decode/
 │   ├── vits_manifest.py           # The surveyed VITS of the testdata captures
 │   ├── vits_deviations.py         # Faults the conformance lane may still find
 │   ├── vits_known_deviations.toml # The list itself; entries are deleted, never widened
+│   ├── vits_known_deviations_calibrated.toml # The same, for the cuts decoded with a calibration pass
 │   ├── vits_summary.py            # Conformance reports as a CI step summary
 │   └── video_common.py, video_frames.py
 ├── scripts/                       # Developer utilities (benchmarks, filter design, version gen)

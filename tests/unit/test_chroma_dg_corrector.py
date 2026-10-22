@@ -354,6 +354,7 @@ def servo_stub(slopes, calibrated=False, current=0.0, enabled=True,
         DG_SLOPE_CLAMP_POS=LDdecode.DG_SLOPE_CLAMP_POS,
         DG_MIN_ADOPT_FIELDS=LDdecode.DG_MIN_ADOPT_FIELDS,
         DG_SLOPE_ENGAGE=LDdecode.DG_SLOPE_ENGAGE,
+        DG_SLOPE_RELEASE=LDdecode.DG_SLOPE_RELEASE,
         DG_PHASE_DEADBAND=LDdecode.DG_PHASE_DEADBAND,
         DG_PHASE_CLAMP=LDdecode.DG_PHASE_CLAMP,
         DG_PHASE_ENGAGE=LDdecode.DG_PHASE_ENGAGE,
@@ -448,6 +449,30 @@ def test_an_engaged_slope_that_falls_back_inside_releases_to_zero():
     it = servo_stub([0.0005] * 8, calibrated=True, current=0.0034)
     run(it)
     assert slope_of(it) == 0.0
+
+
+@pytest.mark.parametrize("system, median", [("NTSC", -0.00095),
+                                            ("PAL", 0.0012)])
+def test_an_engaged_slope_on_the_engage_line_holds(system, median):
+    """Dolby Surround side 1 outer pools -0.00099 to -0.00118: a median
+    that wanders just under the engage line keeps the correction."""
+    it = servo_stub([median] * 8, calibrated=True, current=median * 1.15,
+                    system=system)
+    run(it)
+    assert slope_of(it) == pytest.approx(median * 1.15)
+
+
+def test_an_engaged_ntsc_slope_releases_under_the_release_line():
+    below = LDdecode.DG_SLOPE_RELEASE["NTSC"] * 0.9
+    it = servo_stub([-below] * 8, calibrated=True, current=-0.00112,
+                    system="NTSC")
+    run(it)
+    assert slope_of(it) == 0.0
+
+
+def test_the_release_line_sits_under_the_engage_line():
+    for system, engage in LDdecode.DG_SLOPE_ENGAGE.items():
+        assert LDdecode.DG_SLOPE_RELEASE[system] < engage
 
 
 def test_the_domesday_slope_is_well_above_the_threshold():

@@ -127,6 +127,14 @@ and so differs between a developer machine and a CI runner — and a `ceiling`
 recorded on one machine is then not a statement about the decoder. Re-record
 with the flag, never from a default decode.
 
+The decoder's calibration pass (`--calibration_frames`) is off by default, and
+the list is recorded from decodes without it. Five radius cuts are decoded a
+second time with a 10-frame pass, into `testout/calibrated/` under their own
+names, and judged against
+[`analysis/vits_known_deviations_calibrated.toml`](https://github.com/happycube/ld-decode/blob/main/analysis/vits_known_deviations_calibrated.toml),
+the same kind of list for those decodes; the two differ where the pass changes
+what a cut settles to.
+
 ## The radius sweep
 
 The modulation transfer function of a LaserDisc changes with radius, so a

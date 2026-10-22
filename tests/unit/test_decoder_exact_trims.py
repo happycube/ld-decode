@@ -123,7 +123,17 @@ def warmup_stub(exact):
     it.__dict__.update(
         mtf_level=0.0, isCLV=False, bw_ratios=[],
         deemp_calibrated=True, veq_servo=True, mtf_2t_servo=False,
+        chroma_dg_servo=False, dg_calibrated=False,
+        # --calibration_frames 0, the warm-up as it was before the
+        # calibration pass: this is about what a trim does to the stable count
+        warmup_min_fields=0,
+        WARMUP_STABLE_FIELDS=LDdecode.WARMUP_STABLE_FIELDS,
+        WARMUP_MAX_FIELDS=LDdecode.WARMUP_MAX_FIELDS,
+        WARMUP_DG_PHASE_FIELDS=LDdecode.WARMUP_DG_PHASE_FIELDS,
+        DG_PHASE_MIN_SAMPLES=LDdecode.DG_PHASE_MIN_SAMPLES,
+        checkChromaDG=lambda field: None,
         _servo_samples=[], _veq_samples=[], _dg_samples=[],
+        _veq_held=False,
         _deemp_burst_samples=[], _deemp_burst_offset=None,
         _agc_adjusted_last=False, _deemp_adjusted_last=False,
         decodefield=decodefield,
@@ -131,6 +141,7 @@ def warmup_stub(exact):
         checkMTF=lambda f, prev: True,
         _adjust_agc=lambda f, wide: False,
         _deemp_calibrate=lambda: False,
+        _mtf_servo_settled=lambda: True,
     )
     it.rf.DecoderParams["inverse_mtf_strength"] = 0.0
     it.checkVideoEQ = lambda field: LDdecode.checkVideoEQ(it, field)
@@ -222,3 +233,113 @@ def test_a_default_decode_keeps_what_it_decoded_ahead_through_a_trim():
 
     assert it.events == [("calibrate", 0), "commit"]
     assert it._chain_prev == "field decoded ahead"
+
+
+def test_the_warm_up_runs_its_minimum_pass_even_when_settled():
+    """--calibration_frames: however early the loops settle, the warm-up
+    decodes at least warmup_min_fields ahead before the first commit."""
+    it = warmup_stub(False)
+    it.warmup_min_fields = 20
+    start = {"f": stub_field(), "start": 1000.0, "offset": FIELD_LEN,
+             "initphase": False}
+    LDdecode._calibration_warmup(it, start)
+    assert it.decoded == 20
+
+
+def test_a_full_pass_waits_for_more_stable_fields_than_the_old_warm_up():
+    it = warmup_stub(False)
+    it.warmup_min_fields = 2
+    start = {"f": stub_field(), "start": 1000.0, "offset": FIELD_LEN,
+             "initphase": False}
+    LDdecode._calibration_warmup(it, start)
+    assert it.decoded == LDdecode.WARMUP_STABLE_FIELDS
+
+
+def staircase_warmup_stub(clear_every=None):
+    """A full pass on a disc whose staircase is on one field in two, with
+    the DG corrector's slope already decided; clear_every empties the pool
+    as another servo's adoption would."""
+    it = warmup_stub(False)
+    it.warmup_min_fields = 20
+    it.chroma_dg_servo = True
+    it.dg_calibrated = True
+    calls = []
+
+    def check(field):
+        calls.append(field)
+        if len(calls) % 2:
+            it._dg_samples.append((len(calls), 0.0, 0.0))
+        if clear_every and len(calls) % clear_every == 0:
+            # the adoption's own field is pooled afresh
+            it._dg_samples[:] = [(len(calls), 0.0, 0.0)]
+
+    it.checkChromaDG = check
+    return it
+
+
+def test_the_pass_waits_for_the_phase_pool_to_fill():
+    """Ten frames give the phase pool at most ten staircase fields; its
+    decision takes DG_PHASE_MIN_SAMPLES, and the first frame should have it."""
+    it = staircase_warmup_stub()
+    start = {"f": stub_field(), "start": 1000.0, "offset": FIELD_LEN,
+             "initphase": False}
+    LDdecode._calibration_warmup(it, start)
+    assert len(it._dg_samples) >= LDdecode.DG_PHASE_MIN_SAMPLES
+    assert 2 * LDdecode.DG_PHASE_MIN_SAMPLES - 2 <= it.decoded \
+        < LDdecode.WARMUP_DG_PHASE_FIELDS
+
+
+def test_the_wait_for_the_phase_pool_is_bounded():
+    it = staircase_warmup_stub(clear_every=20)
+    start = {"f": stub_field(), "start": 1000.0, "offset": FIELD_LEN,
+             "initphase": False}
+    LDdecode._calibration_warmup(it, start)
+    assert it.decoded == LDdecode.WARMUP_DG_PHASE_FIELDS
+
+
+def test_without_a_pass_the_first_frame_waits_for_the_dg_slope_only():
+    """The default runs no pass, but the staircase is pooled as it warms up,
+    so the first frame carries the slope decision (three staircase fields);
+    the phase decision is left to the commit path."""
+    it = staircase_warmup_stub()
+    it.warmup_min_fields = 0
+    it.dg_calibrated = False
+    pool = it.checkChromaDG
+
+    def check(field):
+        pool(field)
+        if len(it._dg_samples) >= 3:
+            it.dg_calibrated = True
+
+    it.checkChromaDG = check
+    start = {"f": stub_field(), "start": 1000.0, "offset": FIELD_LEN,
+             "initphase": False}
+    LDdecode._calibration_warmup(it, start)
+    assert it.dg_calibrated and len(it._dg_samples) == 3
+    assert it.decoded < 2 * LDdecode.DG_PHASE_MIN_SAMPLES
+
+
+def test_an_eq_held_inside_its_dead_band_ends_the_warm_up():
+    """A channel the EQ finds flat enough never adopts, so veq_calibrated
+    stays unset; the warm-up used to wait out its whole budget for it
+    (GGV1069 outer: 20 frames decoded ahead of a settled first frame)."""
+    it = warmup_stub(False)
+    it.veq_calibrated = False
+    it._veq_estimate = lambda field: APPLIED_EQ
+    it._veq_samples = [("multiburst seen",)]
+    start = {"f": stub_field(), "start": 1000.0, "offset": FIELD_LEN,
+             "initphase": False}
+
+    assert LDdecode._calibration_warmup(it, start) is False
+
+    assert it.decoded == 2 and not it.veq_calibrated
+
+
+def test_the_warm_up_waits_for_the_2t_servo_to_settle():
+    it = warmup_stub(False)
+    settled_after = 7
+    it._mtf_servo_settled = lambda: it.decoded >= settled_after
+    start = {"f": stub_field(), "start": 1000.0, "offset": FIELD_LEN,
+             "initphase": False}
+    LDdecode._calibration_warmup(it, start)
+    assert it.decoded == settled_after

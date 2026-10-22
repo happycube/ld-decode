@@ -291,6 +291,8 @@ def estimate_stub(samples, imtf_strength=0.0, video_eq=None):
         mtf_servo_clip=(-1.0, 1.0),
     )
     stub._mtf_servo_target = lambda: LDdecode._mtf_servo_target(stub)
+    stub._mtf_servo_pooled = (
+        lambda samples: LDdecode._mtf_servo_pooled(stub, samples))
     return stub
 
 
@@ -460,3 +462,73 @@ def test_a_disc_with_no_measured_multiburst_carries_nothing():
     LDdecode.checkMTF(stub, field=None)
 
     assert stub._imtf_flat_band is None
+
+
+# --- the scatter gate ------------------------------------------------------
+
+
+def noisy_pool(n, spread):
+    """n samples at level 0 whose estimates scatter by about spread level
+    units either side of -0.6, half of each parity."""
+    ratios = [1.0 + (-0.6 + (spread if i % 4 < 2 else -spread))
+              / SERVO_GAIN for i in range(n)]
+    return [(i, 0.0, r, bool(i % 2)) for i, r in enumerate(ratios)]
+
+
+def test_the_pool_is_gated_on_its_per_sample_spread():
+    n = LDdecode.MTF_SERVO_MIN_SAMPLES
+    assert LDdecode._mtf_servo_estimate(
+        estimate_stub(noisy_pool(n, 0.34)), field=None) is not None
+    assert LDdecode._mtf_servo_estimate(
+        estimate_stub(noisy_pool(n, 0.45)), field=None) is None
+
+
+def test_a_larger_pool_is_held_to_the_same_spread():
+    """DD86-DS2 outer: 0.44-0.50 per sample around a steady median.  Letting
+    a full pool scatter more engaged the servo on the noisy Domesday
+    pressings, where it walks to its clip; see _mtf_servo_pooled."""
+    stub = estimate_stub(noisy_pool(4 * LDdecode.MTF_SERVO_MIN_SAMPLES, 0.45))
+    assert LDdecode._mtf_servo_estimate(stub, field=None) is None
+
+
+# --- the warm-up's stop ----------------------------------------------------
+
+
+def settle_stub(samples, level):
+    stub = estimate_stub(samples)
+    stub.mtf_level = level
+    stub.mtf_servo_deadband = 0.10
+    stub.MTF_SERVO_SETTLE_SAMPLES = LDdecode.MTF_SERVO_SETTLE_SAMPLES
+    return stub
+
+
+def at(level, estimate, n, start=0):
+    """n samples decoded at level that each estimate `estimate`."""
+    ratio = 1.0 + (estimate - level) / SERVO_GAIN
+    return [(start + i, level, ratio, bool(i % 2)) for i in range(n)]
+
+
+def test_the_servo_is_settled_when_its_level_reads_back_as_itself():
+    samples = at(0.0, -0.8, 8) + at(-0.8, -0.82, 4, start=8)
+    assert LDdecode._mtf_servo_settled(settle_stub(samples, -0.8))
+
+
+def test_the_servo_is_not_settled_while_its_own_level_asks_for_more():
+    """DD86-DS2 inner between steps: the older samples hold the pooled
+    median near the level, the fields decoded at it ask for more."""
+    samples = at(0.0, -0.7, 12) + at(-0.711, -0.83, 6, start=12)
+    assert not LDdecode._mtf_servo_settled(settle_stub(samples, -0.711))
+
+
+def test_the_servo_is_not_settled_until_its_level_has_been_read():
+    samples = at(0.0, -0.8, 8) + at(-0.8, -0.8, 3, start=8)
+    assert not LDdecode._mtf_servo_settled(settle_stub(samples, -0.8))
+
+
+def test_a_pool_the_servo_distrusts_is_no_reason_to_wait():
+    stub = settle_stub(noisy_pool(LDdecode.MTF_SERVO_MIN_SAMPLES, 0.45), 0.0)
+    assert LDdecode._mtf_servo_settled(stub)
+
+
+def test_no_2t_pulse_is_no_reason_to_wait():
+    assert LDdecode._mtf_servo_settled(settle_stub([], 0.0))

@@ -59,6 +59,24 @@ def applied_eq_db(applied_eq, freq_hz):
     return float(video_eq_db(applied_eq, freq_hz, top))
 
 
+def pool_reading(pool, entry, keep):
+    """A servo's sample pool with entry added, keyed by its field's readloc.
+
+    A field already in the pool has its reading replaced where it stands
+    rather than added again: a redo brings the same field back, and the
+    committed decode goes back over every field the calibration pass read,
+    so a pool that only checked its last entry held the opening fields
+    twice once writing began, and its median leaned toward them.  The pool
+    keeps its newest keep entries.
+    """
+    for i, old in enumerate(pool):
+        if old[0] == entry[0]:
+            pool[i] = entry
+            return pool
+    pool.append(entry)
+    return pool[-keep:]
+
+
 #: Seconds to let the RF TBC (.tbc.ldf) encoder drain after its stdin is
 #: closed before it is killed.  FLAC-in-ogg finishes in well under a second;
 #: this only guards against a wedged ffmpeg holding up exit.
@@ -624,6 +642,11 @@ class LDdecode:
         self._imtf_flat_band = None
         self._imtf_flat_band_last_publish = None
         self.veq_calibrated = False
+        #: The EQ's latest estimate lay inside its dead-band: a decision
+        #: that the channel needs nothing, which the warm-up may stop for
+        #: as it does for an adoption.  veq_calibrated stays unset, so the
+        #: first real adoption is still applied as one (with a redo).
+        self._veq_held = False
         self.useAGC = extra_options.get("useAGC", True)
         self.wow_level_adjust_smoothing = extra_options.get("wow_level_adjust_smoothing", 0)
         self.wow_interpolation_method = extra_options.get("wow_interpolation_method", "linear")
@@ -636,6 +659,9 @@ class LDdecode:
 
         # Chroma differential-gain servo state (checkChromaDG).
         self.chroma_dg_servo = extra_options.get("chroma_dg", True)
+        #: Fields the calibration warm-up decodes ahead at the least
+        #: (--calibration_frames, two fields a frame).
+        self.warmup_min_fields = 2 * extra_options.get("calibration_frames", 0)
         self._dg_samples = []      # (field readloc, slope per IRE)
         self._dg_last_adopt = None
         self.dg_calibrated = False
@@ -1137,6 +1163,32 @@ class LDdecode:
     # steps to converge before the first frame is written.)
     MTF_SERVO_MIN_ADOPT_FIELDS = 100
 
+    #: The calibration warm-up holds the first commit until this many
+    #: consecutive fields have moved no parameter (and every servo whose
+    #: line has been seen has had its pool fill), within a budget of
+    #: WARMUP_MAX_FIELDS fields decoded ahead.  Two stable fields let the
+    #: first frame go out before the slower loops had decided: on the
+    #: radius sweep the video EQ, the 2T servo, the inverse-MTF strength
+    #: and the chroma DG corrector still adopted after writing began on
+    #: 13 of 21 captures (BBC Domesday DD86-DS2 middle's 2T servo at frame
+    #: 25 of 30), and a 20-30 frame clip then carries two calibrations
+    #: that its conformance averages.  It also runs at least
+    #: warmup_min_fields (--calibration_frames, off by default), so a
+    #: loop whose pool fills slowly - the chroma DG phase pool needs 16
+    #: fields, the 2T servo's NTSC pool fills from first fields only - has
+    #: seen enough of the disc before anything is written.  The budget
+    #: is WARMUP_MAX_FIELDS past that minimum.
+    WARMUP_STABLE_FIELDS = 6
+    WARMUP_MAX_FIELDS = 60
+    #: How long the pass waits for the chroma DG corrector's phase pool to
+    #: fill (DG_PHASE_MIN_SAMPLES staircase fields, one field in two)
+    #: before writing without its decision: 25 frames.  The decision takes
+    #: sixteen distinct fields; ten frames give the pool at most ten, and
+    #: the phase correction arrived only once the clip was being written
+    #: (on NTSC inner cuts, 2.1-4.2 degrees of differential phase where
+    #: the corrected clip reads 1.3-1.7).
+    WARMUP_DG_PHASE_FIELDS = 50
+
     #: Chroma cost of one mtf_level unit, in dB at the subcarrier, fed
     #: forward onto the inverse-MTF strength at every MTF adoption; see
     #: where self.mtf_deemp_feedforward converts it.
@@ -1228,6 +1280,17 @@ class LDdecode:
     #: staircase is 0.0011/IRE) less that error: discs reading 0.104 to
     #: 0.130 there at slopes of 0.0012-0.0013 went uncorrected at 0.0015.
     DG_SLOPE_ENGAGE = {"PAL": 0.0015, "NTSC": 0.0010}
+    #: Hysteresis, as the phase's below: an engaged slope correction
+    #: releases to zero only when the pooled median falls under this.  A
+    #: disc whose slope sits on the engage line otherwise corrects and
+    #: then drops out as its median wanders across it - Dolby Surround
+    #: side 1 outer pools -0.00095 to -0.00118, and went uncorrected from
+    #: the first median under 0.0010 to the end of the capture, since the
+    #: rate limit holds a released correction off for 100 fields.  NTSC
+    #: releases at the engage line less the estimator's 0.0002/IRE error;
+    #: PAL at its conformance limit, under which its estimator cannot be
+    #: trusted with the sign.
+    DG_SLOPE_RELEASE = {"PAL": 0.0010, "NTSC": 0.0008}
 
     #: The differential-phase constants, in degrees of chroma rotation
     #: per IRE of luminance, tracked from the same staircase readings and
@@ -1293,7 +1356,18 @@ class LDdecode:
     #: A threshold, not a subtraction: once the band is measurably hot
     #: the whole measured excess is taken out, because half a blowout is
     #: still a blowout.
-    IMTF_CUT_ENGAGE_DB = 1.0
+    #:
+    #: 1.5 dB, not the 1.0 it was set at, since the calibration pass
+    #: (warmup_min_fields) lets DD86-DS2's loops settle before writing:
+    #: there the 2T servo boosts pre-demod HF on a disc whose 2T reads
+    #: low, the band then reads 1.16 dB (outer) and 1.24 dB (middle) hot
+    #: with Domesday's mastered 4-4.8 MHz peak on top, and a cut took the
+    #: chrominance under its references (gain ratio 0.266, the 3.58 MHz
+    #: packet -0.46 dB).  The blowouts stay cut: DD86-DS2 inner at 4.6 dB,
+    #: the GGV PAL multiburst cut at 1.7.  It is the margin
+    #: IMTF_CEILING_ENGAGE_DB gives the boost side on NTSC, for the same
+    #: reason: a multiburst and chrominance mastered about a dB apart.
+    IMTF_CUT_ENGAGE_DB = 1.5
 
     #: How far, in dB at the subcarrier, the burst must ask past the
     #: multiburst's flat-band strength before the multiburst caps it -
@@ -1363,11 +1437,8 @@ class LDdecode:
                 entry = (key, tuple(applied) if applied else (), devs,
                          float(getattr(field, "decoded_imtf_strength", 0.0)
                                or 0.0))
-                if self._veq_samples and self._veq_samples[-1][0] == key:
-                    self._veq_samples[-1] = entry
-                else:
-                    self._veq_samples.append(entry)
-                    self._veq_samples = self._veq_samples[-self.VEQ_KEEP:]
+                self._veq_samples = pool_reading(
+                    self._veq_samples, entry, self.VEQ_KEEP)
 
         horizon = (self._servo_pos
                    - self.VEQ_MAX_AGE_FIELDS * self.bytes_per_field)
@@ -1579,12 +1650,9 @@ class LDdecode:
             return
         measured = measure_vits_dg_staircase(field)
         if measured is not None:
-            entry = (field.readloc, measured[0], measured[1])
-            if self._dg_samples and self._dg_samples[-1][0] == entry[0]:
-                self._dg_samples[-1] = entry
-            else:
-                self._dg_samples.append(entry)
-                self._dg_samples = self._dg_samples[-self.DG_KEEP:]
+            self._dg_samples = pool_reading(
+                self._dg_samples,
+                (field.readloc, measured[0], measured[1]), self.DG_KEEP)
         horizon = (self._servo_pos
                    - self.DG_MAX_AGE_FIELDS * self.bytes_per_field)
         self._dg_samples = [x for x in self._dg_samples if x[0] >= horizon]
@@ -1595,10 +1663,12 @@ class LDdecode:
         estimate = float(np.clip(
             np.median([slope for _, slope, _ in self._dg_samples]),
             self.DG_SLOPE_CLAMP_NEG, self.DG_SLOPE_CLAMP_POS))
-        if abs(estimate) < self.DG_SLOPE_ENGAGE[self.rf.system]:
-            estimate = 0.0
         current = float(
             self.rf.DecoderParams.get("chroma_dg_slope", 0.0))
+        slope_threshold = (self.DG_SLOPE_ENGAGE if current == 0.0
+                           else self.DG_SLOPE_RELEASE)[self.rf.system]
+        if abs(estimate) < slope_threshold:
+            estimate = 0.0
         current_phase = float(
             self.rf.DecoderParams.get("chroma_dg_phase", 0.0))
         if len(self._dg_samples) >= self.DG_PHASE_MIN_SAMPLES:
@@ -1689,12 +1759,9 @@ class LDdecode:
             return
         measured = measure_its_white_level(field)
         if measured is not None:
-            entry = (field.readloc, measured[0])
-            if self._level_samples and self._level_samples[-1][0] == entry[0]:
-                self._level_samples[-1] = entry
-            else:
-                self._level_samples.append(entry)
-                self._level_samples = self._level_samples[-self.LEVEL_KEEP:]
+            self._level_samples = pool_reading(
+                self._level_samples, (field.readloc, measured[0]),
+                self.LEVEL_KEEP)
         horizon = (self._servo_pos
                    - self.LEVEL_MAX_AGE_FIELDS * self.bytes_per_field)
         self._level_samples = [x for x in self._level_samples if x[0] >= horizon]
@@ -1732,6 +1799,7 @@ class LDdecode:
         tracking trims, which apply from the next field on), False to
         redo (the first application)."""
         anchors = self._veq_estimate(field)
+        self._veq_held = False
         if anchors is None:
             return True
         # The multiburst's verdict on the chroma band is published before
@@ -1761,6 +1829,7 @@ class LDdecode:
         delta = max(abs(new.get(k, 0.0) - cur.get(k, 0.0))
                     for k in set(cur) | set(new))
         if delta < self.VEQ_DEADBAND_DB:
+            self._veq_held = True
             return True
 
         first = not self.veq_calibrated
@@ -1989,15 +2058,12 @@ class LDdecode:
                     getattr(field, "decoded_video_eq", None))
                 key = field.readloc
                 parity = bool(field.isFirstField)
-                # On a redo the same field comes through again; replace
-                # its sample rather than double-counting it.
-                if self._servo_samples and self._servo_samples[-1][0] == key:
-                    self._servo_samples[-1] = (key, level_used, ratio, parity)
-                else:
-                    self._servo_samples.append(
-                        (key, level_used, ratio, parity))
-                    self._servo_samples = \
-                        self._servo_samples[-self.MTF_SERVO_KEEP:]
+                # A field that comes through again (a redo, or the
+                # committed decode passing over the calibration pass's
+                # fields) replaces its sample rather than counting twice.
+                self._servo_samples = pool_reading(
+                    self._servo_samples, (key, level_used, ratio, parity),
+                    self.MTF_SERVO_KEEP)
 
         horizon = (self._servo_pos
                    - self.MTF_SERVO_MAX_AGE_FIELDS * self.bytes_per_field)
@@ -2006,29 +2072,85 @@ class LDdecode:
 
         if len(self._servo_samples) < self.MTF_SERVO_MIN_SAMPLES:
             return None
-        # The two PAL field parities carry different ITS variants whose
-        # 2T amplitudes can differ by a few percent (Louvre: 1.039 vs
-        # 0.996), so a plain median drifts with the pool's parity mix
-        # and hunts.  Estimate each parity separately and average.
-        # (NTSC only ever pools first fields — the NTC-7 composite —
-        # so one parity list is simply empty there.)
+        # Consistency gate: a real ITS gives tight estimates (ratio
+        # sigma ~0.01-0.02/field); noisy or misdetected content scatters
+        # them.  Distrust a scattered pool and fall back.
+        estimate, scatter = self._mtf_servo_pooled(self._servo_samples)
+        if scatter > self.mtf_servo_scatter:
+            return None
+        self._servo_engaged = True
+        return estimate
+
+    def _mtf_servo_pooled(self, samples):
+        """The 2T servo's mtf_level estimate from samples, and its scatter:
+        (estimate, scatter), the estimate clipped to mtf_servo_clip.
+
+        The two PAL field parities carry different ITS variants whose 2T
+        amplitudes can differ by a few percent (Louvre: 1.039 vs 0.996),
+        so a plain median drifts with the pool's parity mix and hunts.
+        Each parity is estimated separately and the two averaged.  (NTSC
+        only ever pools first fields - the NTC-7 composite - so one parity
+        list is simply empty there.)
+
+        The scatter is the per-sample spread, whatever the pool's size.
+        Restating it for the size (std * sqrt(N / n), so that a full pool
+        could be proportionally noisier) was measured and rejected: it
+        engages the servo on the noisy Domesday pressings - DD86-DS1
+        outer, DS2 middle and outer, Industrial inner - and there it walks
+        to its -1.0 clip, -0.61 to -0.80 to -1.0, chasing a deficit the
+        level does not correct.  DS2 outer's first-field 2T and its
+        chroma bars then pass, but its multiburst's 4.0-4.8 MHz responses
+        fail, and DS1 outer's gain ratio goes 0.68 to 1.34 of its band.
+        A disc whose pulse scatters by that much per field is the disc on
+        which the level is the wrong correction.
+        """
         target = self._mtf_servo_target()
         by_parity = {True: [], False: []}
-        for _, lv, r, parity in self._servo_samples:
+        for _, lv, r, parity in samples:
             by_parity[parity].append(
                 lv + (r - target) * self.mtf_servo_gain)
         meds = [np.median(v) for v in by_parity.values() if len(v) >= 3]
         if not meds:
             meds = [np.median([lv + (r - target) * self.mtf_servo_gain
-                               for _, lv, r, _ in self._servo_samples])]
+                               for _, lv, r, _ in samples])]
         ests = [e for v in by_parity.values() for e in v]
-        # Consistency gate: a real ITS gives tight estimates (ratio
-        # sigma ~0.01-0.02/field); noisy or misdetected content scatters
-        # them.  Distrust a scattered pool and fall back.
-        if np.std(ests) > self.mtf_servo_scatter:
-            return None
-        self._servo_engaged = True
-        return float(np.clip(np.mean(meds), *self.mtf_servo_clip))
+        scatter = float(np.std(ests))
+        return float(np.clip(np.mean(meds), *self.mtf_servo_clip)), scatter
+
+    #: Fields decoded at the level in force that the warm-up wants to
+    #: agree with it before the first frame (see _mtf_servo_settled):
+    #: two of each PAL parity, so two frames after an adoption.
+    MTF_SERVO_SETTLE_SAMPLES = 4
+
+    def _mtf_servo_settled(self):
+        """Whether the 2T servo has converged, for the calibration
+        warm-up: the fields decoded at the level in force, taken on their
+        own, would hold it there.
+
+        The servo's own pool mixes fields decoded at every level it has
+        passed through.  Each sample is an absolute estimate, but only as
+        good as the loop gain, so after an adoption the older samples
+        still pull the median back toward where the level came from, and
+        the servo steps there over several adoptions a few fields apart.
+        DD86-DS2 inner goes 0.256 -> -0.818 -> -0.711 -> -0.897 -> -1.0.
+        Between two steps no parameter moves, and a warm-up that stops
+        for two quiet fields wrote its first frame at -0.711, where the
+        six fields decoded at -0.711 already read -0.83.  A pool still filling, or
+        one too scattered for the servo to trust (it will not move), is
+        no grounds to wait.
+        """
+        if not self.mtf_2t_servo or not self._servo_samples:
+            return True
+        if len(self._servo_samples) < self.MTF_SERVO_MIN_SAMPLES:
+            return False
+        _, scatter = self._mtf_servo_pooled(self._servo_samples)
+        if scatter > self.mtf_servo_scatter:
+            return True
+        here = [x for x in self._servo_samples if x[1] == self.mtf_level]
+        if len(here) < self.MTF_SERVO_SETTLE_SAMPLES:
+            return False
+        estimate, _ = self._mtf_servo_pooled(here)
+        return abs(estimate - self.mtf_level) < self.mtf_servo_deadband
 
     #: Readout model: the level dead-band (0.03 is a 3 % move in the
     #: cutoff, about 0.3 dB of compensation at the upper chroma sideband
@@ -3075,27 +3197,55 @@ class LDdecode:
         # lock: the 2T MTF servo converges over several adoptions, and
         # exiting mid-convergence writes the first frame under still-
         # moving parameters.  The budget bounds pathological cases.
+        # --calibration_frames 0, the default, runs no pass: two stable
+        # fields and a 40-field budget, waiting for the chroma DG
+        # corrector's slope decision (three staircase fields) but not its
+        # phase decision, which the commit path takes.
+        full_pass = self.warmup_min_fields > 0
+        stable_needed = self.WARMUP_STABLE_FIELDS if full_pass else 2
+        budget = (self.warmup_min_fields + self.WARMUP_MAX_FIELDS
+                  if full_pass else 40)
+        if full_pass:
+            logs.logger.info(
+                "Calibration pass: decoding at least %d frames ahead to settle "
+                "the decoder's calibration before the first frame is written",
+                self.warmup_min_fields // 2)
         stable = 0
-        for _ in range(40):
-            if (self.deemp_calibrated and stable >= 2
+        seen = 0
+        ended = "field limit reached"
+        for _ in range(budget):
+            if (self.deemp_calibrated and stable >= stable_needed
+                    and seen >= self.warmup_min_fields
                     and (not self.veq_servo or self.veq_calibrated
-                         or not self._veq_samples)
-                    and (not self.mtf_2t_servo or not self._servo_samples
-                         or len(self._servo_samples)
-                         >= self.MTF_SERVO_MIN_SAMPLES)):
+                         or self._veq_held or not self._veq_samples)
+                    and self._mtf_servo_settled()
+                    and (not self.chroma_dg_servo or not self._dg_samples
+                         or (self.dg_calibrated
+                             and (not full_pass
+                                  or len(self._dg_samples)
+                                  >= self.DG_PHASE_MIN_SAMPLES
+                                  or seen >= self.WARMUP_DG_PHASE_FIELDS)))):
                 # (a multiburst or 2T line has been seen but its servo
-                # not yet locked: keep warming up so the first frame
-                # gets it.  The 2T pool matters on NTSC, where only
-                # first fields carry the pulse, so it fills at half the
-                # rate the deemp/EQ locks need.)
+                # not yet decided: keep warming up so the first frame
+                # gets it.  The EQ has decided once it adopts or holds
+                # inside its dead-band, the 2T servo once the fields
+                # decoded at its level agree with it.  The staircase is
+                # on one field in two, so it fills at half the rate;
+                # in a full pass the differential-phase decision waits
+                # for DG_PHASE_MIN_SAMPLES of them - 16 frames, more when
+                # a servo's adoption clears the pool - for as long as
+                # WARMUP_DG_PHASE_FIELDS allows.)
+                ended = "settled"
                 break
             nf, off = self.decodefield(pos, self.mtf_level, prev,
                                        entry["initphase"])
             if nf is None or off is None:
+                ended = "end of input"
                 break
             pos += off
             if not nf.valid:
                 continue
+            seen += 1
 
             _, _, m = self.decode_stage2(nf)
             if m and "blackToWhiteRFRatio" in m:
@@ -3125,11 +3275,16 @@ class LDdecode:
                 moved = True
             if not moved:
                 moved = not self.checkVideoEQ(nf)
+            if not moved:
+                # Write-time only, so it never moves a decode parameter:
+                # pooled here so the first frame goes out corrected.
+                self.checkChromaDG(nf)
             if moved:
                 # this field (and any pool samples) were measured under
                 # parameters that just changed
                 self._deemp_burst_samples.clear()
                 self._veq_samples.clear()
+                self._veq_held = False
                 self._dg_samples.clear()
             elif np.isfinite(nf.burstmedian) and nf.burstmedian > 5:
                 self._deemp_burst_samples.append(nf.burstmedian)
@@ -3146,6 +3301,19 @@ class LDdecode:
             # median over hundreds of lines, so calibrate from what we
             # have rather than writing the first frame uncorrected.
             self._deemp_calibrate()
+
+        veq = self.rf.DecoderParams.get("video_eq_auto")
+        logs.logger.info(
+            "%s %s after %.1f frames - MTF level %.3f, "
+            "chroma strength %.3f, video EQ %s, chroma DG %s",
+            "Calibration pass:" if full_pass else "Calibrating...",
+            ended, seen / 2, self.mtf_level,
+            self.rf.DecoderParams.get("inverse_mtf_strength", 0.0),
+            ("none" if not veq else " ".join(
+                f"{f / 1e6:.2f}MHz:{db:+.2f}dB" for f, db in veq if db)
+             or "flat"),
+            ("off" if not self.rf.DecoderParams.get("chroma_dg_slope")
+             else f"{self.rf.DecoderParams['chroma_dg_slope']:+.5f}/IRE"))
 
         if agc_moved:
             # worker processes hold level parameters frozen from their

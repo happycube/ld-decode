@@ -59,6 +59,17 @@
 #                                                    and one per whole capture
 #                                                    the conformance lane
 #                                                    judges; see the sweep below
+#   <cut>-calibrated-cvbs
+#                       decode-<cut>-calibrated-cvbs
+#                                                 -> conformance-<cut>-calibrated-vits
+#                                                    the five cuts judged with
+#                                                    a calibration pass
+#   ntsc-calibrated-serial
+#                       decode-ntsc-calibrated-serial
+#                                                 -> compare-ntsc-calibrated-parallel-*
+#   ntsc-calibrated-parallel
+#                       decode-ntsc-calibrated-parallel
+#                                                 -> compare-ntsc-calibrated-parallel-*
 #
 # No test both sets up and requires a fixture, so "ctest -R <name>" pulls in
 # exactly the producers listed above and nothing else.
@@ -537,8 +548,14 @@ set_tests_properties(conformance-pal-vits PROPERTIES
     # frames, fewer than any servo needs to settle, so what remains is
     # packet_6 (twice), the two blanked-line checks, and single-field
     # differential gain (0.152 measured, noise-inflated - the pooled
-    # figure on this capture is under the band).
-    PASS_REGULAR_EXPRESSION "VITS CONFORMANCE: FAIL \\(5 of 46 checks failed"
+    # figure on this capture is under the band).  5 -> 6 when the warm-up
+    # began writing once its servos agree instead of running its 20-frame
+    # budget: that budget is longer than the capture, so it had been
+    # calibrating from frames that are never written.  The 0.000 -> 0.066
+    # lift of the multiburst chroma-band ceiling it found there is not
+    # reached in the six that are, and packet_4 on the first-field
+    # multiburst reads 25.50 IRE against a band edge of 25.7 (26.06).
+    PASS_REGULAR_EXPRESSION "VITS CONFORMANCE: FAIL \\(6 of 46 checks failed"
     TIMEOUT 300
 )
 
@@ -728,6 +745,116 @@ endfunction()
 
 add_vits_capture_conformance(ggv-ntsc-mb-v2800 NTSC ntsc/ggv-ntsc-mb-v2800.ldf)
 add_vits_capture_conformance(ve-monitor NTSC ntsc/ve-monitor.ldf)
+
+# ---------------------------------------------------------------------------
+# The calibration pass
+# ---------------------------------------------------------------------------
+
+# Every decode above takes the default, which runs no calibration pass: the
+# decoder writes as soon as its servos are stable, and the slower ones
+# (the 2T servo, the chroma DG corrector's phase decision) may still adopt
+# after writing has begun.  --calibration_frames N decodes at least N
+# frames ahead first, and on a disc with a modulated staircase waits for
+# the differential-phase decision; see docs/technical/vits-servos.md,
+# "Calibrating before the first frame".  These tests decode with a 10-frame
+# pass.
+#
+# Five radius cuts are judged with the pass on: the two Dolby Surround cuts
+# and GGV1069 inner, whose differential gain and phase it corrects from the
+# first frame; DD86-DS2 middle, at the thresholds of the coupled loops; and
+# GGV1011 inner, the PAL control the DG thresholds must leave alone.  The
+# manifest and the known-deviation list both name a capture by its file's
+# basename, so the decodes go to testout/calibrated/ under the cut's own
+# name, and are judged against analysis/vits_known_deviations_calibrated.toml.
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/testout/calibrated)
+
+function(add_vits_calibrated_cut label system)
+    set(system_flag "")
+    if(system STREQUAL "PAL")
+        set(system_flag "--PAL")
+    endif()
+
+    add_test(
+        NAME decode-${label}-calibrated-cvbs
+        COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
+            --cvbs ${system_flag} --exact-speculation --calibration_frames 10
+            ${TESTDATA_DIR}/radius/${label}.ldf
+            ${CMAKE_BINARY_DIR}/testout/calibrated/${label}
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    )
+    set_tests_properties(decode-${label}-calibrated-cvbs PROPERTIES
+        LABELS "functional;slow;vits"
+        FIXTURES_SETUP ${label}-calibrated-cvbs
+        TIMEOUT 1800
+    )
+
+    add_test(
+        NAME conformance-${label}-calibrated-vits
+        COMMAND ${Python3_EXECUTABLE} ${ANALYSIS_DIR}/vits_conformance.py
+            ${CMAKE_BINARY_DIR}/testout/calibrated/${label}.cvbs
+            --manifest ${TESTDATA_DIR}/vits-manifest.json
+            --known-deviations ${ANALYSIS_DIR}/vits_known_deviations_calibrated.toml
+            --json ${CMAKE_BINARY_DIR}/testout/calibrated/${label}.conformance.json
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    )
+    set_tests_properties(conformance-${label}-calibrated-vits PROPERTIES
+        LABELS "functional;vits"
+        FIXTURES_REQUIRED ${label}-calibrated-cvbs
+        PASS_REGULAR_EXPRESSION "VITS CONFORMANCE: (PASS|SKIPPED)"
+        TIMEOUT 600
+    )
+endfunction()
+
+add_vits_calibrated_cut(dolby-surround-side1-inner NTSC)
+add_vits_calibrated_cut(dolby-surround-side1-outer NTSC)
+add_vits_calibrated_cut(ggv1069-side1-inner NTSC)
+add_vits_calibrated_cut(domesday-ds2-community-north-middle PAL)
+add_vits_calibrated_cut(ggv1011-side1-inner PAL)
+
+# The pass decodes ahead and starts over, and the servos adopt inside it
+# before any field job is in flight, so it is its own path through the
+# threaded decode: -t 8 --exact-speculation must still give the serial
+# decode's bytes with it on.
+add_test(
+    NAME decode-ntsc-calibrated-serial
+    COMMAND ${CMAKE_SOURCE_DIR}/ld-decode --tbc -t 1 --calibration_frames 10
+        ${TESTDATA_DIR}/ntsc/ve-snw-cut.ldf
+        ${CMAKE_BINARY_DIR}/testout/calibrated/ntsc-serial
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+set_tests_properties(decode-ntsc-calibrated-serial PROPERTIES
+    LABELS "functional;slow"
+    FIXTURES_SETUP ntsc-calibrated-serial
+    TIMEOUT 1800
+)
+
+add_test(
+    NAME decode-ntsc-calibrated-parallel
+    COMMAND ${CMAKE_SOURCE_DIR}/ld-decode --tbc -t 8 --exact-speculation
+        --calibration_frames 10
+        ${TESTDATA_DIR}/ntsc/ve-snw-cut.ldf
+        ${CMAKE_BINARY_DIR}/testout/calibrated/ntsc-parallel
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+set_tests_properties(decode-ntsc-calibrated-parallel PROPERTIES
+    LABELS "functional;slow"
+    FIXTURES_SETUP ntsc-calibrated-parallel
+    TIMEOUT 1800
+)
+
+foreach(ext tbc pcm efm)
+    add_test(
+        NAME compare-ntsc-calibrated-parallel-${ext}
+        COMMAND ${CMAKE_COMMAND} -E compare_files
+            ${CMAKE_BINARY_DIR}/testout/calibrated/ntsc-parallel.${ext}
+            ${CMAKE_BINARY_DIR}/testout/calibrated/ntsc-serial.${ext}
+    )
+    set_tests_properties(compare-ntsc-calibrated-parallel-${ext} PROPERTIES
+        LABELS "functional"
+        FIXTURES_REQUIRED "ntsc-calibrated-parallel;ntsc-calibrated-serial"
+        TIMEOUT 120
+    )
+endforeach()
 
 # Raw input-format coverage - converting the NTSC CI capture to .s16/.u16/
 # .u8/.rf/.lds/.r30, reading each back exactly through make_loader, and

@@ -8,7 +8,7 @@ ld-decode [-h] [--start file-location] [--length frames] [--seek frame] [--PAL] 
                  [--start_fileloc start_fileloc] [--ignoreleadout] [--verboseVITS] [--RF_TBC] [--lowband]
                  [--NTSC_color_notch_filter] [--audio_carrier_cancel] [--V4300D_notch_filter] [--V4300D_coherent_subtract] [--V4300D_no_defer]
                  [--deemp_low deemp_low] [--deemp_high deemp_high]
-                 [--deemp_strength deemp_str] [--no_auto_chroma] [--vits_white_level] [--no_mtf_servo] [-t threads] [-f FREQ] [--analog_audio_frequency AFREQ]
+                 [--deemp_strength deemp_str] [--no_auto_chroma] [--vits_white_level] [--no_mtf_servo] [--calibration_frames frames] [-t threads] [-f FREQ] [--analog_audio_frequency AFREQ]
                  [--video_bpf_low FREQ] [--video_bpf_high FREQ] [--video_lpf FREQ] [--video_lpf_order VLPF_ORDER]
                  [--audio_filterwidth FREQ] [--use_profiler] [--write-test-ldf output.ldf]
                  infile outfile
@@ -381,6 +381,18 @@ Do not adapt the MTF level from the 2T pulse of the vertical-blanking test signa
 **Example:**
 ```bash
 ld-decode --no_mtf_servo input.ldf output
+```
+
+#### `--calibration_frames frames`
+Run a calibration pass: decode at least this many frames ahead, before the first frame is written, to settle the servos that calibrate the decode from the disc: the AGC, MTF level, inverse-MTF chroma strength, multiburst video EQ and chroma differential-gain corrector. 10 is a good choice.
+- **Type:** Integer
+- **Default:** 0 (no pass)
+- **Note:** Without a pass the decoder writes as soon as its servos are stable, and the slower ones (the 2T servo, the chroma differential-phase decision) can still adopt after writing has begun, so the opening frames of a decode may carry a different calibration from the rest. The pass runs at least this long and then until no servo has moved for 6 fields, within a further 60 fields. On a disc with a test staircase it also waits, up to 25 frames, for the chroma differential-phase decision. It decodes ahead and starts over, so nothing is skipped; the cost is decoding those frames twice at the start, about 3 seconds. A decode of a few frames from a long capture therefore takes noticeably longer (`-l 3`: 4.8 s to 8.1 s); a capture shorter than the pass costs nothing extra, as the pass stops at the end of the input. With a shorter pass the slower servos can still adopt after writing has begun, and a short decode then carries two calibrations. `0`, the default, writes once the servos have been stable for two fields, the video EQ has adopted or held, the 2T servo's level reads back as itself and the chroma differential-gain decision is taken - usually 4-8 frames ahead - and leaves the differential-phase decision until after writing begins.
+- **Log:** a pass reports itself on the console when it starts; either way the decoder logs a line when calibration ends (`Calibrating... settled after 5.5 frames - ...` without a pass), with why it stopped (settled, end of input, field limit) and the MTF level, chroma strength, video EQ and chroma DG it settled on.
+
+**Example:**
+```bash
+ld-decode --calibration_frames 10 input.ldf output
 ```
 
 ### Audio Decoding Options

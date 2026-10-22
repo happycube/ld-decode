@@ -152,6 +152,120 @@ Against a fit over each packet's settled amplitude, the old reading was
 FCC pressings where +0.4-0.7 dB levels that packet with its reference.
 PAL's packets are longer and moved by 0.05-0.1 dB.
 
+## Calibrating before the first frame
+
+Before anything is written, the decoder decodes ahead and lets the
+servos settle (`_calibration_warmup`), then starts over from the first
+field, so nothing is skipped. By default it stops once no servo has moved
+for two fields and, on a disc with a modulated staircase, the DG corrector
+has taken its slope decision (three staircase fields), so the first frame
+goes out gain-corrected; the phase decision, sixteen readings, is left to
+the commit path. `--calibration_frames N` (off by default; 10 is a good
+choice) makes it a calibration pass: at least N frames, then until no
+servo has moved for 6 fields (`WARMUP_STABLE_FIELDS`), within a further
+60 fields. The AGC, the MTF level, the inverse-MTF strength, the
+multiburst EQ and its ceiling, and the chroma DG corrector all adopt in
+the pass.
+
+The pass is opt-in. It costs a few seconds on every decode, more on
+staircase discs, and on a 20-30 frame clip it reads most of the clip
+before writing. The radius sweep judges the default decode, and five of
+its cuts again with a 10-frame pass, against their own list
+(`analysis/vits_known_deviations_calibrated.toml`); a serial and a
+`-t 8 --exact-speculation` decode with the pass on are compared byte for
+byte. See "The calibration pass" in `cmake_modules/LdDecodeTests.cmake`.
+
+Without the pass, on the radius sweep the EQ, the
+2T servo, the inverse-MTF strength and the DG corrector then still
+adopted after writing had begun on 13 of 21 captures. DD86-DS2 middle's 2T
+servo moved at frame 25 of 30, and its ceiling's cut never arrived before
+the clip ended. A 20–30 frame clip carried two calibrations that its
+conformance then averaged. With the pass, only three captures move a
+decode parameter after the first frame (DD86-DS1 outer, DS2 middle,
+GGV1069 LDV4300D outer), and the lane takes 3 % longer. On a long decode
+the cost is decoding those frames twice, once. On a few frames cut from a
+long capture it is about 3 s (`-l 3`: 4.8 s to 8.1 s). A capture shorter
+than the pass just ends it early. The decoder logs whether it is running
+a pass, and a line when calibration ends, with what it settled on.
+
+Without a pass, two quiet fields are not by themselves a settled
+decoder; two loops needed more:
+
+- **The multiburst EQ.** On a disc whose EQ estimate stays inside its
+  0.3 dB dead-band the EQ never adopts, `veq_calibrated` never sets, and
+  the warm-up used to run its whole 40-field budget waiting for it: GGV1011
+  outer, GGV1069 middle and outer, the LDV4300D middle and outer cuts, the
+  three Industrial cuts, DD86-DS1 outer and DS2 inner all decoded 20
+  frames ahead, as did ve-monitor and `pal-cvbs`. An estimate held inside the dead-band now counts as decided
+  (`_veq_held`).
+- **The 2T servo.** Its pool mixes fields decoded at every level it has
+  passed through, and each sample is only as absolute as the loop gain is
+  right, so the older ones pull the median back and it steps toward its
+  level a few fields apart: DD86-DS2 inner goes 0.256 → −0.818 → −0.711 →
+  −0.897 → −1.0. Stopping for two quiet fields between steps wrote DS2
+  inner's first frame at −0.711. Its six fields decoded there read −0.83,
+  and its PAL gain ratio went from 0.23× to 1.35× of its band. So the
+  warm-up also waits until the fields decoded at the level in force (at
+  least `MTF_SERVO_SETTLE_SAMPLES`, four) would hold it within the servo's
+  dead-band (`_mtf_servo_settled`), unless the pool is too scattered for
+  the servo to trust.
+
+With both, the nine flat radius cuts write after 4–8 frames instead of 20
+(ve-monitor 5.5, `pal-cvbs` 9.5), DS2 inner after 14.5 at −1.0, and every
+cut but DS2 inner writes its first frame under the parameters the 20-frame
+warm-up settled on (Industrial inner's DG slope aside, +0.00188 against
++0.00208). What the
+longer warm-up still bought is the DG phase decision, whose sixteen
+staircase readings 40 fields reached and 4–8 frames do not, and a few
+small trims the 2T servo does not
+gate: DS2 inner's chroma strength, −1.293 then against −1.428 now; the
+multiburst ceiling lifting `pal-cvbs`'s from 0.000 to 0.066 after more
+than 12 frames; and on DS1 outer and Industrial outer an adoption after
+writing that comes at a different field. `pal-cvbs`'s 4.0 MHz packet 26.06 →
+25.50 IRE (its band's edge is 25.7), DS2 inner's 100 % chroma bar 43.84 →
+42.70 IRE, DS1 outer's 4.0 MHz response 1.07 → 1.38 dB and Industrial
+outer's second-field 2T 102.6 → 103.1 IRE; the phase decision taken
+after writing begins puts Industrial inner's differential phase back at
+2.79° (1.18° with it), Industrial middle's at 1.84° (1.49°) and
+ve-monitor's at 2.27° (1.67°), all inside their band. The three
+radius-cut checks are recorded in the default list, and `pal-cvbs`'s pin
+goes from 5 of 46 failing to 6. Waiting for 6 quiet fields, as
+the pass does, recovers none of them and lets DD86-DS2 middle and outer
+adopt the 2T servo on a momentary dip in its scatter gate; requiring a
+full six-reading pool before an EQ hold counts recovers none either and
+puts DS1 outer's chroma ceiling over its band.
+
+The 2T servo's scatter gate was also measured restated for the pool's size
+(`std·√(8/n)`), so that a full pool could be proportionally noisier: on
+DD86-DS2 outer the per-sample spread is 0.44–0.50 level units around a
+median steady at −0.64, and the per-sample gate holds it at the open-loop
+level for the whole decode. It engages the servo on four PAL cuts, and on
+the noisy Domesday pressings it then walks to its −1.0 clip (−0.61 → −0.80
+→ −1.0 on DS1 outer). DS2 outer's first-field 2T and chroma bars pass, but
+its multiburst's 4.0–4.8 MHz responses fail and DS1 outer's gain ratio
+goes from 0.68× to 1.34×. The gate stays per-sample: a pulse that scatters
+that much per field marks a disc on which the level is the wrong
+correction.
+
+On a disc with a modulated staircase the pass also waits, up to 25 frames
+(`WARMUP_DG_PHASE_FIELDS`), for the DG corrector's phase pool to hold the
+`DG_PHASE_MIN_SAMPLES` (16) readings its decision takes. The staircase is
+on one field in two and any servo's adoption empties the pool, so ten
+frames give it ten readings at most. On the sweep the staircase discs now
+write from 17–25 frames, and the NTSC inner cuts' differential phase is
+corrected from the first frame (Dolby Surround inner 2.14° → 1.66°,
+GGV1069 inner 2.15° → 1.29°, the LDV4300D cut 2.98° → 1.35°).
+
+The committed decode then goes back over the fields the pass read. Every
+servo's pool keeps one reading per field (`pool_reading()`): a field
+already pooled has its reading replaced where it stands. The pools used to
+compare a reading against their last entry only, which caught a redo but
+not this, so once writing began each of the pass's fields was pooled
+twice, and the medians leaned toward the clip's opening fields. That was
+how the phase decision had reached sixteen readings a few frames into the
+clip, and how DD86-DS2 middle's DG slope, +0.0012 to +0.0013/IRE read once
+per field, had crossed PAL's 0.0015 engage line.
+
 ## Which pulse the 2T servo holds
 
 `_mtf_servo_estimate()` divides the inverse-MTF filter's and the video EQ's
@@ -257,6 +371,14 @@ holds 0.0015. Captures that read 0.11–0.18 there went to 0.02–0.06
 0.130 → 0.059, dbcut 0.113 → 0.015); the phase servo's unchanged
 thresholds take GGV1016 from 5.7° to 3.9°. Conforming discs whose slope
 stays under 0.0010 (VE monitor, he010, GGV1069 middle) are untouched.
+Once engaged, the slope correction releases only when the pooled median
+falls under `DG_SLOPE_RELEASE` (NTSC 0.0008, the engage line less the
+estimator's error again; PAL 0.0010, its conformance limit), as the phase
+correction releases under 0.02 where it engages at 0.035. A disc whose
+slope sits on the engage line otherwise drops out the first time its
+median dips under it, and the rate limit then keeps it off for 100 fields:
+Dolby Surround side 1 outer pools −0.00095 to −0.00118 and went out
+uncorrected from four frames in (0.080, against 0.034 corrected).
 
 Three properties carry the design:
 
@@ -413,8 +535,9 @@ But a cut is a *claim* that gain was added, and the pooled multiburst
 estimate cannot carry that claim at any size. `_imtf_ceiling()` already
 calls a band "within about a dB of flat" when it is refusing burst
 amplitude a boost; the same dB has to mean the same thing in the other
-direction, so `IMTF_CUT_ENGAGE_DB` (1.0 dB at the subcarrier) gates the
-negative half and the ceiling floors at zero below it.
+direction, so `IMTF_CUT_ENGAGE_DB` (1.5 dB at the subcarrier; 1.0 until the
+calibration pass, below) gates the negative half and the ceiling floors at zero
+below it.
 
 The two sides of the threshold are far apart in practice, which is what
 makes it a threshold rather than a tuning knob. Across the thirteen radius
@@ -424,7 +547,19 @@ cuts and the CI captures only two decodes ask for a cut at all:
 |---|---|---|
 | domesday-ds2-community-north-inner | 4.58 dB hot | −1.701 |
 | pal-cut-decoded | 1.69 dB hot | −0.628 |
+| domesday-ds2-community-north-middle | 1.24 dB hot | none since 1.5 dB |
+| domesday-ds2-community-north-outer | 1.16 dB hot | none since 1.5 dB |
 | industrial-lv-side1-inner | 0.58 dB hot | none — under the threshold |
+
+The two DD86-DS2 rows came with the calibration pass. With the decode
+allowed to settle before writing, the 2T servo there boosts pre-demod HF
+(the disc's 2T reads low) and the band then reads a little over a dB
+hot, Domesday's mastered 4–4.8 MHz peak included. At 1.0 dB that was cut,
+and the chrominance went under its references: gain ratio 0.266 on the
+middle cut, the 3.58 MHz packet −0.46 dB on both. At 1.5 the outer cut's
+chroma bars and gain ratio pass again (0.262 → 0.299). Its 4.0 MHz
+response then shows the mastered peak at +1.37 dB, which the list
+carries.
 
 industrial-lv side 1 inner is the case the threshold was written for. Its
 multiburst reads 0.58 dB hot while burst amplitude simultaneously asks for

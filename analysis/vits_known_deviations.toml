@@ -39,7 +39,7 @@
 # with the same flag the sweep uses, or the ceilings will not survive the
 # journey; see cmake_modules/LdDecodeTests.cmake.
 
-# dolby-surround-side1-inner (NTSC): 2 of its checks fail.
+# dolby-surround-side1-inner (NTSC): 1 of its checks fails.
 
 [[deviation]]
 capture = "dolby-surround-side1-inner"
@@ -50,18 +50,6 @@ measured = 90.537
 unit = "IRE"
 band_used = 4.73
 ceiling = 5.20
-owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
-reason = "The 2T pulse and the luminance references it is judged against. Worst allowance in the radius baseline on both systems, and it grows outwards; see docs/technical/vits-radius-baseline.md, \"The 2T pulse was judged against the wrong reference\"."
-
-[[deviation]]
-capture = "dolby-surround-side1-inner"
-check = "ntsc-ntc7-composite/pulse_12t5_luma"
-field_line = 20
-parity = "first"
-measured = 48.472
-unit = "IRE"
-band_used = 1.02
-ceiling = 1.12
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "The 2T pulse and the luminance references it is judged against. Worst allowance in the radius baseline on both systems, and it grows outwards; see docs/technical/vits-radius-baseline.md, \"The 2T pulse was judged against the wrong reference\"."
 
@@ -119,17 +107,17 @@ owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "Luminance and chrominance are not scaled by the same factor, so the ratio between the colour bar and its luminance reference is out even where each level passes on its own."
 
 
-# domesday-ds1-community-north-outer (PAL): 4 of its checks fail.
+# domesday-ds1-community-north-outer (PAL): 5 of its checks fail.
 
 [[deviation]]
 capture = "domesday-ds1-community-north-outer"
 check = "pal-its-field1/pulse_2t"
 field_line = 19
 parity = "first"
-measured = 87.639
+measured = 88.599
 unit = "IRE"
-band_used = 4.36
-ceiling = 4.80
+band_used = 3.98
+ceiling = 4.38
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "The 2T pulse and the luminance references it is judged against. Worst allowance in the radius baseline on both systems, and it grows outwards; see docs/technical/vits-radius-baseline.md, \"The 2T pulse was judged against the wrong reference\"."
 
@@ -138,10 +126,10 @@ capture = "domesday-ds1-community-north-outer"
 check = "pal-multiburst-field1/packet_6"
 field_line = 20
 parity = "first"
-measured = 11.730
+measured = 12.397
 unit = "IRE"
-band_used = 4.25
-ceiling = 4.67
+band_used = 4.09
+ceiling = 4.50
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "Chroma path gain. The PAL multiburst's chrominance packets and colour bars read high, and the 5.8 MHz packet reads low because the top of the band is lost before it is measured; see docs/technical/vits-radius-baseline.md."
 
@@ -150,12 +138,24 @@ capture = "domesday-ds1-community-north-outer"
 check = "pal-multiburst-field1/packet_6/response"
 field_line = 20
 parity = "first"
-measured = -7.416
+measured = -6.976
 unit = "dB"
-band_used = 5.93
-ceiling = 6.53
+band_used = 5.58
+ceiling = 6.14
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "Frequency response above the band the video EQ servo anchors, where no servo acts and the reading is the static filter chain's. PAL loses roughly 7-8 dB at 5.8 MHz at every radius; see docs/technical/vits-radius-baseline.md, \"The top multiburst packet, and what is left of it\"."
+
+[[deviation]]
+capture = "domesday-ds1-community-north-outer"
+check = "pal-multiburst-field1/packet_4/response"
+field_line = 20
+parity = "first"
+measured = 1.381
+unit = "dB"
+band_used = 1.11
+ceiling = 1.22
+owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
+reason = "Where in the opening fields the 2T servo takes its second step.  The warm-up now writes once the fields decoded at the servo's level agree with it - 7 frames here, where it used to run its 20-frame budget - and the first frame goes out with the same parameters as before (MTF -0.610, chroma strength 0.000).  The pool the decode then carries is smaller, so the servo's step to -1.0 lands at field 6 rather than field 12, inside the four fields per parity the conformance average reads, and the extra HF lift reads at 4.0 MHz (1.07 dB before).  See docs/technical/vits-servos.md, \"Calibrating before the first frame\"."
 
 [[deviation]]
 capture = "domesday-ds1-community-north-outer"
@@ -170,7 +170,7 @@ owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "The 2T pulse and the luminance references it is judged against. Worst allowance in the radius baseline on both systems, and it grows outwards; see docs/technical/vits-radius-baseline.md, \"The 2T pulse was judged against the wrong reference\"."
 
 
-# domesday-ds2-community-north-inner (PAL): 2 of its checks fail.
+# domesday-ds2-community-north-inner (PAL): 3 of its checks fail.
 
 [[deviation]]
 capture = "domesday-ds2-community-north-inner"
@@ -197,17 +197,29 @@ owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "Frequency response above the band the video EQ servo anchors, where no servo acts and the reading is the static filter chain's. PAL loses roughly 7-8 dB at 5.8 MHz at every radius; see docs/technical/vits-radius-baseline.md, \"The top multiburst packet, and what is left of it\".  Re-recorded when the chroma blowout on this capture was fixed: the earlier figure was read off a decode whose whole chroma band ran +3.6 dB at 4.0 MHz and +4.0 dB at 4.8, and the same boost was lifting this packet by about 6 dB with it.  With the band levelled (packets 1-5 now flat within 0.6 dB) what is left is the disc's own band-edge loss, unflattered; the correction that levelled the band is measured at the subcarrier and the inverse-MTF curve it rides deepens above it, so 5.8 MHz gets 7.8 dB of a cut worth 4.6 dB at 4.43."
 
 
-# domesday-ds2-community-north-middle (PAL): 7 of its checks fail.
+[[deviation]]
+capture = "domesday-ds2-community-north-inner"
+check = "pal-multiburst-field2/chroma_bar_100"
+field_line = 20
+parity = "second"
+measured = 42.695
+unit = "IRE"
+band_used = 1.12
+ceiling = 1.24
+owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
+reason = "The chroma strength the first frame is written at.  The warm-up now waits for the 2T servo to settle at -1.0 and writes after 14.5 frames, with the multiburst chroma-band ceiling at -1.428; the 20-frame warm-up it replaced let the ceiling trim on to -1.293 first, and the bar read 43.84.  The ceiling relaxes to -1.359 a few fields into the decode, inside the fields the conformance average reads.  See docs/technical/vits-servos.md, \"Calibrating before the first frame\"."
+
+# domesday-ds2-community-north-middle (PAL): 9 of its checks fail.
 
 [[deviation]]
 capture = "domesday-ds2-community-north-middle"
 check = "pal-its-field1/pulse_2t"
 field_line = 19
 parity = "first"
-measured = 87.068
+measured = 88.212
 unit = "IRE"
-band_used = 5.39
-ceiling = 5.93
+band_used = 4.93
+ceiling = 5.42
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "The 2T pulse and the luminance references it is judged against. Worst allowance in the radius baseline on both systems, and it grows outwards; see docs/technical/vits-radius-baseline.md, \"The 2T pulse was judged against the wrong reference\". Worst of the family: the optical MTF curve correction costs the 2T pulse about a third more band on the Domesday PAL cuts that carry this line, 3.19 to 4.15 on ds1-outer and 5.97 to 8.11 here; see docs/technical/vits-servos.md, \"The curve the correction rides\"."
 
@@ -216,10 +228,10 @@ capture = "domesday-ds2-community-north-middle"
 check = "pal-multiburst-field1/packet_6"
 field_line = 20
 parity = "first"
-measured = 13.172
+measured = 14.020
 unit = "IRE"
-band_used = 3.91
-ceiling = 4.30
+band_used = 3.72
+ceiling = 4.09
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "Chroma path gain. The PAL multiburst's chrominance packets and colour bars read high, and the 5.8 MHz packet reads low because the top of the band is lost before it is measured; see docs/technical/vits-radius-baseline.md."
 
@@ -228,22 +240,34 @@ capture = "domesday-ds2-community-north-middle"
 check = "pal-multiburst-field1/packet_4/response"
 field_line = 20
 parity = "first"
-measured = 1.338
+measured = 1.715
 unit = "dB"
-band_used = 1.07
-ceiling = 1.18
+band_used = 1.37
+ceiling = 1.51
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "BBC Domesday DD86-DS2 sits at the thresholds of three coupled loops - the 2T servo's MTF level, the multiburst EQ and the inverse-MTF chroma-band ceiling.  Reading the multiburst packets over their own steady interior (metrics._packet_interior) moves the EQ's 2 MHz anchor and the ceiling by a few hundredths of a dB here, and that is enough to send the 2T servo to its -1.0 limit at middle radius (the extra pre-demod HF lift reads at 4-4.8 MHz and in the chrominance) and the ceiling 0.03 strength units lower at outer radius.  The inner cut moves the other way and passes three checks it failed.  See docs/technical/vits-servos.md."
+
+[[deviation]]
+capture = "domesday-ds2-community-north-middle"
+check = "pal-multiburst-field1/packet_5/response"
+field_line = 20
+parity = "first"
+measured = 1.513
+unit = "dB"
+band_used = 1.21
+ceiling = 1.33
+owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
+reason = "The 2T servo, the multiburst EQ and the inverse-MTF chroma-band ceiling are three coupled loops on BBC Domesday DD86-DS2, and the 4.0 and 4.8 MHz packets straddling the subcarrier read with the chrominance.  With each field pooled once (decoder.pool_reading) the 2T servo stops at -0.86 at middle radius, where it used to run to its -1.0 limit, and the chroma strength fed forward with it leaves the chroma band 0.47 dB higher: the 4.8 MHz packet reads 1.51 dB over the 1 MHz reference where it read 1.06.  See docs/technical/vits-servos.md."
 
 [[deviation]]
 capture = "domesday-ds2-community-north-middle"
 check = "pal-multiburst-field1/packet_6/response"
 field_line = 20
 parity = "first"
-measured = -6.155
+measured = -5.651
 unit = "dB"
-band_used = 4.92
-ceiling = 5.42
+band_used = 4.52
+ceiling = 4.97
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "Frequency response above the band the video EQ servo anchors, where no servo acts and the reading is the static filter chain's. PAL loses roughly 7-8 dB at 5.8 MHz at every radius; see docs/technical/vits-radius-baseline.md, \"The top multiburst packet, and what is left of it\"."
 
@@ -252,22 +276,22 @@ capture = "domesday-ds2-community-north-middle"
 check = "pal-its-field2/staircase_subcarrier/differential_gain"
 field_line = 19
 parity = "second"
-measured = 0.110
+measured = 0.119
 unit = "fraction"
-band_used = 1.04
-ceiling = 1.15
+band_used = 1.13
+ceiling = 1.24
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 2"
-reason = "Chrominance amplitude varies with the luminance it rides on, measured on the modulated staircase."
+reason = "The DG corrector's PAL estimator reads this cut's slope at +0.0012 to +0.0013/IRE, under the 0.0015 at which PAL engages, so it is left uncorrected; the conformance checker's own fit puts it nearer the limit, the under-read the engage threshold allows for on GGV1011.  It passed only while each servo's pool held the calibration pass's fields twice, which carried the median over the line.  See docs/technical/vits-servos.md, \"4. Chroma differential gain and phase\"."
 
 [[deviation]]
 capture = "domesday-ds2-community-north-middle"
 check = "pal-multiburst-field2/ceiling/saturation"
 field_line = 20
 parity = "second"
-measured = 102.796
+measured = 108.339
 unit = "percent"
-band_used = 1.02
-ceiling = 1.12
+band_used = 1.07
+ceiling = 1.18
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "BBC Domesday DD86-DS2 sits at the thresholds of three coupled loops - the 2T servo's MTF level, the multiburst EQ and the inverse-MTF chroma-band ceiling.  Reading the multiburst packets over their own steady interior (metrics._packet_interior) moves the EQ's 2 MHz anchor and the ceiling by a few hundredths of a dB here, and that is enough to send the 2T servo to its -1.0 limit at middle radius (the extra pre-demod HF lift reads at 4-4.8 MHz and in the chrominance) and the ceiling 0.03 strength units lower at outer radius.  The inner cut moves the other way and passes three checks it failed.  See docs/technical/vits-servos.md."
 
@@ -276,12 +300,23 @@ capture = "domesday-ds2-community-north-middle"
 check = "pal-multiburst-field2/chroma_nonlinearity"
 field_line = 20
 parity = "second"
-measured = 0.122
+measured = 0.123
 unit = "fraction"
-band_used = 1.22
-ceiling = 1.34
+band_used = 1.23
+ceiling = 1.35
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 2"
 reason = "Chrominance gain is not constant across the amplitudes the multiburst presents."
+
+[[deviation]]
+capture = "domesday-ds2-community-north-middle"
+check = "gain_ratio/PAL"
+parity = "second"
+measured = 0.328
+unit = "ratio"
+band_used = 1.29
+ceiling = 1.42
+owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
+reason = "The 2T servo, the multiburst EQ and the inverse-MTF chroma-band ceiling are three coupled loops on BBC Domesday DD86-DS2, and the colour bars against the luminance bar read where they settle.  With each field pooled once (decoder.pool_reading) the 2T servo stops at -0.86 at middle radius, where it used to run to its -1.0 limit; the chroma strength takes 3.23 dB per MTF unit fed forward at every adoption, so the 0.14 it no longer travels leaves the chrominance 0.47 dB higher, 0.311 to 0.328 against the 0.300 nominal.  See docs/technical/vits-servos.md."
 
 
 # domesday-ds2-community-north-outer (PAL): 8 of its checks fail.
@@ -1230,12 +1265,12 @@ capture = "industrial-lv-side1-outer"
 check = "pal-its-field2/pulse_2t"
 field_line = 19
 parity = "second"
-measured = 102.640
+measured = 103.147
 unit = "IRE"
-band_used = 1.08
-ceiling = 1.18
+band_used = 1.28
+ceiling = 1.41
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
-reason = "The 2T pulse and the luminance references it is judged against. Worst allowance in the radius baseline on both systems, and it grows outwards; see docs/technical/vits-radius-baseline.md, \"The 2T pulse was judged against the wrong reference\". Crossed when clb_findbursts stopped counting empty crossing slots, which corrected this disc's PAL sequence labelling by four fields, so the file now opens on frame 1 and the averaged fields are different ones."
+reason = "The 2T pulse and the luminance references it is judged against. Worst allowance in the radius baseline on both systems, and it grows outwards; see docs/technical/vits-radius-baseline.md, \"The 2T pulse was judged against the wrong reference\". Crossed when clb_findbursts stopped counting empty crossing slots, which corrected this disc's PAL sequence labelling by four fields, so the file now opens on frame 1 and the averaged fields are different ones.  Re-recorded (102.64 to 103.15) when the warm-up began writing once the 2T servo's level reads back as itself, after 7 frames instead of its 20-frame budget: the first frame carries the same parameters (MTF -0.118), but the smaller pool the decode carries on with takes one more servo step, to -0.225, at field 6, inside the averaged fields.  See docs/technical/vits-servos.md, \"Calibrating before the first frame\"."
 
 
 # The two captures below are not radius cuts.  They are whole captures from
