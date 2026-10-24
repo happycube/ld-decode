@@ -1066,7 +1066,8 @@ def refine_pilot_zcs(demod_pilot, linelocs, n, length_px, freq, linelen, pilot_m
         if l > 1:
             spacing = (linelocs[l] - linelocs[l - 1]) / linelen
             if spacing > 0.1:
-                adjfreq = freq / spacing
+                # a long line (slow disc) stretches the pilot period too
+                adjfreq = freq * spacing
         pl = (adjfreq / pilot_mhz) / 2
         plen[l] = pl
 

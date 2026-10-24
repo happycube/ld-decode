@@ -1957,7 +1957,8 @@ class FieldPAL(Field):
                 if l > 1:
                     spacing = (linelocs[l] - linelocs[l - 1]) / self.rf.linelen
                     if spacing > 0.1:
-                        adjfreq /= spacing
+                        # a long line (slow disc) stretches the pilot period too
+                        adjfreq *= spacing
 
                 plen[l] = (adjfreq / self.rf.SysParams["pilot_mhz"]) / 2
 

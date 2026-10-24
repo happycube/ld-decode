@@ -170,7 +170,7 @@ owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "The 2T pulse and the luminance references it is judged against. Worst allowance in the radius baseline on both systems, and it grows outwards; see docs/technical/vits-radius-baseline.md, \"The 2T pulse was judged against the wrong reference\"."
 
 
-# domesday-ds2-community-north-inner (PAL): 3 of its checks fail.
+# domesday-ds2-community-north-inner (PAL): 5 of its checks fail.
 
 [[deviation]]
 capture = "domesday-ds2-community-north-inner"
@@ -202,12 +202,36 @@ capture = "domesday-ds2-community-north-inner"
 check = "pal-multiburst-field2/chroma_bar_100"
 field_line = 20
 parity = "second"
-measured = 42.695
+measured = 41.745
 unit = "IRE"
-band_used = 1.12
-ceiling = 1.24
+band_used = 1.27
+ceiling = 1.40
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
-reason = "The chroma strength the first frame is written at.  The warm-up now waits for the 2T servo to settle at -1.0 and writes after 14.5 frames, with the multiburst chroma-band ceiling at -1.428; the 20-frame warm-up it replaced let the ceiling trim on to -1.293 first, and the bar read 43.84.  The ceiling relaxes to -1.359 a few fields into the decode, inside the fields the conformance average reads.  See docs/technical/vits-servos.md, \"Calibrating before the first frame\"."
+reason = "The chroma strength the first frame is written at.  The warm-up waits for the 2T servo to settle and writes after 12.5 frames with the multiburst chroma-band ceiling at -1.292.  Re-recorded (42.695 -> 41.745) when the PAL pilot line lock stopped doubling the disc's speed error: the line positions moved by up to 0.1 samples, the 2T servo's path moved with them, and it now settles at -0.922 inside its dead-band where it used to step to its -1.0 limit, under less chroma-band lift.  See docs/technical/vits-servos.md, \"Calibrating before the first frame\"."
+
+[[deviation]]
+capture = "domesday-ds2-community-north-inner"
+check = "pal-multiburst-field1/packet_5"
+field_line = 20
+parity = "first"
+measured = 25.511
+unit = "IRE"
+band_used = 1.04
+ceiling = 1.15
+owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
+reason = "The 4.8 MHz packet, read under the MTF level the 2T servo settles at.  BBC Domesday DD86-DS2 sits at the thresholds of three coupled loops; since the PAL pilot line lock stopped doubling the disc's speed error the servo settles at -0.922, inside its dead-band of the -1.0 limit it used to reach, and the packet loses the last 0.4 IRE of pre-demod HF lift (25.92 -> 25.51).  See docs/technical/vits-servos.md."
+
+[[deviation]]
+capture = "domesday-ds2-community-north-inner"
+check = "pal-its-field2/pulse_2t"
+field_line = 19
+parity = "second"
+measured = 97.881
+unit = "IRE"
+band_used = 1.21
+ceiling = 1.33
+owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
+reason = "The 2T pulse under the MTF level the 2T servo settles at.  The two PAL ITS variants on this disc read about 3 IRE apart (field 1 100.8, field 2 97.9), and the servo centres between them; since the PAL pilot line lock stopped doubling the disc's speed error it settles at -0.922 instead of -1.0, which lowers both by about 1 IRE and takes field 2 past its band.  See docs/technical/vits-radius-baseline.md, \"The 2T pulse was judged against the wrong reference\"."
 
 # domesday-ds2-community-north-middle (PAL): 9 of its checks fail.
 
@@ -1149,15 +1173,15 @@ reason = "Frequency response above the band the video EQ servo anchors, where no
 
 [[deviation]]
 capture = "industrial-lv-side1-inner"
-check = "pal-its-field2/pulse_2t"
+check = "pal-its-field1/pulse_2t"
 field_line = 19
-parity = "second"
-measured = 98.006
+parity = "first"
+measured = 103.160
 unit = "IRE"
-band_used = 1.02
-ceiling = 1.12
+band_used = 1.03
+ceiling = 1.14
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
-reason = "The 2T pulse and the luminance references it is judged against. Worst allowance in the radius baseline on both systems, and it grows outwards; see docs/technical/vits-radius-baseline.md, \"The 2T pulse was judged against the wrong reference\"."
+reason = "The 2T pulse and the luminance references it is judged against; see docs/technical/vits-radius-baseline.md, \"The 2T pulse was judged against the wrong reference\".  This disc's two PAL ITS variants carry 2T pulses 4.7 IRE apart (band-limited peaks 103.7 and 99.05), and the 2T servo centres between them, so each sits on its +/-2.5 band.  Which one crosses is decided by the conformance reading taking the highest sample rather than the pulse's peak: at 4fsc the pulse is 3.5 samples wide, so a peak falling between samples reads up to a few percent low, and on PAL's 4-samples-a-frame lattice a line falls at the same sub-sample phase in every frame.  The PAL pilot line lock moving line positions by up to 0.1 samples moved that phase, swapping this entry from field 2 (98.006) to field 1; the band-limited peaks did not change."
 
 [[deviation]]
 capture = "industrial-lv-side1-inner"
