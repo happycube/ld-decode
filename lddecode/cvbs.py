@@ -121,10 +121,11 @@ CREATE TABLE audio_channel_pair (
 CVBS_CLAMP_LO10 = 4
 CVBS_CLAMP_HI10 = 1019
 
-# Range representable by the s16le container CVBS_U10_4FSC stores samples in.
-# Its signed headroom is what lets a decode keep excursions outside the 10-bit
-# range instead of clipping them away.
-CVBS_U10_CONTAINER_MIN = -32768
+# Top of the s16le container CVBS_U10_4FSC stores samples in.  Its headroom
+# above 1023 is what lets a decode keep excursions over peak white instead of
+# clipping them away.  Nothing is written below CVBS_CLAMP_LO10: the bottom
+# reserved codes sit directly under it, and sync-tip noise (with a PAL
+# LaserDisc's pilot troughs) lives there.
 CVBS_U10_CONTAINER_MAX = 32767
 
 
@@ -137,15 +138,18 @@ def encode_cvbs_frame(frame, sample_encoding, has_nonstandard_values=False):
         One frame in the internal working domain, which is the 10-bit sample
         value scaled by 64 (see CVBSWriter._to_spec_levels).
     sample_encoding : str
-        "CVBS_U10_4FSC" (s16le, the 10-bit value with signed headroom) or
+        "CVBS_U10_4FSC" (s16le, the 10-bit value with headroom above 1023) or
         "CVBS_U16_4FSC" (u16le, the 10-bit value shifted left 6).
     has_nonstandard_values : bool
-        CVBS_U10_4FSC only: keep excursions outside the 10-bit range rather
-        than clamping them to the reserved-code bounds.  A u16 container
-        cannot represent them, which is why this option belongs to that
-        encoding alone.
+        CVBS_U10_4FSC only: keep excursions above the 10-bit range rather
+        than clamping them to 1019.  A u16 container cannot represent them,
+        which is why this option belongs to that encoding alone.  The floor
+        stays at 4 either way, and a sample that would land on 1020-1023 is
+        written at the nearest legal code.
 
-    Returns (payload_bytes, clamped_sample_count).
+    Returns (payload_bytes, clamped_sample_count): the count is every
+    sample moved off a value the encoding may not carry, whether clamped to
+    a bound or moved off a reserved code.
 
     Both encodings quantise to the *nearest* 10-bit code, so a decode written
     either way holds the same sample values.  Pure: no file access and no
@@ -154,18 +158,33 @@ def encode_cvbs_frame(frame, sample_encoding, has_nonstandard_values=False):
     # The working domain is 10-bit * 64, so this is the sample value itself.
     frame_10 = frame / 64.0
 
-    if sample_encoding == "CVBS_U10_4FSC":
-        if has_nonstandard_values:
-            lo, hi = CVBS_U10_CONTAINER_MIN, CVBS_U10_CONTAINER_MAX
-        else:
-            lo, hi = CVBS_CLAMP_LO10, CVBS_CLAMP_HI10
+    # Nothing goes below 4 on any path: the bottom reserved codes (0-3) sit
+    # directly under it, and a floor anywhere lower lets sync-tip noise
+    # straddle them.  CVBS file format specification -
+    # sample-encoding-presets: protected values 0-3 and 1020-1023.
+    lo = CVBS_CLAMP_LO10
+    if sample_encoding == "CVBS_U10_4FSC" and has_nonstandard_values:
+        hi = CVBS_U10_CONTAINER_MAX
     else:
-        lo, hi = CVBS_CLAMP_LO10, CVBS_CLAMP_HI10
+        hi = CVBS_CLAMP_HI10
 
     n_clamped = int(np.count_nonzero((frame_10 < lo) | (frame_10 > hi)))
     if n_clamped:
         frame_10 = np.clip(frame_10, lo, hi)
-    frame_10 = np.round(frame_10)
+    codes = np.round(frame_10)
+
+    if hi > CVBS_CLAMP_HI10:
+        # The headroom lies above 1023; the reserved codes below it stay
+        # reserved.  A sample that would round onto one goes to the nearest
+        # code either side (1020-1021 -> 1019, 1022-1023 -> 1024).
+        high = (codes > CVBS_CLAMP_HI10) & (codes <= 1023)
+        n_reserved = int(np.count_nonzero(high))
+        if n_reserved:
+            codes = np.where(
+                high, np.where(frame_10 < 1021.5, CVBS_CLAMP_HI10, 1024.0),
+                codes)
+            n_clamped += n_reserved
+    frame_10 = codes
 
     if sample_encoding == "CVBS_U10_4FSC":
         return frame_10.astype("<i2").tobytes(), n_clamped
@@ -190,7 +209,7 @@ class CVBSWriter:
     sidecars (<basename>.dropouts.meta, <basename>.efm + .efm.meta).
 
     The sample encoding preset governs the binary format of the .cvbs
-    file.  CVBS_U10_4FSC (s16le, 10-bit domain with signed headroom)
+    file.  CVBS_U10_4FSC (s16le, 10-bit domain with headroom above 1023)
     is selected automatically when the signal contains non-standard
     values such as PAL pilot bursts; CVBS_U16_4FSC (u16le, 10-bit<<6)
     is used otherwise.  An explicit choice overrides the auto-selection.

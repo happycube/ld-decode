@@ -20,7 +20,6 @@ from lddecode.cvbs import (
     CVBS_CLAMP_HI10,
     CVBS_CLAMP_LO10,
     CVBS_U10_CONTAINER_MAX,
-    CVBS_U10_CONTAINER_MIN,
     encode_cvbs_frame,
 )
 
@@ -136,30 +135,61 @@ def test_reserved_codes_are_never_written(encoding):
 # --- CVBS_U10_4FSC signed headroom ---------------------------------------
 
 
-def test_u10_keeps_excursions_when_the_decode_has_nonstandard_values():
-    # This is the reason the u10 encoding exists: a decode carrying PAL pilot
-    # burst residue or chroma overshoot keeps it instead of being clipped to
-    # the reserved-code bounds.
-    frame = working_domain([-2000, -1, 0, 1023, 1024, 5000])
+def test_u10_keeps_excursions_above_white_when_the_decode_has_nonstandard_values():
+    # This is the reason the u10 encoding exists: a decode carrying chroma
+    # overshoot above peak keeps it instead of being clipped to 1019.
+    frame = working_domain([4, 1019, 1024, 5000])
     payload, n_clamped = encode_cvbs_frame(frame, U10, has_nonstandard_values=True)
-    np.testing.assert_array_equal(
-        decode(payload, U10), [-2000, -1, 0, 1023, 1024, 5000])
+    np.testing.assert_array_equal(decode(payload, U10), [4, 1019, 1024, 5000])
     assert n_clamped == 0
 
 
-def test_u10_headroom_is_bounded_by_the_signed_container():
-    frame = working_domain([CVBS_U10_CONTAINER_MIN - 10,
-                            CVBS_U10_CONTAINER_MAX + 10])
+def test_u10_headroom_still_never_writes_a_reserved_code():
+    # The spec keeps 0-3 and 1020-1023 out of conformant output whatever
+    # headroom the encoding offers.  A PAL LaserDisc's sync tip sits at 4
+    # with noise and the pilot's troughs straddling the bottom codes, so
+    # every PAL decode wrote hundreds of thousands of them.
+    frame = working_domain(np.linspace(-500, 1500, 8192))
+    out = decode(encode_cvbs_frame(frame, U10, has_nonstandard_values=True)[0],
+                 U10)
+    assert not np.any((out >= 0) & (out <= 3))
+    assert not np.any((out >= 1020) & (out <= 1023))
+    assert out.max() > 1023
+
+
+@pytest.mark.parametrize("encoding", [U10, U16])
+@pytest.mark.parametrize("headroom", [False, True])
+def test_nothing_is_written_below_4(encoding, headroom):
+    # The floor is 4 on every path, headroom or not: anything lower (the
+    # pilot troughs and noise under a PAL LaserDisc's sync tip, a chroma
+    # excursion below it) is written at 4 and counted.
+    frame = working_domain([-2000, -0.6, -0.4, 0.0, 1.5, 3.49, 3.5, 4.0])
+    payload, n_clamped = encode_cvbs_frame(frame, encoding,
+                                           has_nonstandard_values=headroom)
+    np.testing.assert_array_equal(decode(payload, encoding),
+                                  [4, 4, 4, 4, 4, 4, 4, 4])
+    assert n_clamped == 7
+
+
+def test_u10_headroom_moves_a_top_reserved_code_to_the_nearest_legal_one():
+    frame = working_domain([1019.6, 1021.49, 1021.51, 1023.4])
     payload, n_clamped = encode_cvbs_frame(frame, U10, has_nonstandard_values=True)
     np.testing.assert_array_equal(
-        decode(payload, U10), [CVBS_U10_CONTAINER_MIN, CVBS_U10_CONTAINER_MAX])
-    assert n_clamped == 2
+        decode(payload, U10), [1019, 1019, 1024, 1024])
+    assert n_clamped == 4
+
+
+def test_u10_headroom_is_bounded_by_the_signed_container():
+    frame = working_domain([CVBS_U10_CONTAINER_MAX + 10])
+    payload, n_clamped = encode_cvbs_frame(frame, U10, has_nonstandard_values=True)
+    np.testing.assert_array_equal(decode(payload, U10), [CVBS_U10_CONTAINER_MAX])
+    assert n_clamped == 1
 
 
 def test_headroom_is_not_offered_by_the_unsigned_encoding():
-    # A u16 container cannot represent a negative sample, so the same frame
-    # is clamped whatever the caller asks for; ld-decode selects u10 for such
-    # a decode rather than losing the excursions here.
+    # The u16 path clamps above white whatever the caller asks for;
+    # ld-decode selects u10 for such a decode rather than losing the
+    # excursions here.
     frame = working_domain([-2000, 5000])
     out = decode(
         encode_cvbs_frame(frame, U16, has_nonstandard_values=True)[0], U16)
