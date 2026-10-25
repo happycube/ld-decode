@@ -1744,10 +1744,14 @@ class Field:
         # rfdecode.demod_absurd_hz, which records the counts both bounds give
         # on the test captures).
         video = f.data["video"]
+        # The PAL pilot is taken out of demod for the sync-region test: its
+        # troughs reach sync_min (see dropout_flags).
+        demod_pilot = (video["demod_pilot"] if isPAL
+                       else np.empty(0, dtype=np.float32))
         iserr = np.empty(n, dtype=np.bool_)
         dropout_flags(
             iserr, rfhpf, rf_lo, rf_hi, rot_delay,
-            video["demod"], video["demod_05"], video["demod_raw"],
+            video["demod"], video["demod_05"], video["demod_raw"], demod_pilot,
             normal_min, normal_max, normal_min_05, normal_max_05,
             sync_min, sync_min_05, self.rf.demod_absurd_hz,
             sync_starts, sync_ends, keep_start, keep_end,
@@ -1772,7 +1776,9 @@ class Field:
                 errlist.append((curerr[0] - 8, curerr[1] + 4))
                 curerr = (e, e)
 
-        errlist.append(curerr)
+        # The last run takes the same margins as the rest: unpadded, a real
+        # dropout came out shorter whenever nothing followed it in the field.
+        errlist.append((curerr[0] - 8, curerr[1] + 4))
 
         return errlist
 
