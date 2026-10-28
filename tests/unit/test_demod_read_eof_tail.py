@@ -167,6 +167,20 @@ def test_an_invalid_field_in_a_whole_window_is_still_skipped_past():
     assert offset == 5000
 
 
+def test_an_invalid_fields_skip_is_taken_from_the_buffer_like_a_valid_ones():
+    # A read from 40000 decodes a buffer from the block boundary at 32768,
+    # where nextfieldoffset is measured: both skips land at 32768 + 5000.
+    rawdecode = {"startloc": 32768, "truncated": False}
+
+    _, valid_offset = LDdecode.decodefield(
+        _decodefield_stub(rawdecode, valid=True), 40000, 0)
+    _, invalid_offset = LDdecode.decodefield(
+        _decodefield_stub(rawdecode, valid=False), 40000, 0)
+
+    assert valid_offset == 5000 - (40000 - 32768)
+    assert invalid_offset == valid_offset
+
+
 def test_a_valid_field_in_a_truncated_window_is_kept():
     stub = _decodefield_stub({"startloc": 0, "truncated": True}, valid=True)
 

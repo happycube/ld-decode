@@ -3070,15 +3070,17 @@ class LDdecode:
 
         lpf_wrapper()
 
+        # nextfieldoffset is measured in the decoded buffer, which starts
+        # at the block boundary up to a block before readloc.  This holds
+        # for an invalid field's skip as much as for a valid field's next
+        # start: taken from `start` as it stood, a re-read from 20 lines
+        # before line 0 landed up to a block late and crept from there.
         offset = f.nextfieldoffset - (readloc - rawdecode["startloc"])
 
-        if not f.valid:
-            if rawdecode.get("truncated"):
-                # the window was cut short by EOF and holds no whole
-                # field: nothing further in the input can either
-                return None, None
-            # logs.logger.info("Bad data - jumping one second")
-            offset = f.nextfieldoffset
+        if not f.valid and rawdecode.get("truncated"):
+            # the window was cut short by EOF and holds no whole
+            # field: nothing further in the input can either
+            return None, None
 
         return f, offset
 
