@@ -434,6 +434,12 @@ class Field:
     output_black = 0x0400  # NTSC default
     output_white = 0xC800
 
+    # A read window that runs this many lines past where a field needs sync
+    # pulses, with none there, has seen the signal end, not a dropout.  The
+    # trusted (narrow) window never reaches this far past line 0, so only a
+    # wide re-acquisition read can drop a field this way.
+    SYNC_LOST_LINES = 100
+
     def __init__(
         self,
         rf,
@@ -1271,6 +1277,19 @@ class Field:
         # If we don't have enough data at the end, move onto the next field
         lastline = (self.rawpulses[-1].start - line0loc) / meanlinelen
         if lastline < proclines:
+            # Unless the window already runs a long way past where the
+            # field needs pulses: then the sync itself stops partway
+            # through the field (the signal ends, at the end of a disc),
+            # and re-reading from 20 lines before line 0 would find the
+            # same field cut short in the same place, forever.
+            windowlines = (len(self.data["video"]["demod"]) - line0loc) / meanlinelen
+            if windowlines >= proclines + self.SYNC_LOST_LINES:
+                if not self.initphase:
+                    logs.logger.error(
+                        f"Sync lost at line {int(lastline)} of the field - dropping field")
+
+                return None, None, line0loc + (self.inlinelen * 200)
+
             return None, None, line0loc - (meanlinelen * 20)
 
         n = len(validpulses)
