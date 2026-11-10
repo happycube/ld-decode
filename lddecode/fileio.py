@@ -4,6 +4,7 @@ Originally split out of utils.py, which now only re-exports it.
 """
 
 import logging
+import shlex
 import subprocess
 import threading
 
@@ -167,7 +168,11 @@ def samples_to_s16(data):
     32768; casting those straight to int16 wraps (u16) or leaves an 8-bit
     signal in the bottom of the range (u8).  Convert them the way ffmpeg's
     u8/u16le -> pcm_s16le conversion does, so a cut or test .ldf matches
-    what the resampling path would have produced.  Signed input is cast
+    what the resampling path would have produced.  Float input (the .rf
+    loader's, already scaled by 32768) is rounded and limited to the int16
+    range as ffmpeg's f32 -> s16 conversion does
+    (av_clip_int16(lrintf(x * 32768))): a full-scale +1.0 sample is 32768,
+    which a plain cast wraps to -32768.  Signed integer input is cast
     unchanged.
     """
     data = np.asarray(data)
@@ -175,6 +180,8 @@ def samples_to_s16(data):
         return ((data.astype(np.int16) - 128) * 256).astype(np.int16)
     if data.dtype == np.uint16:
         return (data.astype(np.int32) - 32768).astype(np.int16)
+    if np.issubdtype(data.dtype, np.floating):
+        return np.clip(np.rint(data), -32768, 32767).astype(np.int16)
     return data.astype(np.int16)
 
 
@@ -303,7 +310,16 @@ def load_packed_data_4_40(infile, sample, readlen):
 
 
 class LoadFFmpeg:
-    """Load samples from a wide variety of formats using ffmpeg."""
+    """Load samples from a wide variety of formats using ffmpeg.
+
+    A read that runs out of samples returns None, as at end of input.
+    `failed` tells the two apart afterwards: None when ffmpeg reached the
+    end of its input and exited cleanly, otherwise a description of how it
+    stopped.
+    """
+
+    # How long to wait for ffmpeg to exit once its output has ended (s)
+    EXIT_TIMEOUT = 10
 
     def __init__(self, input_args=[], output_args=[]):
         self.input_args = input_args
@@ -311,6 +327,8 @@ class LoadFFmpeg:
 
         # ffmpeg subprocess
         self.ffmpeg = None
+
+        self.failed = None
 
         # The number of the next byte ffmpeg will return
         self.position = 0
@@ -336,11 +354,26 @@ class LoadFFmpeg:
         data = self.ffmpeg.stdout.read(count)
         self.position += len(data)
 
+        if len(data) < count:
+            self._check_exit()
+
         self.rewind_buf += data
         if len(self.rewind_buf) > 2 * self.rewind_size:
             del self.rewind_buf[: len(self.rewind_buf) - self.rewind_size]
 
         return data
+
+    def _check_exit(self):
+        """ffmpeg's output has ended: record whether it ended cleanly."""
+        if self.failed is not None:
+            return
+        try:
+            code = self.ffmpeg.wait(timeout=self.EXIT_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            self.failed = "ffmpeg stopped producing samples but did not exit"
+            return
+        if code != 0:
+            self.failed = f"ffmpeg exited with status {code}"
 
     def read(self, infile, sample, readlen):
         sample_bytes = sample * 2
@@ -494,6 +527,10 @@ class LoadLDF:
     threads.  A single decode thread is what bounds a threaded decode: at
     ``-t 8`` it runs ~87% busy at half its standalone rate, and the field
     dispatcher spends most of its time waiting on it for raw samples.
+
+    A FLAC decode error ends the input, as end of file does: reads past it
+    return None.  `failed` tells the two apart afterwards: None at a clean
+    end of file, otherwise a description of the error.
     """
 
     def __init__(self, filename, decode_threads=1):
@@ -526,6 +563,8 @@ class LoadLDF:
         self._eof = False
         self._reader_thread = None
         self._stop_event = None
+
+        self.failed = None
 
     def _start_decoder(self, sample):
         """Start/reset the decoder so the next sample returned is `sample`."""
@@ -627,11 +666,15 @@ class LoadLDF:
                             return
                         ring.write(data)
                         self._cv.notify_all()
-        except Exception:
-            # Treated as end of input, as before, but logged so a decode
-            # that stops early on a corrupt frame says why.
+        except Exception as error:
+            # Ends the input like end of file, but logged, and recorded in
+            # `failed` so the caller can report the output as incomplete
+            # rather than finished.
             logging.getLogger("lddecode").error(
                 "FLAC decode failed; treating as end of input", exc_info=True)
+            with self._cv:
+                if self._ring is ring and not stop_event.is_set():
+                    self.failed = f"FLAC decode failed: {error!r}"
         finally:
             try:
                 container.close()
@@ -738,15 +781,23 @@ class LoadLDF:
         return self.read(infile, sample, readlen)
 
 
+def ffmpeg_command(outname: str, opts: str):
+    """The ffmpeg argv that encodes s16le samples on stdin into outname.
+
+    `opts` are extra output options as one shell-style string: split with
+    shell quoting rules (so a quoted value may hold spaces, and runs of
+    spaces separate nothing), but never run through a shell.
+    """
+    cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "quiet",
+           "-f", "s16le", "-ar", "40k", "-ac", "1", "-i", "-"]
+    if opts:
+        cmd += shlex.split(opts)
+    return [*cmd, outname]
+
+
 def ffmpeg_pipe(outname: str, opts: str):
-    cmd = "ffmpeg -y -hide_banner -loglevel quiet -f s16le -ar 40k -ac 1 -i -"
-    if opts and len(opts):
-        cmd += f" {opts}"
-
-    cmd = cmd.split(' ')
-
     process = subprocess.Popen(
-        [*cmd, outname],
+        ffmpeg_command(outname, opts),
         stdin=subprocess.PIPE,
     )
 

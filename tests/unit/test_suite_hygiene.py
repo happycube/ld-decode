@@ -1,9 +1,13 @@
 """Guards the unit/functional boundary.
 
 TESTING.md states the rule as a review failure: a file under ``tests/unit/``
-must not reach for the filesystem, a subprocess, the network, or the
-``testdata/`` submodule.  Review catches that unreliably, so it is asserted
-here instead.
+must not reach for the filesystem, a subprocess, the network, the system
+clock, or the ``testdata/`` submodule.  Review catches that unreliably, so it
+is asserted here instead, by the tokens that reach them: ``open(`` and its
+pathlib and NumPy equivalents, ``importlib.resources`` for package data, and
+the clock reads.  A token table cannot see a call into library code that
+reads the machine (the auto thread count reading sysfs, say); those are
+closed by injecting the reader, as build_options does.
 
 Only executable code is scanned.  Comments and docstrings are stripped first,
 because a prose reference to a capture file -- citing which spec sheet a
@@ -38,6 +42,19 @@ FORBIDDEN = {
     "tmp_path": "hold the data in memory; a unit test writes nothing",
     "requests": "a unit test makes no network calls",
     "testdata": "a suite needing real captures belongs in tests/functional/",
+    # Reading a file by other means than open(): package data, pathlib.
+    "np.load(": "build the array in the test; a shipped data file is "
+                "checked from tests/functional/",
+    "importlib.resources": "a shipped data file is checked from tests/functional/",
+    "read_text(": "hold the text in memory",
+    "read_bytes(": "hold the bytes in memory, or use io.BytesIO",
+    "write_text(": "a unit test writes nothing",
+    "write_bytes(": "a unit test writes nothing",
+    # The clock as an input.  Waiting on an Event with a timeout is not
+    # reading the clock; polling for a deadline is.
+    "time.time(": "inject a clock, or wait on an Event",
+    "time.monotonic(": "inject a clock, or wait on an Event",
+    "time.perf_counter(": "inject a clock, or wait on an Event",
 }
 
 SELF = pathlib.Path(__file__).name

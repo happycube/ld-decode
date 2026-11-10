@@ -30,4 +30,27 @@ def test_ranges_and_blank_entries_are_understood():
 def test_missing_topology_falls_back_to_the_logical_count(monkeypatch):
     import os
     monkeypatch.setattr(os, "cpu_count", lambda: 12)
-    assert physical_cpu_count(sysfs="/nonexistent/sysfs") == 12
+    assert physical_cpu_count(read_lists=lambda sysfs: []) == 12
+
+
+def test_an_unreadable_topology_falls_back_to_the_logical_count(monkeypatch):
+    import os
+
+    def unreadable(sysfs):
+        raise OSError("permission denied")
+
+    monkeypatch.setattr(os, "cpu_count", lambda: 12)
+    assert physical_cpu_count(read_lists=unreadable) == 12
+
+
+def test_the_topology_is_read_from_the_given_sysfs(monkeypatch):
+    import os
+    seen = []
+
+    def lists(sysfs):
+        seen.append(sysfs)
+        return [f"{k % 4},{k % 4 + 4}" for k in range(8)]
+
+    monkeypatch.setattr(os, "cpu_count", lambda: 8)
+    assert physical_cpu_count(sysfs="/sys/x", read_lists=lists) == 4
+    assert seen == ["/sys/x"]

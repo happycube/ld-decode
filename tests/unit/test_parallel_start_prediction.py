@@ -128,3 +128,32 @@ def test_a_reanchoring_during_a_span_read_is_kept():
     finally:
         release.set()
         engine.stop()
+
+
+def test_estimates_for_fields_already_dispatched_are_not_kept():
+    """At steady flow the dispatcher is a pipeline depth ahead of the
+    completions, so a finished job's successor is already in flight and
+    its estimate can never be used.  Storing it anyway grew the table by
+    one entry per field for the whole decode."""
+    engine = make_engine()
+    try:
+        starts = [1000.0 + seq * NOMINAL for seq in range(502)]
+        engine._next_dispatch = 510          # the dispatcher is ahead
+        for seq in range(500):
+            engine._refine(seq, starts[seq], 0,
+                           finished(starts[seq], starts[seq + 1], seq % 2 == 0))
+
+        assert engine._est_start == {}
+    finally:
+        engine.stop()
+
+
+def test_an_estimate_for_the_next_field_to_dispatch_is_kept():
+    engine = make_engine()
+    try:
+        engine._next_dispatch = 5
+        engine._refine(4, 10000.0, 0, finished(10000.0, 10000.0 + NOMINAL, True))
+
+        assert engine._est_start == {5: pytest.approx(10000.0 + NOMINAL)}
+    finally:
+        engine.stop()

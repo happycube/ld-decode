@@ -118,13 +118,23 @@ jobs:
           fi
           nix develop .#default -c python3 analysis/vits_summary.py \
             "${reports[@]}" --output "$GITHUB_STEP_SUMMARY"
+          # The calibrated decodes (--calibration_frames 10) report under the
+          # same capture names, so they get a summary of their own.
+          calibrated=(build/testout/calibrated/*.conformance.json)
+          if [ ${#calibrated[@]} -gt 0 ]; then
+            nix develop .#default -c python3 analysis/vits_summary.py \
+              "${calibrated[@]}" --output "$GITHUB_STEP_SUMMARY" \
+              --title "VITS conformance, calibrated (--calibration_frames 10)"
+          fi
 
       - name: Upload the conformance reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: vits-conformance-reports
-          path: build/testout/*.conformance.json
+          path: |
+            build/testout/*.conformance.json
+            build/testout/calibrated/*.conformance.json
           if-no-files-found: warn
 
   build-appimage:

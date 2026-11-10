@@ -23,6 +23,10 @@ def build_parser():
     parser = argparse.ArgumentParser(
         description="Extract a sample area from raw RF laserdisc captures.  (Similar to ld-decode, except it outputs samples)"
     )
+    # main() answers --version before parsing; registered so --help lists it
+    from lddecode import __version__
+    parser.add_argument("-v", "--version", action="version", version=__version__,
+                        help="print the version and exit")
     parser.add_argument("infile", metavar="infile", type=str, help="source file")
     parser.add_argument(
         "outfile",
@@ -104,6 +108,25 @@ def resolve_output(outname):
     return outname, makelds, makeldf
 
 
+def same_file(infile, outname):
+    """True when outname names the capture being read.
+
+    The writers open their destination for writing (ffmpeg with -y), which
+    truncates it; with the input as the destination the capture is gone
+    before the first read.  Compared by identity when the output already
+    exists (catching links and /dev/stdout redirected onto the input), and
+    by resolved path otherwise.  "-" input (stdin) is never a file here.
+    """
+    if infile == "-":
+        return False
+    try:
+        if os.path.exists(outname) and os.path.samefile(infile, outname):
+            return True
+    except OSError:
+        pass
+    return os.path.realpath(infile) == os.path.realpath(outname)
+
+
 def main(args=None):
     # Handle --version early before argparse requires positional arguments
     check_args = args if args is not None else sys.argv[1:]
@@ -111,11 +134,6 @@ def main(args=None):
         from lddecode import __version__
         print(__version__)
         sys.exit(0)
-
-    # Enable IO debug logging automatically in CI to help diagnose hangs when
-    # ffmpeg fallback is used instead of ld-ldf-reader.
-    if os.getenv("GITHUB_ACTIONS") and not os.getenv("LDDECODE_DEBUG_IO"):
-        os.environ["LDDECODE_DEBUG_IO"] = "1"
 
     parser = build_parser()
     args = parser.parse_args(args)
@@ -125,6 +143,19 @@ def main(args=None):
 
     if args.pal and args.ntsc:
         print("ERROR: Can only be PAL or NTSC", file=sys.stderr)
+        sys.exit(1)
+
+    if args.start < 0:
+        print("ERROR: --start must not be negative", file=sys.stderr)
+        sys.exit(1)
+
+    if args.length != -1 and args.length < 1:
+        print("ERROR: --length must be at least 1 frame", file=sys.stderr)
+        sys.exit(1)
+
+    # Before anything opens the output: every writer truncates it.
+    if same_file(filename, outname):
+        print(f"ERROR: output {args.outfile} is the input file", file=sys.stderr)
         sys.exit(1)
 
     try:
@@ -204,6 +235,17 @@ def main(args=None):
         # following command never reads a truncated file.
         if process is not None:
             process.wait()
+
+    input_failed = getattr(loader, "failed", None)
+    if input_failed:
+        print(f"ERROR: input ended early ({input_failed}); {outname} is incomplete",
+              file=sys.stderr)
+        sys.exit(1)
+
+    if process is not None and process.returncode != 0:
+        print(f"ERROR: encoder exited with status {process.returncode}; "
+              f"{outname} is incomplete", file=sys.stderr)
+        sys.exit(1)
 
 if __name__ == "__main__":
     main(sys.argv[1:])

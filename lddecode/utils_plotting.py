@@ -1,4 +1,10 @@
 #!/usr/bin/python3
+"""utils_plotting - plotting and display helpers for decoder notebooks.
+
+Draws fields, lines and filter responses with matplotlib and shows images
+through IPython/PIL, for interactive work in Jupyter.  Not imported by the
+command-line tools, which do not need those dependencies.
+"""
 
 import io
 from io import BytesIO
@@ -301,28 +307,36 @@ def plotline(field, line, offset=0, usecs=63.5, linelocs=None, data="demod"):
 
 
 class RGBoutput:
-    def __init__(self, outname):
-        try:
-            rv = subprocess.run(
-                "ld-chroma-decoder {0}.tbc {0}.rgb".format(outname),
-                capture_output=True,
-                shell=True,
-            )
-        except:
+    """An RGB render of <outname>.tbc by ld-chroma-decoder, read back.
 
-            return None
+    Runs ld-chroma-decoder as an argument list, never through a shell, so
+    the name is passed through literally.  Raises RuntimeError when the
+    tool cannot be run, fails, or reports no picture size and frame count.
+    `run` runs it (subprocess.run's interface; a test passes a stand-in).
+    """
+
+    def __init__(self, outname, run=subprocess.run):
+        try:
+            rv = run(
+                ["ld-chroma-decoder", f"{outname}.tbc", f"{outname}.rgb"],
+                capture_output=True,
+                check=False,
+            )
+        except OSError as e:
+            raise RuntimeError(f"could not run ld-chroma-decoder: {e}") from e
+
+        stderr = rv.stderr.decode("utf-8", errors="replace")
 
         if rv.returncode != 0:
-            print("Failed to run ld-chroma-decoder: ", rv.returncode)
-            print(rv.stderr.split("\n"))
-
-        stderr = rv.stderr.decode("utf-8")
+            raise RuntimeError(
+                f"ld-chroma-decoder exited with status {rv.returncode}:\n{stderr}")
 
         outres = re.search("trimmed to ([0-9]{3}) x ([0-9]{3})", stderr)
         outframes = re.search("complete - ([0-9]*) frames", stderr)
 
         if outres is None or outframes is None:
-            print("Error, did not decode correctly")
+            raise RuntimeError(
+                f"ld-chroma-decoder did not report a picture size and frame count:\n{stderr}")
 
         self.x, self.y = [int(v) for v in outres.groups()]
         self.numframes = int(outframes.groups()[0])

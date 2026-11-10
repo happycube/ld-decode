@@ -3,7 +3,6 @@
 Originally split out of utils.py, which now only re-exports it.
 """
 
-import functools
 import math
 from math import tau
 
@@ -579,9 +578,16 @@ def band_subtract(half_spectrum, x, lo, n):
 
 
 def unit_phasor(s):
-    """s reduced to its phase: s / |s|, floored well below its peak."""
+    """s reduced to its phase: s / |s|, floored well below its peak.
+
+    An all-zero s (a zeroed capture, a dropout) has no phase: it returns
+    zeros, a phasor nothing can be fitted against, rather than 0/0 NaN.
+    Returns a new array."""
     mag = np.abs(s)
-    return s / np.maximum(mag, 1e-6 * mag.max())
+    peak = mag.max() if mag.size else 0.0
+    if peak == 0:
+        return np.zeros_like(s)
+    return s / np.maximum(mag, 1e-6 * peak)
 
 
 @njit(cache=True, nogil=True)

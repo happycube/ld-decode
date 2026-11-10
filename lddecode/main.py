@@ -30,6 +30,11 @@ def build_parser():
         epilog=options_epilog,
         formatter_class=argparse.RawTextHelpFormatter
     )
+    # main() answers --version before parsing (the positionals would
+    # otherwise be demanded first); registered here so --help lists it.
+    from lddecode import __version__
+    parser.add_argument("-v", "--version", action="version", version=__version__,
+                        help="print the version and exit")
     parser.add_argument("infile", metavar="infile", type=str, help="source file")
     parser.add_argument(
         "outfile", metavar="outfile", type=str, help="base name for destination files"
@@ -543,12 +548,15 @@ def build_parser():
     return parser
 
 
-def build_options(args):
+def build_options(args, core_count=None):
     """Map parsed arguments onto the decoder's option dictionaries.
 
     Pure apart from the fatal exits on contradictory flags: everything
     here is decided by the command line alone, before any file is opened,
-    so the mapping can be checked without running a decode.
+    so the mapping can be checked without running a decode.  The one thing
+    the machine decides, the auto (-t 0) thread count, comes from
+    `core_count`, a callable giving the physical core count
+    (physical_cpu_count when None).
     """
     vid_standard = "PAL" if args.pal else "NTSC"
 
@@ -580,7 +588,7 @@ def build_options(args):
         # FFT-bound and two of them on one core's siblings run at about
         # half speed each, so an 8-core/16-thread box decodes faster with
         # 6 workers than with 10.
-        threads = min(max(physical_cpu_count() - 2, 1), 10)
+        threads = min(max((core_count or physical_cpu_count)() - 2, 1), 10)
 
     extra_options = {
         "threads": threads,
@@ -692,19 +700,26 @@ def count_cores(sibling_lists):
     return len(cores)
 
 
-def physical_cpu_count(sysfs="/sys/devices/system/cpu"):
+def read_sibling_lists(sysfs):
+    """Every thread_siblings_list in the Linux CPU topology under sysfs."""
+    import glob
+    lists = []
+    for path in glob.glob(
+            os.path.join(sysfs, "cpu[0-9]*", "topology",
+                         "thread_siblings_list")):
+        with open(path) as fh:
+            lists.append(fh.read())
+    return lists
+
+
+def physical_cpu_count(sysfs="/sys/devices/system/cpu",
+                       read_lists=read_sibling_lists):
     """Physical cores on this machine, from the Linux CPU topology;
-    the logical count wherever that is not exposed."""
+    the logical count wherever that is not exposed.  `read_lists(sysfs)`
+    returns the topology's thread_siblings_list strings."""
     logical = os.cpu_count() or 4
     try:
-        import glob
-        lists = []
-        for path in glob.glob(
-                os.path.join(sysfs, "cpu[0-9]*", "topology",
-                             "thread_siblings_list")):
-            with open(path) as fh:
-                lists.append(fh.read())
-        cores = count_cores(lists)
+        cores = count_cores(read_lists(sysfs))
     except (OSError, ValueError):
         return logical
     return cores if 0 < cores <= logical else logical
@@ -838,7 +853,16 @@ def main(args=None):
         if f is None or (args.ignoreleadout == False and ldd.leadOut == True):
             done = True
 
-    if ldd.fields_written:
+    # A loader that hit a decode error ends the input as end of file does;
+    # the output then stops there, and must not be reported as complete.
+    input_failed = getattr(loader, "failed", None)
+    exit_status = 1 if input_failed else 0
+    if input_failed:
+        message = (f"Input could not be read past sample {int(ldd.fdoffset)} "
+                   f"({input_failed}); the output is incomplete")
+        logger.error(message)
+        print(f"\nERROR: {message}", file=sys.stderr)
+    elif ldd.fields_written:
         print("\nCompleted, exiting.", file=sys.stderr)
     else:
         print("\nCompleted without handling any frames.", file=sys.stderr)
@@ -850,16 +874,20 @@ def main(args=None):
         # NTSC: ~665K samples/field, PAL: ~1.05M samples/field
         buffer_samples = 1100000  # Safe for both NTSC and PAL
         end_sample_position = int(ldd.fdoffset) + buffer_samples
-        write_input_ldf_file(
+        if not write_input_ldf_file(
             ldd,
             args.write_test_ldf,
             start_sample_position,
             end_sample_position,
             filename,
             args.inputfreq,
-        )
+        ):
+            exit_status = 1
 
     cleanup()
+
+    if exit_status:
+        sys.exit(exit_status)
 
 #    print(time.time()-firstdecode)
 
@@ -870,16 +898,20 @@ def write_input_ldf_file(
     """
     Write the input samples that were decoded to a .ldf file.
     This creates a reproducible test case for bug reporting.
+
+    The .ldf is encoded under a ".part" name and moved into place only once
+    every sample was read and ffmpeg exited cleanly, so a failed run leaves
+    nothing that looks like a good capture.  Returns True on success.
     """
     print(f"\nWriting input samples to {output_filename}...", file=sys.stderr)
     print(f"  Start sample: {start_sample}", file=sys.stderr)
     print(f"  End sample: {end_sample}", file=sys.stderr)
-    
+
     sample_count = end_sample - start_sample
     if sample_count <= 0:
         print("WARNING: No samples to write", file=sys.stderr)
-        return
-    
+        return True
+
     # Create a new loader for reading the input file independently.  It must
     # resample exactly as the decode's loader did: the start and end positions
     # count 40 MHz samples, and the .ldf is written at 40 MHz.
@@ -887,44 +919,78 @@ def write_input_ldf_file(
         input_loader = make_loader(input_filename, inputfreq)
     except ValueError as e:
         print(f"ERROR: Cannot open input file for writing .ldf: {e}", file=sys.stderr)
-        return
-    
-    # Use compression level 6 (balanced between size and speed)
-    process, fd = ldf_pipe(output_filename, compression_level=6)
-    
+        return False
+
+    partial = output_filename + ".part"
+    failure = None
+    ended_at = None
+    samples_written = 0
 
     # The raw loaders seek and read a file object (and LoadFFmpeg hands it to
     # ffmpeg as stdin), so give them one rather than the filename.
-    infile = open(input_filename, "rb")
+    try:
+        infile = open(input_filename, "rb")
+        # Use compression level 6 (balanced between size and speed)
+        process, fd = ldf_pipe(partial, compression_level=6)
+    except OSError as e:
+        print(f"ERROR: Cannot write {output_filename}: {e}", file=sys.stderr)
+        return False
 
     try:
         # Write samples in chunks to avoid memory issues
         chunk_size = 16384
-        samples_written = 0
-        
+
         for i in range(start_sample, end_sample, chunk_size):
-            remaining = end_sample - i
-            read_len = min(chunk_size, remaining)
-            
+            read_len = min(chunk_size, end_sample - i)
+
             # Read the data from the input file using the independent loader
             data = input_loader(infile, i, read_len)
-            if data is not None and len(data) == read_len:
-                dataout = samples_to_s16(data)
-                fd.write(dataout)
-                samples_written += read_len
-            else:
-                print(f"WARNING: Short read at sample {i}", file=sys.stderr)
+            if data is None or len(data) != read_len:
+                # The window runs past the last decoded field, so a decode
+                # that reached the end of the input ends here too.
+                ended_at = i
                 break
-        
-        print(f"  Samples written: {samples_written}", file=sys.stderr)
-        
+            fd.write(samples_to_s16(data))
+            samples_written += read_len
+    except OSError as e:
+        # BrokenPipeError: ffmpeg has died, and its status says more
+        if not isinstance(e, BrokenPipeError):
+            failure = str(e)
     finally:
         infile.close()
-        fd.close()
-        # Wait for ffmpeg to finish encoding
-        process.wait()
-        
-    print(f"Successfully wrote {output_filename}", file=sys.stderr)
+        try:
+            fd.close()
+        except OSError:
+            pass
+        status = process.wait()
+
+    input_failed = getattr(input_loader, "failed", None)
+    if failure is None and input_failed:
+        failure = f"input could not be read past sample {ended_at} ({input_failed})"
+    if failure is None and status != 0:
+        failure = f"ffmpeg exited with status {status}"
+    if failure is None:
+        try:
+            os.replace(partial, output_filename)
+        except OSError as e:
+            failure = f"could not move it into place: {e}"
+
+    if failure is not None:
+        print(f"ERROR: {output_filename} was not written: {failure}", file=sys.stderr)
+        try:
+            os.unlink(partial)
+        except OSError:
+            pass
+        return False
+
+    print(f"  Samples written: {samples_written}", file=sys.stderr)
+    if ended_at is not None:
+        print(f"Wrote {output_filename}: the input ends at sample {ended_at}, "
+              f"so it holds {samples_written} of the {sample_count} samples "
+              "requested", file=sys.stderr)
+    else:
+        print(f"Successfully wrote {output_filename}", file=sys.stderr)
+    return True
 
 
 if __name__ == "__main__":

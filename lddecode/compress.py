@@ -434,9 +434,17 @@ def compress(path, flac, level, extension, show_progress):
         _err("Error: compression of '%s' failed." % path)
         return False
 
-    process = subprocess.Popen(
-        _flac_encode_command(flac, level, partial), stdin=subprocess.PIPE
-    )
+    try:
+        process = subprocess.Popen(
+            _flac_encode_command(flac, level, partial), stdin=subprocess.PIPE
+        )
+    except OSError as e:
+        # flac missing or not runnable: the same failure path as any other,
+        # without leaking the source handle
+        source.close()
+        _err("Error: could not run '%s': %s" % (flac, e))
+        _err("Error: compression of '%s' failed." % path)
+        return False
 
     failure = None
     discarded = 0

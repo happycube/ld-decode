@@ -54,6 +54,7 @@ def fake_cut(monkeypatch):
     monkeypatch.setattr(cut, "make_loader", lambda name, freq: None)
     monkeypatch.setattr(cut, "init_logging", lambda name: None)
     monkeypatch.setattr(cut, "LdsWriter", _FakeWriter)
+    monkeypatch.setattr(cut, "same_file", lambda infile, outname: False)
     monkeypatch.setattr(cut.signal, "signal", lambda *args: None)
 
 

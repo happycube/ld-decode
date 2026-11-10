@@ -10,6 +10,7 @@ Reads RF from a loader, demodulates it (RFDecode), assembles fields
 cut (ld-cut) and start_finder.
 """
 
+import contextlib
 import os
 import sqlite3
 import sys
@@ -29,10 +30,10 @@ from .rfdecode import RFDecode
 from .field import (CHROMA_DG_ANCHOR_IRE, Field, FieldAnchor, FieldNTSC,
                     FieldPAL, chroma_dg_output_picture, field_output_view)
 from .parallel import OrderedOutputLane
+from .cvbs import parse_build_version
 from .fileio import ldf_pipe
 from .filters import inrange
 from .metrics import (
-    ITS_FLATNESS_FRACTION,
     chroma_correction_note,
     detect_levels,
     ITS_WHITE_NOMINAL_IRE,
@@ -2933,13 +2934,19 @@ class LDdecode:
 
             Much cheaper than demod_read (one video product, no audio/EFM/
             dropout work) and deliberately uncached: the only caller probes
-            widely-spaced positions and never revisits them. """
+            widely-spaced positions and never revisits them.
+
+            Safe beside a threaded decode: with a block cache, each raw
+            read takes its reader lock, as demod_read's do. """
         blocksize = self.demod_blocksize
         brange = range(begin // blocksize, ((begin + length) // blocksize) + 1)
+        read_lock = (self.block_cache.read_lock if self.block_cache is not None
+                     else contextlib.nullcontext())
 
         sync = []
         for b in brange:
-            rawinput = self._read_raw_block(b)
+            with read_lock:
+                rawinput = self._read_raw_block(b)
             if rawinput is None:
                 return None
             sync.append(self.rf.demodblock_sync(data=rawinput, cut=True))
@@ -4422,15 +4429,12 @@ class LDdecode:
         if not f:
             return
 
-        git_branch = git_commit = ""
-        if isinstance(self.version, str) and self.version:
-            if ":" in self.version:
-                git_branch, _, git_commit = self.version.partition(":")
-            elif "/" in self.version and self.version.count("/") == 1:
-                git_branch, git_commit = self.version.split("/", 1)
-            elif "+git." in self.version:
-                git_commit = self.version.split("+git.", 1)[1].split(".", 1)[0]
-                git_branch = "release"
+        # The .tbc.db has always written "" for an unrecorded value, and
+        # "release" as the branch of a build that names none.
+        git_branch, git_commit = parse_build_version(self.version)
+        if git_branch is None:
+            git_branch = "release" if git_commit else ""
+        git_commit = git_commit or ""
 
         spu = f.rf.SysParams["outfreq"]
         badj = -1.4

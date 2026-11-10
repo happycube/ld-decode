@@ -145,6 +145,18 @@ def test_the_half_slice_refuses_a_band_that_runs_past_nyquist():
         fft_do_slice_half(half, blocklen // 2 - 8, 64, blocklen)
 
 
+@pytest.mark.parametrize("lowbin", [-4, 1024 // 2 - 8])
+def test_the_whole_slice_refuses_a_band_outside_the_positive_half(lowbin):
+    """Below DC a negative lowbin indexes from the end of the spectrum, and
+    past Nyquist the band overlaps its own mirror: both used to come back as
+    a silently wrong slice."""
+    blocklen = 1024
+    fdomain = npfft.fft(np.zeros(blocklen))
+
+    with pytest.raises(ValueError, match="outside the positive half"):
+        fft_do_slice(fdomain, lowbin, 64, blocklen)
+
+
 def test_the_half_slice_refuses_a_spectrum_of_the_wrong_length():
     """Handed a whole spectrum by mistake, the conjugate mirror it builds
     would be of the wrong bins entirely."""

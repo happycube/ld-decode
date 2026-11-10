@@ -932,7 +932,12 @@ class FieldJobEngine:
         with self._cond:
             if self._gen != gen:
                 return
-            self._est_start[seq + 1] = nxt
+            # Only a successor not yet dispatched can use it: the
+            # dispatcher pops an estimate as it dispatches that seq, so
+            # one stored for a job already in flight - the steady state,
+            # a pipeline depth ahead - is never read and never freed.
+            if seq + 1 >= self._next_dispatch:
+                self._est_start[seq + 1] = nxt
 
             # Field-length observations must come from two *refined*
             # estimates - measuring against the predicted start would

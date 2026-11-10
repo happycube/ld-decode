@@ -24,7 +24,7 @@ import scipy.fft as npfft
 
 import pytest
 
-from lddecode.core import RFDecode
+from lddecode.rfdecode import RFDecode
 from lddecode.filters import emphasis_iir, filtfft
 from lddecode.dsp import genwave
 

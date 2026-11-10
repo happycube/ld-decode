@@ -85,7 +85,8 @@ A progress bar is shown by default when standard error is a terminal.
 ld-cut is a utility for cutting samples from raw RF LaserDisc captures (useful to create samples of trouble-areas when issue reporting), and can now also be used to compress .lds files.  The utility allows you to seek and specify start and end frames similar to the main ld-decode application.
 
 ```
-usage: ld-cut [-h] [-s start] [-l length] [-S seek] [-E end] [-p] [-n]
+usage: ld-cut [-h] [-v] [-s start] [-l length] [-S seek] [-E end] [-p] [-n]
+              [-C LDFCOMP] [-F FFMPEG_OPTIONS]
               infile outfile
 
 Extract a sample area from raw RF laserdisc captures. (Similar to ld-decode,
@@ -93,19 +94,31 @@ except it outputs samples)
 
 positional arguments:
   infile                source file
-  outfile               destination file (recommended to use .lds or .ldf suffixes)
+  outfile               destination file (recommended to use .lds suffix)
 
-optional arguments:
+options:
   -h, --help            show this help message and exit
-  -s start, --start start
-                        rough jump to frame n of capture (default is 0)
-  -l length, --length length
-                        limit length to n frames
-  -S seek, --seek seek  seek to frame n of capture
-  -E end, --end end     cutting: last frame
+  -v, --version         print the version and exit
+  -s, --start start     rough jump to frame n of capture (default is 0)
+  -l, --length length   limit length to n frames
+  -S, --seek seek       seek to frame n of capture
+  -E, --end end         cutting: last frame
   -p, --pal             source is in PAL format
   -n, --ntsc            source is in NTSC format
+  -C, --ldf-compression-level LDFCOMP
+                        compression level for .ldf files
+  -F, --fmpeg-options FFMPEG_OPTIONS
+                        custom ffmpeg format options
 ```
+
+Every writer truncates its destination as it opens it, so ld-cut refuses an
+`outfile` that is the `infile` - by the same name, another path to it, or a
+link - before it opens anything, and exits with status 1.  It does the same for
+a negative `--start` or a `--length` under one frame.  It also exits with
+status 1, saying the output is incomplete, when the input stops decoding
+partway (a corrupt compressed capture) or the encoder exits with an error.
+`-F` options are split with shell quoting rules, so a quoted value may contain
+spaces; they are never run through a shell.
 
 Using ld-cut, you can do parallel .ldf encodings (optionally targeting different directories) using shell scripting pretty easily:
 

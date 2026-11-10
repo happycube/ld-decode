@@ -547,11 +547,21 @@ Number of worker processes to decode fields with.
 - **Type:** Integer
 - **Default:** 0 (auto): the machine's physical cores minus 2, capped at 10
 - **Range:** 1 (serial decode) to number of CPU cores
-- **Note:** The workers are FFT-bound, so counting SMT (hyper-threading) siblings as cores oversubscribes the machine; an 8-core/16-thread CPU decodes faster with 6 workers than with 10. Output is bit-identical for any thread count.
+- **Note:** The workers are FFT-bound, so counting SMT (hyper-threading) siblings as cores oversubscribes the machine; an 8-core/16-thread CPU decodes faster with 6 workers than with 10. A threaded decode tolerates minor MTF drift and chroma DG trims in fields decoded ahead, so its output can differ slightly with the thread count; add `--exact-speculation` for output bit-identical to `-t 1`.
 
 **Example:**
 ```bash
 ld-decode -t 8 input.ldf output
+```
+
+#### `--exact-speculation`
+With `-t`, discard every field decoded ahead under old decoder parameters whenever a parameter changes, instead of tolerating minor MTF drift and chroma DG trims.
+- **Default:** Disabled
+- **Note:** The output is then bit-identical to a serial (`-t 1`) decode on any machine, at some cost in throughput. The CI comparisons and conformance decodes use it.
+
+**Example:**
+```bash
+ld-decode -t 8 --exact-speculation input.ldf output
 ```
 
 ### Output Options
@@ -724,7 +734,7 @@ The decoder will stop processing when:
 1. The requested number of frames (`--length`) has been decoded
 2. Lead-out is detected (unless `--ignoreleadout` is specified)
 3. End of file is reached
-4. An error occurs
+4. An error occurs (exit status 1, as also when the input stops decoding partway; see below)
 5. User interrupts with Ctrl+C (SIGINT)
 
 ## Error Conditions
@@ -753,10 +763,22 @@ ERROR: Seeking failed
 ```
 Unable to seek to the requested frame; may indicate corrupted data or invalid frame number.
 
+### Input Ends Early
+```
+ERROR: Input could not be read past sample N (FLAC decode failed: ...); the output is incomplete
+```
+A compressed input (`.ldf`, `.flac`, `.raw.oga`) hit a frame it could not decode, or ffmpeg stopped with an error while reading another format.  Everything decoded up to that point is written as usual, but ld-decode exits with status 1 rather than reporting a complete decode.  A capture that is merely shorter than expected (truncated) ends cleanly instead, since the file really does end there.
+
+### Write Test LDF Failure
+```
+ERROR: bug.ldf was not written: ffmpeg exited with status 1
+```
+`--write-test-ldf` encodes to `<name>.part` and moves it into place only when the input was read and the encode finished cleanly; otherwise the partial file is removed and ld-decode exits with status 1.  When the decode ran to the end of the input, the test file holds what there is and says how many of the requested samples that was.
+
 ## Notes
 
 - **Default Video Standard**: If neither `--PAL` nor `--NTSC` is specified, NTSC is assumed.
-- **Thread Count**: The default of 4 threads is suitable for most systems; adjust based on your CPU core count.
+- **Thread Count**: The default (`-t 0`) picks the machine's physical cores minus 2, capped at 10; `-t 1` decodes serially.
 - **Sample Rate**: The decoder internally works at 40MHz; all other sample rates are resampled.
 - **Frame Counting**: Frames are counted as complete video frames; internally, the decoder processes fields (2 fields = 1 frame).
 - **Lead-out**: The lead-out section marks the end of valid disc content; decoding typically stops here unless `--ignoreleadout` is used.

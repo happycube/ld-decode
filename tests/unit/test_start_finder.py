@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from lddecode.core import RFDecode
+from lddecode.rfdecode import RFDecode
 from lddecode.start_finder import (
     FrameObservation,
     StartFinder,

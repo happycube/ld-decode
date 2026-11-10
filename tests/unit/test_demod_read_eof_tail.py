@@ -27,7 +27,7 @@ import types
 import numpy as np
 import pytest
 
-from lddecode.core import LDdecode
+from lddecode.decoder import LDdecode
 
 pytestmark = [pytest.mark.unit, pytest.mark.decode]
 

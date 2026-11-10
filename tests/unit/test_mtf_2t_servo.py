@@ -17,9 +17,8 @@ import numpy as np
 import pytest
 
 from lddecode import utils_logging as logs
-from lddecode.decoder import (
-    ITS_FLATNESS_FRACTION, LDdecode, measure_its_2t_ratio,
-)
+from lddecode.decoder import LDdecode
+from lddecode.metrics import ITS_FLATNESS_FRACTION, measure_its_2t_ratio
 
 pytestmark = [pytest.mark.unit]
 

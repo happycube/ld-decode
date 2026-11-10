@@ -293,8 +293,22 @@ class AC3_DPLL:
 
             self.clk_counter = new_counter
 
-        self.prev_i = input_i[n - sd :].copy()
-        self.prev_q = input_q[n - sd :].copy()
+        # Keep exactly the last symbol_distance samples seen.  A block
+        # shorter than that (an empty one included) shifts the old tail
+        # along rather than replacing it with a short array, which the
+        # next call would index past the end of.
+        if n >= sd:
+            self.prev_i = input_i[n - sd :].astype(np.float32)
+            self.prev_q = input_q[n - sd :].astype(np.float32)
+        else:
+            tail_i = np.empty(sd, np.float32)
+            tail_q = np.empty(sd, np.float32)
+            tail_i[: sd - n] = self.prev_i[n:]
+            tail_q[: sd - n] = self.prev_q[n:]
+            tail_i[sd - n :] = input_i
+            tail_q[sd - n :] = input_q
+            self.prev_i = tail_i
+            self.prev_q = tail_q
 
         return output[:count]
 

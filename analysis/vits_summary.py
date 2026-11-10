@@ -135,22 +135,28 @@ def _table(headers, rows):
     return "\n".join(out)
 
 
-def render_summary(payloads):
-    """The whole step summary as Markdown."""
+def render_summary(payloads, title="VITS conformance"):
+    """The whole step summary as Markdown, under a `title` heading."""
     captures = capture_rows(payloads)
     failures = failure_rows(payloads)
     failed_captures = sum(1 for row in captures if row[-1] == "FAIL")
     carried = sum(row[5] for row in captures)
 
-    lines = ["## VITS conformance", ""]
+    lines = [f"## {title}", ""]
     if failed_captures:
         lines.append(f"**{len(failures)} checks failed across "
                      f"{failed_captures} of {len(captures)} captures.**")
     else:
         lines.append(f"**{len(captures)} captures, no failing checks.**")
     if carried:
+        # each report names the list it was judged against
+        named = sorted({os.path.basename(path) for path in (
+            (payload.get("context") or {}).get("known_deviations")
+            for payload in payloads) if path})
+        lists = ", ".join(f"`analysis/{name}`" for name in named or
+                          ["vits_known_deviations.toml"])
         lines.append(f"{carried} known deviations were carried; they are"
-                     " listed in `analysis/vits_known_deviations.toml`.")
+                     f" listed in {lists}.")
     lines.extend([
         "",
         _table(("Capture", "System", "Fields", "Passed", "Failed", "Known",
@@ -189,9 +195,13 @@ def main(argv=None) -> int:
     parser.add_argument("--output", default=None,
                         help="write here instead of stdout (appends, so "
                              "$GITHUB_STEP_SUMMARY can be given directly)")
+    parser.add_argument("--title", default="VITS conformance",
+                        help=("the summary's heading, to tell apart reports "
+                              "whose captures share names (the calibrated "
+                              "decodes under testout/calibrated/)"))
     args = parser.parse_args(argv)
 
-    text = render_summary(load_reports(sorted(args.reports)))
+    text = render_summary(load_reports(sorted(args.reports)), args.title)
     if args.output:
         with open(args.output, "a", encoding="utf-8") as handle:
             handle.write(text + "\n")

@@ -112,7 +112,8 @@ def _downscale_audio_to_output(
     for i in range(len(arange) - 1):
         start = int(locs[i])
         end = int(locs[i + 1])
-        if end > start and end < len(audio_left):
+        # end is exclusive: an interval may run to the end of the buffer
+        if end > start and end <= len(audio_left):
             output_left = nb_mean(audio_left[start:end])
             output_right = nb_mean(audio_right[start:end])
 

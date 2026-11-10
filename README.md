@@ -58,8 +58,9 @@ For installation instructions after building, see **[INSTALL.md](INSTALL.md)** w
 
 ## Threaded decoding
 
-`ld-decode -t N ...` decodes with N workers (`-t 0` picks a sensible
-count automatically; the default `-t 1` is plain serial decode).  Each
+`ld-decode -t N ...` decodes with N workers (the default, `-t 0`, picks
+the machine's physical cores minus 2, capped at 10; `-t 1` is plain
+serial decode).  Each
 field is decoded *entirely* in a worker process — demodulation, sync
 location, downscale, metrics — speculatively, at a predicted start
 offset; the main thread validates each result against the true field
@@ -74,9 +75,10 @@ fields decode serially while the MTF/AGC/de-emphasis calibration loops
 settle; the worker processes are then built from the calibrated
 parameters), and a field decoded under parameters that calibration
 later adjusts is automatically re-decoded, along with anything decoded
-ahead of it.  **Output is bit-identical for any `-t` value** — this is
-asserted by the test suite — so there is no quality trade-off, only
-memory (~150–200 MB per worker process).  Steady-state throughput on a
+ahead of it.  **With `--exact-speculation` the output is bit-identical
+for any `-t` value** — this is asserted by the test suite — so there is
+no quality trade-off, only memory (~150–200 MB per worker process); by
+default a little calibration drift is tolerated, as described below.  Steady-state throughput on a
 36-core machine: ~2.4 fields/s serial → ~13 fields/s at `-t 12`
 (≈5.7×).  Modes that consume raw RF samples at write time (`--RF-TBC`,
 AC3) automatically use block-level parallelism instead (~4×);
@@ -109,20 +111,24 @@ table of the `.tbc.db` (and as DEBUG lines in the decode log).
 
 ## CVBS output mode
 
-ld-decode writes spec-compliant CVBS output by default (see
+ld-decode writes CVBS output by default (see
 `cvbs-file-format-specification/`); `--tbc` selects the legacy
-`.tbc`/`.tbc.db` video output instead:
+`.tbc`/`.tbc.db` video output instead.  The default output is not yet
+fully spec compliant: it keeps the decoder's own line origin (see the
+note below); `--cvbs-spec-origin` writes the 0H-aligned origin the spec
+requires.
 
 - `<out>.cvbs` — sample data in whole frames (NTSC: 477,750
-  samples/frame; PAL: 709,379), 0H-aligned as the spec requires (each
-  line's sync edge falls in the sample before its sample 0)
+  samples/frame; PAL: 709,379); with `--cvbs-spec-origin`, 0H-aligned as
+  the spec requires (each line's sync edge falls in the sample before its
+  sample 0)
 - `<out>.meta` — the spec's SQLite metadata; the signal state is measured
   and declared honestly (`STANDARD_STABLE_LOCKED` when the
   burst-vs-lattice phase is stable within 3°, else
   `STANDARD_STABLE_UNLOCKED`), and `sequence_continuous` is declared from
   the decode (TRUE only when no field was dropped and the fieldPhaseID
   progression never broke)
-- `<out>_audio_00.wav` — spec WAV analog audio, frame-aligned with the
+- `<out>_audio_0.wav` — spec WAV analog audio, frame-aligned with the
   written frames, with an honest `audio_locked` flag (PAL is frame-locked
   at 44100 Hz; NTSC is locked only with `--ntsc_audio_rate`)
 - `<out>.dropouts.meta` — the dropout extension sidecar (dropout runs in

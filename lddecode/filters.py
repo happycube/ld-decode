@@ -205,8 +205,18 @@ def fft_determine_slices(center, min_bandwidth, freq_hz, bins_in):
 
 def fft_do_slice(fdomain, lowbin, nbins, blocklen):
     """ Uses lowbin and nbins as returned from fft_determine_slices to
-        cut the fft """
+        cut the fft
+
+        Raises ValueError if the band starts below DC or runs past Nyquist:
+        a negative lowbin would index from the end of the spectrum, and a
+        band past Nyquist overlaps its own mirror, both silently wrong
+        slices (as fft_do_slice_half refuses the same). """
     nbins_half = nbins // 2
+    if lowbin < 0 or lowbin + nbins_half > blocklen // 2:
+        raise ValueError(
+            "bins %d..%d fall outside the positive half of a %d-sample block"
+            % (lowbin, lowbin + nbins_half, blocklen)
+        )
     return np.concatenate(
         [
             fdomain[lowbin : lowbin + nbins_half],

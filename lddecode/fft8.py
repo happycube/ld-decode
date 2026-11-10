@@ -1,4 +1,11 @@
 #! /usr/bin/python
+"""fft8 - plot the spectrum of a raw 8- or 16-bit capture.
+
+A legacy standalone development script: it loads the first million samples
+of a capture and plots their FFT with matplotlib, which it imports at module
+scope.  Nothing in the decoder imports it.
+"""
+
 import math
 import matplotlib.pyplot as plt
 import numpy as np

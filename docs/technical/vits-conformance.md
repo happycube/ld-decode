@@ -135,6 +135,12 @@ names, and judged against
 the same kind of list for those decodes; the two differ where the pass changes
 what a cut settles to.
 
+The six-frame PAL clip the functional lane decodes (`decode-pal-cvbs`, judged by
+`conformance-pal-vits`) is carried in the default list too, under the name
+`pal-cvbs`. It is decoded with `-t 1`, so its readings do not depend on the
+machine either. It used to pin only how many of its checks failed, which let one
+fault being fixed and another appearing cancel out.
+
 ## The radius sweep
 
 The modulation transfer function of a LaserDisc changes with radius, so a

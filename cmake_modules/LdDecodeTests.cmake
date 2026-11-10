@@ -147,11 +147,14 @@ endif()
 
 # Test that ld-decode can decode NTSC files and produce TBC output
 # (CVBS is the default output; --tbc selects the legacy path these
-# comparison and analysis fixtures are built on)
+# comparison and analysis fixtures are built on).  -t 1: these are the
+# serial references the compare-*-parallel-* tests hold the threaded
+# decodes to, and -t defaults to one thread per spare physical core, which
+# would make the reference threaded on any machine with more than three.
 add_test(
     NAME decode-ntsc-basic
     COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
-        --tbc
+        --tbc -t 1
         ${TESTDATA_DIR}/ntsc/ve-snw-cut.ldf
         ${CMAKE_BINARY_DIR}/testout/ntsc-basic
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
@@ -162,11 +165,12 @@ set_tests_properties(decode-ntsc-basic PROPERTIES
     TIMEOUT 1800
 )
 
-# Test that ld-decode can decode PAL files and produce TBC output
+# Test that ld-decode can decode PAL files and produce TBC output (serial,
+# as decode-ntsc-basic)
 add_test(
     NAME decode-pal-basic
     COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
-        --tbc --PAL
+        --tbc -t 1 --PAL
         ${TESTDATA_DIR}/pal/ggv-mb-1khz.ldf
         ${CMAKE_BINARY_DIR}/testout/pal-basic
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
@@ -310,7 +314,7 @@ set_tests_properties(verify-ntsc-cvbs PROPERTIES
 add_test(
     NAME decode-pal-cvbs
     COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
-        --cvbs --cvbs-spec-origin --PAL -l 6
+        --cvbs --cvbs-spec-origin --PAL -l 6 -t 1
         ${TESTDATA_DIR}/pal/ggv-mb-1khz.ldf
         ${CMAKE_BINARY_DIR}/testout/pal-cvbs
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
@@ -537,12 +541,18 @@ add_test(
     NAME conformance-pal-vits
     COMMAND ${Python3_EXECUTABLE} ${ANALYSIS_DIR}/vits_conformance.py
         ${CMAKE_BINARY_DIR}/testout/pal-cvbs.cvbs
+        --known-deviations ${ANALYSIS_DIR}/vits_known_deviations.toml
         --json ${CMAKE_BINARY_DIR}/testout/pal-cvbs.conformance.json
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 set_tests_properties(conformance-pal-vits PROPERTIES
     LABELS "functional"
     FIXTURES_REQUIRED pal-cvbs
+    # The six failing checks are listed by name under "pal-cvbs" in
+    # analysis/vits_known_deviations.toml, so this goes red if any of them
+    # passes (delete its entry), gets worse than its ceiling, or another
+    # check fails - a count alone let a fix and a new fault cancel out.
+    # How the count came to be six:
     # 6 -> 5 with the two-sided inverse-MTF chroma bound: pulse_2t on the
     # second-field ITS came back inside its band.  The capture is six
     # frames, fewer than any servo needs to settle, so what remains is
@@ -555,7 +565,7 @@ set_tests_properties(conformance-pal-vits PROPERTIES
     # lift of the multiburst chroma-band ceiling it found there is not
     # reached in the six that are, and packet_4 on the first-field
     # multiburst reads 25.50 IRE against a band edge of 25.7 (26.06).
-    PASS_REGULAR_EXPRESSION "VITS CONFORMANCE: FAIL \\(6 of 46 checks failed"
+    PASS_REGULAR_EXPRESSION "VITS CONFORMANCE: PASS"
     TIMEOUT 300
 )
 
@@ -961,7 +971,7 @@ set_tests_properties(efm-quality-issue176 PROPERTIES
 add_test(
     NAME decode-jason-pll
     COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
-        --tbc --PAL --efm_demod pll
+        --tbc --PAL --efm_demod pll -t 1
         ${TESTDATA_DIR}/pal/jason-testpattern.ldf
         ${CMAKE_BINARY_DIR}/testout/jason-pll
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}

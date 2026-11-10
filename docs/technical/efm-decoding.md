@@ -144,6 +144,7 @@ Loop constants are exposed for sweeps (leave unset for the tuned defaults):
 | `LDDECODE_EFM_TIMING_TED` | `0.5` | Assumed timing-error-detector gain (calibrates the loop bandwidth) |
 | `LDDECODE_EFM_TIMING_ACQBOOST` | `6` | Loop-bandwidth boost while acquiring |
 | `LDDECODE_EFM_TIMING_EQTAPS` | `0` | Adaptive-equaliser tap count (same as `--efm_eq_taps`) |
+| `LDDECODE_EFM_RESTORE_SYNC` | `1` | `0` leaves a missed sync pattern's runs as read, instead of rewriting them to T11-T11 |
 
 ### Adaptive equaliser (`--efm_eq_taps`, experimental, off by default)
 

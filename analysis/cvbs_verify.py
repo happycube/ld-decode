@@ -13,6 +13,7 @@ Exits 0 and prints "CVBS VERIFY: PASS" when all checks pass.
 """
 
 import os
+import pathlib
 import sqlite3
 import struct
 import sys
@@ -240,15 +241,22 @@ def main():
             break
     # .cvbs is the spec extension; .composite is the pre-spec name.
     comp = base + ".cvbs"
-    if not os.path.exists(comp):
+    if not os.path.exists(comp) and os.path.exists(base + ".composite"):
         comp = base + ".composite"
     meta = base + ".meta"
 
     print(f"CVBS verify: {comp}")
 
     # --- metadata ---
+    check(os.path.exists(comp), f"{os.path.basename(comp)} present")
     check(os.path.exists(meta), ".meta present")
-    con = sqlite3.connect(meta)
+    if failures:
+        # nothing further can be read, and connecting would create the .meta
+        print()
+        print(f"CVBS VERIFY: FAIL ({len(failures)} failed checks)")
+        sys.exit(1)
+    # read-only: a verifier never writes the file it is judging
+    con = sqlite3.connect(pathlib.Path(meta).resolve().as_uri() + "?mode=ro", uri=True)
     uv = con.execute("PRAGMA user_version").fetchone()[0]
     check(uv == 11, f"user_version = 11 (got {uv})")
     row = con.execute(

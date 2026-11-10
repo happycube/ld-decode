@@ -27,12 +27,17 @@ def parse(*argv):
     return build_parser().parse_args(BASE + list(argv))
 
 
-def options(*argv):
-    return build_options(parse(*argv))
+#: The physical core count the auto thread count is chosen from here, in
+#: place of reading the machine's topology.
+CORES = 12
 
 
-def extra(*argv):
-    return options(*argv)["extra_options"]
+def options(*argv, cores=CORES):
+    return build_options(parse(*argv), core_count=lambda: cores)
+
+
+def extra(*argv, cores=CORES):
+    return options(*argv, cores=cores)["extra_options"]
 
 
 # --- the parser ---------------------------------------------------------
@@ -205,10 +210,11 @@ def test_an_explicit_thread_count_is_used_as_given():
     assert extra("-t", "4")["threads"] == 4
 
 
-def test_the_default_thread_count_is_chosen_from_the_machine():
-    """Auto leaves two cores for the OS and the main loop and caps at ten;
-    the exact number depends on the machine, the bounds do not."""
-    assert 1 <= extra()["threads"] <= 10
+@pytest.mark.parametrize("cores, threads", [(2, 1), (3, 1), (8, 6), (12, 10), (36, 10)])
+def test_the_default_thread_count_is_chosen_from_the_machine(cores, threads):
+    """Auto leaves two cores for the OS and the main loop, keeps at least
+    one, and caps at ten."""
+    assert extra(cores=cores)["threads"] == threads
 
 
 def test_speculation_and_demod_only_threading_are_off_by_default():
@@ -480,3 +486,16 @@ def test_ld_cut_writes_raw_samples_to_stdout():
 def test_the_ld_cut_suffix_match_is_case_sensitive():
     """Pinned rather than endorsed: an upper-case .LDS is written raw."""
     assert cut.resolve_output("cut.LDS") == ("cut.LDS", False, False)
+
+
+def test_version_is_a_registered_option(capsys):
+    """--version used to work only through main()'s pre-parse check, so
+    --help left it out and parse_args rejected it."""
+    from lddecode import __version__
+
+    parser = build_parser()
+    assert "--version" in parser.format_help()
+    with pytest.raises(SystemExit) as exit_info:
+        parser.parse_args(["--version"])
+    assert exit_info.value.code == 0
+    assert capsys.readouterr().out.strip() == __version__

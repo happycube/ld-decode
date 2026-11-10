@@ -14,7 +14,6 @@ no shared memory is mapped.
 """
 
 import threading
-import time
 from concurrent.futures import Future
 
 import numpy as np
@@ -430,13 +429,21 @@ def test_the_tokens_are_released_when_the_job_finishes():
         slots.acquire({"mtf": 0.9})
         assert slots.publish("mtf", 1.1, {"a": 1}) is False
 
+        # The dispatcher adds the release callback after submit() returns,
+        # so it may run on the dispatcher thread once the job is done:
+        # wait for the release itself rather than polling for its effect.
+        released = threading.Event()
+        release = slots.release
+
+        def release_and_note(tokens):
+            release(tokens)
+            released.set()
+
+        slots.release = release_and_note
         for fut in list(ex.futures):
             fut.set_result({"seq": 0, "valid": False})
-        deadline = time.monotonic() + 5.0
-        while time.monotonic() < deadline:
-            if slots.publish("mtf", 1.1, {"a": 1}):
-                break
-            time.sleep(0.01)
+        assert released.wait(5.0)
+        assert slots.publish("mtf", 1.1, {"a": 1}) is True
     finally:
         engine.stop()
 

@@ -1,5 +1,11 @@
-#!/usr/bin/python3
-# Initialisation for the lddecode package.
+"""lddecode - software-defined decoding of LaserDisc RF captures.
+
+Reads __version__ from the generated version file and names the package's
+modules in __all__.  utils_plotting, the notebook helpers, needs IPython and
+PIL, which are not dependencies of the package, so it is left out of __all__
+to keep "from lddecode import *" working in a normal install; import it by
+name.
+"""
 
 import os
 
@@ -36,6 +42,5 @@ __all__ = [
     "rfdecode",
     "utils",
     "utils_logging",
-    "utils_plotting",
     "__version__",
 ]

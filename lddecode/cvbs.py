@@ -129,6 +129,39 @@ CVBS_CLAMP_HI10 = 1019
 CVBS_U10_CONTAINER_MAX = 32767
 
 
+def parse_build_version(version):
+    """The (git_branch, git_commit) a decoder version string records.
+
+    The version file holds one of
+      "<branch>:<base>+git.<shortrev>[:dirty]"  (CMake configure; the branch
+                                                  is "release" off a branch)
+      "<base>+git.<shortrev>[.dirty]"            (the Nix build)
+      "<branch>/<commit>"                        (older builds)
+    git_commit is the commit hash alone, as the CVBS specification defines
+    it, without the base version or the dirty marker.  Either value is None
+    where the string does not record it (a shortrev of "unknown", or no
+    branch in the Nix form).
+    """
+    if not isinstance(version, str) or not version.strip():
+        return None, None
+    rest = version.strip()
+
+    branch = None
+    if ":" in rest:
+        branch, _, rest = rest.partition(":")
+    elif "+git." not in rest and rest.count("/") == 1:
+        branch, commit = rest.split("/")
+        return branch or None, commit or None
+
+    commit = None
+    if "+git." in rest:
+        rev = rest.split("+git.", 1)[1].split(":", 1)[0].split(".", 1)[0]
+        if rev and rev != "unknown":
+            commit = rev
+
+    return branch or None, commit
+
+
 def encode_cvbs_frame(frame, sample_encoding, has_nonstandard_values=False):
     """Quantise one frame from the writer's working domain to file bytes.
 
@@ -518,7 +551,11 @@ class CVBSWriter:
             frame = np.concatenate([a, b])
 
         frame_id = self.frames_written
-        self._write_frame(frame)
+        if not self._write_frame(frame):
+            # A dropped frame has no id of its own: its dropouts and EFM
+            # rows would take the next frame's, and its audio would run a
+            # frame ahead of the video from here on.
+            return
         self._collect_dropouts(frame_id, fi_a, fi_b)
         self._collect_efm(frame_id, efm_a, efm_b)
         for aud in (aud_a, aud_b):
@@ -564,6 +601,7 @@ class CVBSWriter:
         return (x.astype(np.float64) - blank_dec) * gain + self.blank16
 
     def _write_frame(self, frame):
+        """Encode and write one frame; False if it was dropped instead."""
         fs = self.params["frame_samples"]
         if len(frame) != fs:
             if self.frames_written > 0:
@@ -571,7 +609,7 @@ class CVBSWriter:
             if self.logger:
                 self.logger.warning(
                     "CVBS: frame size %d != %d, dropping", len(frame), fs)
-            return
+            return False
 
         payload, n_clamped = encode_cvbs_frame(
             frame, self.sample_encoding, self.has_nonstandard_values)
@@ -579,6 +617,7 @@ class CVBSWriter:
         self.f_video.write(payload)
 
         self.frames_written += 1
+        return True
 
     # -- burst lock -------------------------------------------------------
 
@@ -883,13 +922,7 @@ class CVBSWriter:
         return con
 
     def _write_meta(self, signal_state, sequence_continuous):
-        # version strings look like "branch:describe[:dirty]"
-        git_branch = git_commit = None
-        if self.version:
-            parts = str(self.version).split(":")
-            git_branch = parts[0] or None
-            if len(parts) > 1:
-                git_commit = ":".join(parts[1:]) or None
+        git_branch, git_commit = parse_build_version(self.version)
 
         meta_path = self.fname_out + ".meta"
         if os.path.exists(meta_path):

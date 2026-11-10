@@ -41,3 +41,16 @@ def test_signed_input_is_cast_unchanged():
 
     np.testing.assert_array_equal(out, raw)
     assert out is not raw
+
+
+def test_float_input_is_rounded_and_kept_in_range_as_ffmpeg_does():
+    """The .rf loader scales float samples by 32768, so full-scale +1.0 is
+    32768: a plain int16 cast wrapped it to -32768."""
+    raw = np.array([-32768.0, -32768.6, -1.5, -0.4, 0.5, 1.6, 32767.4, 32768.0],
+                   dtype=np.float64)
+
+    out = samples_to_s16(raw)
+
+    np.testing.assert_array_equal(
+        out, np.array([-32768, -32768, -2, 0, 0, 2, 32767, 32767], dtype=np.int16))
+    assert out.dtype == np.int16

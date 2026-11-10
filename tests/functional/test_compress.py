@@ -168,6 +168,31 @@ def test_failed_compression_leaves_nothing_behind(tmp_path, monkeypatch):
     assert sorted(p.name for p in tmp_path.iterdir()) == []
 
 
+def test_a_flac_that_cannot_run_fails_compression_cleanly(tmp_path, monkeypatch, capsys):
+    """The source is open by the time flac is launched: a flac that has
+    vanished, or cannot be executed, must take the ordinary failure path
+    rather than raise out of compress() with the source left open."""
+    monkeypatch.chdir(tmp_path)
+    source = tmp_path / "capture.lds"
+    source.write_bytes(bytes(500))
+
+    closed = []
+    real_progress_file = compress.ProgressFile
+
+    class Tracked(real_progress_file):
+        def close(self):
+            closed.append(True)
+            super().close()
+
+    monkeypatch.setattr(compress, "ProgressFile", Tracked)
+
+    assert not compress.compress(str(source), str(tmp_path / "no-such-flac"), 8,
+                                 "ldf", False)
+    assert closed == [True]
+    assert "could not run" in capsys.readouterr().err
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["capture.lds"]
+
+
 @needs_flac
 def test_failed_compression_keeps_a_preexisting_output(tmp_path, monkeypatch):
     """flac -f truncates its output as it starts, so compression has to go via

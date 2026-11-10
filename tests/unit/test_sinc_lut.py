@@ -8,11 +8,10 @@ interpolating between the two rows either side of a position instead of taking
 the nearest one, in both kernels.
 
 These tests build the tables in-process, so the coarse interpolated table is
-measured against a fine one directly rather than against a recorded number, and
-the shipped file is pinned to the same builder.
+measured against a fine one directly rather than against a recorded number.
+The shipped file is pinned to the same builder by
+tests/functional/test_package_data.py, which reads it from the package.
 """
-
-from importlib.resources import files
 
 import numpy as np
 import pytest
@@ -91,22 +90,6 @@ def resample_nearest(buf, locs, lut, phases):
     starts = ints - (sinc_tap_count // 2 - 1)
     taps = buf[starts[:, None] + np.arange(sinc_tap_count)[None, :]]
     return np.einsum("ij,ij->i", taps, rows.astype(np.float64))
-
-
-def test_shipped_table_is_what_the_parameters_build(coarse):
-    """The .npz is generated, so it can fall out of step with dsp.py; this is
-    what catches a parameter change that was never regenerated."""
-    shipped = np.load(files("lddecode") / "sinc_lut.npz")["downscale_sinc_lut"]
-    assert shipped.shape == coarse.shape
-    assert shipped.dtype == coarse.dtype
-    np.testing.assert_array_equal(shipped, coarse)
-
-
-def test_shipped_table_stays_small_enough_to_cache():
-    path = files("lddecode") / "sinc_lut.npz"
-    assert path.stat().st_size <= 64 * 1024
-    lut = np.load(path)["downscale_sinc_lut"]
-    assert lut.nbytes <= 64 * 1024
 
 
 def test_every_row_has_unit_gain_at_dc(coarse):

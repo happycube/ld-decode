@@ -92,6 +92,18 @@ def test_unit_phasor_is_the_carriers_phase_at_unit_magnitude():
     assert np.sqrt(np.mean(err ** 2)) < 0.02
 
 
+def test_an_all_zero_band_has_no_phase_rather_than_nan():
+    """A zeroed capture or dropout region passes the cancel's SNR gate
+    (0 >= SNR * 0); 0 / 0 then spread NaN into the video."""
+    p = unit_phasor(np.zeros(M, dtype=np.complex128))
+
+    assert np.all(p == 0)
+    level = np.zeros(M)
+    video = np.zeros(M, dtype=np.complex128)
+    line, gain = coherent_line_estimate(video, p, level, slice(0, M), FS)
+    assert np.all(np.isfinite(line)) and gain == 0.0
+
+
 def test_a_level_dependent_line_is_estimated_and_removed():
     rng = np.random.default_rng(4)
     t = _lattice()

@@ -12,7 +12,6 @@ in-process executor), so no worker process is spawned.
 """
 
 import threading
-import time
 from concurrent.futures import Future
 
 import pytest
@@ -215,8 +214,21 @@ def test_close_drains_in_flight_work_from_every_executor():
         pool.submit(None, key=seq)
     assert all(len(ex.futures) == 2 for ex in made)
 
+    # close() tells every executor to stop taking work before it waits on
+    # what is in flight; finish the work only once it has.
+    stopped = threading.Event()
+    for ex in made:
+        shutdown = ex.shutdown
+
+        def note_shutdown(wait=True, cancel_futures=False, shutdown=shutdown):
+            shutdown(wait, cancel_futures)
+            if all(e.shutdowns for e in made):
+                stopped.set()
+
+        ex.shutdown = note_shutdown
+
     def finish():
-        time.sleep(0.05)
+        stopped.wait(10)
         for ex in made:
             for fut in ex.futures:
                 fut.set_result(None)

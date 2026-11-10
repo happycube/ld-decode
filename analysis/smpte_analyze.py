@@ -432,10 +432,11 @@ def print_report(system, bar_results, burst_amp, burst_phase, amplitude_pct,
 # Decode helper
 # ---------------------------------------------------------------------------
 
-def decode_lds(lds_path, output_base=None, system="NTSC"):
+def decode_lds(lds_path, output_base=None, system="NTSC", run=subprocess.run):
     """Decode an .lds (or .ldf) file to TBC using ld-decode.
 
-    Returns the path to the .tbc file.
+    `run` runs the decode (subprocess.run's interface; a test passes a
+    stand-in).  Returns the path to the .tbc file.
     """
     if output_base is None:
         # Put the TBC in a temp directory
@@ -456,8 +457,10 @@ def decode_lds(lds_path, output_base=None, system="NTSC"):
     env = os.environ.copy()
     env["PYTHONPATH"] = project_root + os.pathsep + env.get("PYTHONPATH", "")
 
+    # --tbc: this analyses .tbc/.tbc.db, and ld-decode writes CVBS by default
     cmd = [
         sys.executable, ld_decode_main,
+        "--tbc",
         "--PAL" if system == "PAL" else "--NTSC",
         "--length", "3",
         lds_path,
@@ -465,7 +468,7 @@ def decode_lds(lds_path, output_base=None, system="NTSC"):
     ]
 
     print(f"Decoding: {' '.join(cmd)}", file=sys.stderr)
-    result = subprocess.run(cmd, capture_output=True, text=True, env=env)
+    result = run(cmd, capture_output=True, text=True, env=env)
     if result.returncode != 0:
         print(f"Decode stderr:\n{result.stderr}", file=sys.stderr)
         raise RuntimeError(f"ld-decode failed (exit {result.returncode})")

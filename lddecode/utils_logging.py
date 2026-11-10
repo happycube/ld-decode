@@ -10,12 +10,21 @@ logger = None
 
 
 def init_logging(outfile_name, columns=80):
-    """ Sets up a logger with a logfile, status line, and stderr output """
+    """ Sets up a logger with a logfile, status line, and stderr output
+
+    Calling it again replaces what an earlier call set up, closing its log
+    file, rather than adding a second set of handlers beside it.
+    """
 
     statusWritten = False
 
     logger = logging.getLogger("lddecode")
     logger.setLevel(logging.DEBUG)
+
+    for handler in list(logger.handlers):
+        if getattr(handler, "_from_init_logging", False):
+            logger.removeHandler(handler)
+            handler.close()
 
     class StreamHandlerR(logging.StreamHandler):
         def __init__(self):
@@ -34,6 +43,7 @@ def init_logging(outfile_name, columns=80):
 
     logger_stderr = StreamHandlerR()
     logger_stderr.setLevel(logging.INFO)
+    logger_stderr._from_init_logging = True
 
     logger.addHandler(logger_stderr)
 
@@ -51,6 +61,7 @@ def init_logging(outfile_name, columns=80):
             "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
         )
         logger_file.setFormatter(logger_fileformatter)
+        logger_file._from_init_logging = True
 
         logger.addHandler(logger_file)
 

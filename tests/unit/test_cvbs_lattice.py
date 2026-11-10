@@ -64,10 +64,12 @@ def test_pal_lattice_positions_uniform_step():
 
 
 def test_scale_positions_reconstructs_sinusoid():
-    from importlib.resources import files
-    from lddecode.dsp import scale_positions
+    from lddecode.dsp import (build_kaiser_lut, kaiser_beta, scale_positions,
+                              sinc_phase_count, sinc_tap_count)
 
-    lut = np.load(files("lddecode") / "sinc_lut.npz")["downscale_sinc_lut"]
+    # the table the decoder ships (tests/functional/test_package_data.py
+    # pins the .npz to this builder)
+    lut = build_kaiser_lut(kaiser_beta, sinc_tap_count, sinc_phase_count)
 
     n_in = 4096
     freq = 0.037  # cycles/sample, well within band

@@ -123,3 +123,21 @@ def test_every_capture_row_reaches_the_table():
     text = vs.render_summary([payload("a", passed=1), payload("b", passed=1)])
     assert text.count("| a |") == 1
     assert text.count("| b |") == 1
+
+
+def test_the_heading_names_the_set_of_reports():
+    assert vs.render_summary([payload("a", passed=1)]).startswith(
+        "## VITS conformance\n")
+    assert vs.render_summary([payload("a", passed=1)],
+                             "VITS conformance, calibrated").startswith(
+        "## VITS conformance, calibrated\n")
+
+
+def test_the_carried_deviations_name_the_list_they_came_from():
+    report = payload("a", passed=1, known=2)
+    report["context"]["known_deviations"] = (
+        "/src/analysis/vits_known_deviations_calibrated.toml")
+
+    text = vs.render_summary([report])
+
+    assert "listed in `analysis/vits_known_deviations_calibrated.toml`" in text

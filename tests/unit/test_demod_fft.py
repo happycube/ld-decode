@@ -3,7 +3,7 @@ import threading
 import numpy as np
 import scipy.fft as npfft
 
-from lddecode.core import RFDecode
+from lddecode.rfdecode import RFDecode
 from lddecode.utils import unwrap_hilbert
 
 import pytest
