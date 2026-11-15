@@ -276,13 +276,11 @@ set_tests_properties(analyze-ntsc-patterns PROPERTIES
 
 # CVBS output mode: decode to spec-compliant .cvbs/.meta and verify
 # against cvbs-file-format-specification (exact frame sizing, protected
-# values, sync lattice, metadata, WAV audio).  The decoder writes its
-# legacy line origin by default for now, which is not spec compliant, so
-# these decodes ask for the spec's 0H-aligned origin.
+# values, sync lattice, metadata, WAV audio).
 add_test(
     NAME decode-ntsc-cvbs
     COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
-        --cvbs --cvbs-spec-origin -l 6
+        --cvbs -l 6
         ${TESTDATA_DIR}/ntsc/ve-snw-cut.ldf
         ${CMAKE_BINARY_DIR}/testout/ntsc-cvbs
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
@@ -314,7 +312,7 @@ set_tests_properties(verify-ntsc-cvbs PROPERTIES
 add_test(
     NAME decode-pal-cvbs
     COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
-        --cvbs --cvbs-spec-origin --PAL -l 6 -t 1
+        --cvbs --PAL -l 6 -t 1
         ${TESTDATA_DIR}/pal/ggv-mb-1khz.ldf
         ${CMAKE_BINARY_DIR}/testout/pal-cvbs
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
@@ -348,7 +346,7 @@ set_tests_properties(verify-pal-cvbs PROPERTIES
 add_test(
     NAME decode-pal-cvbs-parallel
     COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
-        --cvbs --cvbs-spec-origin --PAL -l 6 -t 8 --exact-speculation
+        --cvbs --PAL -l 6 -t 8 --exact-speculation
         ${TESTDATA_DIR}/pal/ggv-mb-1khz.ldf
         ${CMAKE_BINARY_DIR}/testout/pal-cvbs-parallel
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}

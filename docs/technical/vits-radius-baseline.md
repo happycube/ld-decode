@@ -48,7 +48,7 @@ plus `--exact-speculation`, after `21eeeffa`, with the readout model's line reac
 (`readout_zero_min_hz`, `b4cb5571`; see "What the fourth edition moved").
 The defaults include, since `912a12e1`, the legacy CVBS line origin rather than the spec's
 0H-aligned one. The runner reads every window against the 0H it
-measures, so the origin does not move the figures: decoded again with `--cvbs-spec-origin`,
+measures, so the origin does not move the figures: decoded again with the spec origin (the default again since),
 `ggv1011-side1-inner` is byte-identical, `dolby-surround-side1-inner` differs by float rounding,
 and `industrial-lv-side1-inner`, whose legacy 0H sits a whole sample from the spec's, moves no
 check by more than 0.05 IRE. See "What the fourth edition moved" below for what did move them.

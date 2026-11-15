@@ -113,15 +113,11 @@ table of the `.tbc.db` (and as DEBUG lines in the decode log).
 
 ld-decode writes CVBS output by default (see
 `cvbs-file-format-specification/`); `--tbc` selects the legacy
-`.tbc`/`.tbc.db` video output instead.  The default output is not yet
-fully spec compliant: it keeps the decoder's own line origin (see the
-note below); `--cvbs-spec-origin` writes the 0H-aligned origin the spec
-requires.
+`.tbc`/`.tbc.db` video output instead.
 
 - `<out>.cvbs` — sample data in whole frames (NTSC: 477,750
-  samples/frame; PAL: 709,379); with `--cvbs-spec-origin`, 0H-aligned as
-  the spec requires (each line's sync edge falls in the sample before its
-  sample 0)
+  samples/frame; PAL: 709,379), 0H-aligned as the spec requires (each
+  line's sync edge falls in the sample before its sample 0)
 - `<out>.meta` — the spec's SQLite metadata; the signal state is measured
   and declared honestly (`STANDARD_STABLE_LOCKED` when the
   burst-vs-lattice phase is stable within 3°, else
@@ -144,16 +140,16 @@ output is burst-anchored: the lattice constraint (sampling at 45° steps
 to +U) is defined mod 90°, and 90° of subcarrier is exactly one lattice
 sample, so the anchor is a global sub-sample time shift that tracks the
 disc's Sc/H drift.  Locking the burst leaves 0H wherever the disc's Sc/H
-puts it.  For now the decoder writes its own line origin by default,
-as it did before 0H alignment, for readers built to that layout; such a
-file is not spec compliant (a spec reader can take NTSC colour frame A
-for B), and says so in the `.meta` `capture_notes`.  With
-`--cvbs-spec-origin` the first frame measures 0H and moves the frame
-origin by whole samples (which keeps the lattice) to bring it into the
-sample before sample 0; NTSC's `.tbc` lines start a disc-dependent
-sample or two before a `.cvbs` line for the same reason.  That file
-starts on NTSC colour frame A / PAL sequence frame 1 (fieldPhaseID 1),
-read as the spec does, against 0H.
+puts it, so the first frame measures 0H and moves the frame origin by
+whole samples (which keeps the lattice) to bring it into the sample
+before sample 0; NTSC's `.tbc` lines start a disc-dependent sample or
+two before a `.cvbs` line for the same reason.  The file starts on NTSC
+colour frame A / PAL sequence frame 1 (fieldPhaseID 1), read as the
+spec does, against 0H.  `--cvbs-legacy-origin` keeps the decoder's own
+line origin instead, as written before 0H alignment, for readers built
+to that layout; such a file is not spec compliant (a spec reader can
+take NTSC colour frame A for B), and says so in the `.meta`
+`capture_notes`.
 `analysis/cvbs_verify.py <out>.cvbs` checks an output file against
 the specification (frame sizing, protected values, the 0H sync lattice
 including the PAL slip and the 0H-aligned origin, burst lock, each

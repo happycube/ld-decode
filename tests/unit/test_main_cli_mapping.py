@@ -128,10 +128,15 @@ def test_the_cvbs_encoding_is_passed_through():
     assert exit_info.value.code == 2
 
 
-def test_cvbs_keeps_the_legacy_line_origin_unless_asked_for_the_spec_one():
-    assert extra("--cvbs")["cvbs_legacy_origin"] is True
+def test_cvbs_writes_the_spec_line_origin_unless_asked_for_the_legacy_one():
+    assert extra("--cvbs")["cvbs_legacy_origin"] is False
     assert extra("--cvbs", "--cvbs-legacy-origin")["cvbs_legacy_origin"] is True
-    assert extra("--cvbs", "--cvbs-spec-origin")["cvbs_legacy_origin"] is False
+
+
+def test_the_spec_origin_flag_is_gone():
+    with pytest.raises(SystemExit) as exit_info:
+        parse("--cvbs-spec-origin")
+    assert exit_info.value.code == 2
 
 
 # --- system selection ---------------------------------------------------
