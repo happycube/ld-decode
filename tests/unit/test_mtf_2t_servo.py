@@ -187,6 +187,7 @@ def servo_stub(estimate, engaged, samples, level=0.0, bw_ratio=1.044,
     """
     stub = types.SimpleNamespace(
         autoMTF=True,
+        mtf_servo_reference="2t",
         mtf_level=level,
         _imtf_flat_band=flat_band,
         mtf_deemp_feedforward=feedforward,
@@ -277,6 +278,8 @@ def estimate_stub(samples, imtf_strength=0.0, video_eq=None):
     )
     stub = types.SimpleNamespace(
         mtf_2t_servo=True,
+        mtf_servo_reference="2t",
+        mtf_servo_min_samples=LDdecode.MTF_SERVO_MIN_SAMPLES,
         rf=rf,
         _servo_samples=list(samples),
         _servo_engaged=False,
