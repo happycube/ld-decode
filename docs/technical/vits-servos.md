@@ -52,6 +52,13 @@ ve-monitor, 17.9 against 18.0 on ve-snw.
 
 ### 2. `mtf_level` (2T pulse servo)
 
+**On PAL the servo can instead hold the FM channel linear**
+(`--mtf_servo_reference staircase`): the raw differential gain of the ITS
+modulated staircase at zero, with the same pooling, gating and fallback
+as below. Why, and what it measured, is in "The level that keeps the FM
+channel linear" below. The rest of this section describes the 2T
+reference, still the default.
+
 The black/white RF carrier ratio cannot predict the needed MTF level
 across discs, and it clips at zero while real discs need HF *boost* at
 outer radius (PAL). When an insertion test signal with a 2T pulse is
@@ -151,6 +158,201 @@ Against a fit over each packet's settled amplitude, the old reading was
 1.25 MHz reference, and the EQ answered with +1.6 dB at 2 MHz on the GGV
 FCC pressings where +0.4-0.7 dB levels that packet with its reference.
 PAL's packets are longer and moved by 0.05-0.1 dB.
+
+## The level that keeps the FM channel linear
+
+### Why the pre-demodulation level is not a video control
+
+`mtf_level` shapes the RF *before* the FM demodulator. In FM a filter
+there is not a filter on the video. Write the recorded signal as the
+analytic `s = exp(jθ)`, its instantaneous frequency `ω_i = θ'` carrying
+the pre-emphasised video, and the pre-demodulation chain (disc readout,
+player, capture, the decoder's band-pass and its MTF compensation) as a
+zero-phase response `H(ω)`. Expanding `H` about `ω_i`:
+
+    H(−j d/dt) s ≈ s · [ H(ω_i) − (j/2) H''(ω_i) θ'' + … ]
+
+so the demodulated frequency carries an error
+
+    δω ≈ −½ d/dt [ g(ω_i) · θ'' ],     g = H''/H.
+
+Three cases cover what a decoder sees:
+
+- **`H` affine** (`a + bω` over the band the signal occupies): `g = 0`,
+  and the result is exact to every order - `(a + b(−j d/dt))·e^{jθ} =
+  (a + bθ')·e^{jθ}` is a real envelope times the unchanged phase. The
+  video comes out exactly as recorded: no non-linearity, and a flat
+  linear response, since `(H(ω_c − ω) + H(ω_c + ω)) / 2H(ω_c) = 1` for
+  every sideband pair.
+- **`g` constant but not zero**: `δω = −½ g θ'''`, a *linear* video filter
+  of gain `1 + ½ g ω²`. This is how the level moves the 2T pulse and the
+  multiburst.
+- **`g` varying with `ω_i`**: `δω` gains `−½ g'(ω_i) θ''²`, which is even in
+  the edge's direction and grows as the square of its slope - the ring
+  that follows black-to-white edges and not white-to-black ones (the
+  pre-emphasis overshoot carries a rising edge's `ω_i` up towards 9.4 MHz on
+  PAL, where the readout MTF is steepest) - and chroma riding on luminance
+  is scaled by `1 + ½ g(ω_luma) ω_sc²`, which is differential gain:
+  `DG ≈ ½ ω_sc² · Δg` across the carrier swing.
+
+A level chosen to bring the 2T pulse to unity sets the *mean* of `g` to
+supply a linear correction. On a pressing whose pulse was recorded soft,
+that correction is a recording fault being answered in the RF, and the
+curvature it takes moves `g'` with it: the pulse comes up, and so do the
+rising-edge ring and the differential gain. The staircase's differential
+gain is the direct, signed reading of `g'`, it is untouched by any linear
+filter after the demodulator (the inverse-MTF chroma filter and the video
+EQ scale every tread's chroma alike), and the level that zeroes it is the
+level at which the channel is closest to linear - which, by the first case
+above, is also the level at which the linear response is flattest.
+
+### What the radius sweep measured
+
+Every PAL radius cut was decoded at fixed levels −1, −0.5, 0, +0.5 and
++1 (`--no_mtf_servo -m 0 --MTF_offset L`, `--no_chroma_dg` so the
+staircase reads raw). The staircase's raw slope (fraction per IRE, chroma
+normalised at 50 IRE, `metrics.staircase_linearity`) falls monotonically
+with the level on every cut, by 1.0-2.5e-3 per IRE per level unit, and
+crosses zero at:
+
+| cut | 2T servo | linear (DG-null) level | raw DG, 2T servo → level 0 | 4.0 MHz packet, 2T servo → level 0 |
+|---|---|---|---|---|
+| GGV1011 inner | +1.00 (clip) | +1.96 | 0.106 → 0.230 | −0.36 → +0.45 dB |
+| GGV1011 middle | +0.47 | +0.43 | 0.024 → 0.068 | +0.01 → +0.11 dB |
+| GGV1011 outer | +0.41 | +0.18 | 0.058 → 0.032 | +0.02 → +0.93 dB |
+| Industrial inner | +0.46 (gated; b/w) | +1.84 | 0.210 → 0.269 | +0.38 → +0.02 dB |
+| Industrial middle | −0.02 | +0.24 | 0.089 → 0.086 | +0.01 → −0.07 dB |
+| Industrial outer | −0.21 | +0.15 | 0.093 → 0.053 | −0.03 → −0.06 dB |
+| DD86-DS2 inner | −0.92 | +1.88 | 0.354 → 0.221 | +0.56 → +0.31 dB |
+| DD86-DS2 middle | −0.85 | −0.29 | 0.117 → 0.051 | +1.69 → +0.13 dB |
+| DD86-DS2 outer | 0.00 (gated; b/w) | −0.23 | 0.018 → 0.018 | +0.35 → +0.35 dB |
+| DD86-DS1 outer | −1.00 (clip) | −0.21 | 0.177 → 0.020 | +1.38 → −0.11 dB |
+
+The linear level is a property of the radius and the optics, and three
+unrelated pressings agree on it: +1.8 to +2.0 at inner radius, −0.3 to
++0.4 at middle and outer. The 2T servo lands within 0.25 of it on
+GGV1011 middle and outer, whose pulse is recorded to nominal, and 0.6 to
+0.9 units below it on DD86 middle and outer, whose pulse is recorded
+soft: at the linear level the DD86 multiburst reads flat to 4.8 MHz
+(within ±0.35 dB) while its 2T pulse reads 0.86 of its bar. Holding that
+pulse at unity put the DD86 middle and outer 4.0 MHz packet 1.4-1.7 dB
+hot and multiplied the raw differential gain by 2-9.
+
+A known-truth bench (an FM simulation through the decoder's own
+demodulator: IEC readout optics at the CAV radius plus a 0.28 dB/MHz
+capture droop, no recording faults) puts the level of least edge
+asymmetry, the level of least differential gain and the level of a unity
+2T pulse within 0.25-0.5 of one another at middle and outer radius: with
+nothing recorded soft, the three references agree, and they part only
+where the recording departs from nominal.
+
+### Inner radius: linearity out of reach
+
+At inner radius no level inside the clip reaches the null. The upper
+sidebands are past the optical cutoff, so the channel is close to
+single-sideband, and lifting what is left of the upper side buys
+linearity with noise and with mid-band response: DD86-DS2 inner held at
++1.0 read 1-4 MHz about 1 dB down and its chrominance references 10-13 %
+low, failing nine more checks than the 2T servo's −0.92. So when the
+staircase's null lies outside the clip the staircase reference hands the
+level to the 2T pulse, as the 2T reference would set it, and takes it back
+only once the null reads 0.5 inside the clip (the staircase's slope per
+level unit is smallest at inner radius, so a null read from far below it
+lands short; without the margin DD86-DS2 inner cycled between the two).
+On the sweep this hands over on every inner cut and on no other.
+
+### Conformance, 2T reference against staircase reference
+
+Over the ten PAL radius cuts and the PAL CI capture (`pal-cvbs`), counting
+checks outside their band whether or not they are listed as known:
+
+| cut | level, 2t → staircase | out of band, 2t → staircase |
+|---|---|---|
+| DD86-DS1 outer | −1.00 → −0.10 | 5 → 6 |
+| DD86-DS2 inner | −0.92 → −0.93 (handed over) | 5 → 3 |
+| DD86-DS2 middle | −0.85 → −0.26 | 9 → 7 |
+| DD86-DS2 outer | 0.00 → −0.10 | 8 → 8 |
+| GGV1011 inner | +1.00 → +0.92 (handed over) | 5 → 5 |
+| GGV1011 middle | +0.47 → +0.43 | 6 → 6 |
+| GGV1011 outer | +0.41 → +0.19 | 5 → 5 |
+| Industrial inner | +0.46 → +0.56 (handed over) | 5 → 5 |
+| Industrial middle | −0.02 → +0.35 | 4 → 5 |
+| Industrial outer | −0.21 → +0.15 | 4 → 3 |
+| `pal-cvbs` | +0.96 → +0.92 | 6 → 5 |
+| **total** | | **62 → 58** |
+
+With a 10-frame calibration pass, DD86-DS2 middle goes 9 → 7 and GGV1011
+inner stays at 5. What moves in: DD86-DS2 middle's differential gain
+(0.117 → 0.038), its 4.0 and 4.8 MHz packets (+1.69/+1.49 → +0.04/−0.51
+dB) and its saturation ceiling (108 → 87 %); DD86-DS1 outer's 4.0 MHz
+packet (+1.38 → −0.09 dB); three 2T pulses on Industrial and DD86 inner.
+What moves out: the second-field 2T pulse on DD86-DS2 middle (94.0 IRE
+against its 100.4 bar - the pressing's soft pulse, now no longer answered
+in the RF) and on Industrial middle (97.2 against 99.8, 0.1 IRE past the
+band), DD86-DS2 middle's 4.8 MHz packet level (31.9 → 24.9 IRE, the other
+face of its response check passing), and on DD86-DS1 outer the gain ratio
+(0.286 → 0.270) and 100 % chroma bar (46.0 → 43.5 IRE).
+
+In-band noise (blanked lines, 0.1-5 MHz) is unchanged or lower: DD86-DS1
+outer 1.32 → 1.03 IRE, DD86-DS2 middle 1.41 → 1.21, every other cut
+within ±0.05. Above 5 MHz it rises with the level - the 5-6.5 MHz band of
+a DD86 blanked line is 3-6 IRE rms at level 0 against 2-3 at −1 - which is
+past every PAL disc's recorded video bandwidth and inside the video
+low-pass's transition band.
+
+Beyond the sweep, 23 cuts (14 frames each, at 6, 50 and 92 % of the side)
+from seven other 1986 BBC LaserVision titles - Volcanoes (two pressings,
+captured 2019 and 2022), Countryside, EcoDisc, North Polar Expedition,
+British Garden Birds, City Disc and The World, the UN and You - judged
+without a manifest: 145 checks out of band under the 2T reference, 138
+under the staircase, with the staircase's raw slope held within
+±0.2e-3 per IRE of zero wherever it is in reach.
+
+### Why it is not the default
+
+The conformance lane's known-deviation lists are recorded under the 2T
+reference, and a flip moves 27 PAL checks against them: nine listed
+entries that now pass (the list fails the build as soon as an entry stops
+being true) and eighteen checks that fail unlisted or past their recorded
+ceiling, most of them still-failing checks whose value moved. The
+staircase reference is therefore opt-in (`--mtf_servo_reference
+staircase`); making it PAL's default is the change to propose once those
+lists are re-recorded.
+
+### What the readout model's own estimate says
+
+PAL's readout model (`MTF_model = "readout"`, cutoff from the pilot
+sidebands) was decoded on the same cuts. Its affine target nearly
+reaches linearity at inner radius, where the pole pair cannot (raw slope
+−0.4 to −0.55e-3 per IRE on all three pressings, against +0.9 to +1.3e-3
+for the pole pair at its clip), but at middle and outer radius the pilot
+reading attributes the capture chain's droop to the optics and the
+compensation overshoots the null (−0.8 to −1.6e-3 per IRE). The pilot
+sidebands therefore predict the inner-radius cutoff (11.3-11.9 MHz
+against the CAV formula's 10.9) but not the level of least distortion
+further out. Driving the readout model's level from the staircase is the
+natural next step and has not been tried.
+
+### What the staircase reference does not do
+
+- **It needs the modulated staircase.** A disc without one never feeds
+  the pool, and the level falls back to the black/white carrier mapping,
+  as it did for the 2T servo.
+- **It does not set the inverse-MTF chroma strength or the video EQ.**
+  Those stay with the burst and the multiburst; with the RF channel
+  linear they have less to do, because the demodulated response is
+  already the recorded one.
+- **Differential phase rises with the level** on the middle and outer
+  cuts (DD86-DS2 middle 1.9° → 2.6°); the write-time corrector's phase
+  servo still owns it.
+- **NTSC is unchanged.** Its default readout model runs no level servo,
+  and its pole pair keeps the 2T reference: the staircase's Jacobian was
+  only measured on PAL.  Decoding the nine NTSC radius cuts at fixed
+  readout levels 0.5 and 0.9 against the model's own estimate puts that
+  estimate at or next to the least differential gain at middle and outer
+  radius (GGV1069 both players 0.031-0.044 against 0.021-0.039 at 0.5 and
+  0.16-0.23 at 0.9) - the readout model's affine target already does on
+  NTSC what the staircase reference does for the PAL pole pair.
 
 ## Calibrating before the first frame
 

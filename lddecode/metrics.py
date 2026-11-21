@@ -654,6 +654,74 @@ def measure_its_2t_ratio(field, lines=None):
 ITS_WHITE_NOMINAL_IRE = 100.0
 
 
+def staircase_linearity(line_ire, fs_mhz):
+    """FM-channel linearity read off one modulated-staircase line, or None.
+
+    line_ire is the whole line in IRE, sampled at 4fsc so the subcarrier
+    sits at exactly fs/4.  The treads are found by content rather than at
+    fixed times - discs place the staircase differently, and a window
+    that catches a riser biases the slope - as the runs where the
+    subcarrier is present and the luminance is flat.  Each tread gives its
+    luminance (a four-sample mean, which cancels the subcarrier exactly)
+    and its chrominance amplitude (fs/4 quadrature).
+
+    Returns (slope, treads): the straight-line slope of chrominance
+    amplitude against luminance, as a fraction of the amplitude at 50 IRE
+    per IRE, and the number of treads it was fitted over.  Zero is a
+    channel that carries chrominance at the same gain whatever luminance
+    it rides on.
+    """
+    x = np.asarray(line_ire, dtype=np.float64)
+    n = len(x)
+    if n < 64:
+        return None
+    luma = np.convolve(x, np.full(4, 0.25), mode="same")
+    k = np.arange(n)
+    rot = (x - luma) * np.exp(-0.5j * np.pi * k)
+    chroma = 2.0 * np.convolve(rot, np.full(16, 1.0 / 16.0), mode="same")
+    env = np.abs(chroma)
+    peak = np.percentile(env, 99)
+    if not 8.0 <= peak <= 60.0:
+        return None
+    # Flatness on a smoothed luminance, over +-3 samples: a riser moves
+    # it by tens of IRE, noise on a tread (several IRE per sample on a
+    # noisy pressing) by under two.
+    smooth = np.convolve(luma, np.full(12, 1.0 / 12.0), mode="same")
+    flat = np.zeros(n, dtype=bool)
+    flat[3:-3] = np.abs(smooth[6:] - smooth[:-6]) < 2.0
+    good = (env > 0.6 * peak) & flat
+    min_run = int(1.2 * fs_mhz)
+    trim = int(0.25 * fs_mhz)
+    lumas, amps = [], []
+    i = 0
+    while i < n:
+        if not good[i]:
+            i += 1
+            continue
+        j = i
+        while j < n and good[j]:
+            j += 1
+        if j - i > min_run:
+            a, b = i + trim, j - trim
+            lumas.append(float(np.mean(luma[a:b])))
+            amps.append(float(np.median(env[a:b])))
+        i = j
+    if len(lumas) < 5:
+        return None
+    lumas = np.array(lumas)
+    amps = np.array(amps)
+    if np.ptp(lumas) < 60.0 or amps.min() < 5.0 or amps.max() > 50.0:
+        return None
+    slope, intercept = np.polyfit(lumas, amps, 1)
+    at_50 = intercept + 50.0 * slope
+    if at_50 <= 5.0:
+        return None
+    per_ire = float(slope / at_50)
+    if abs(per_ire) > 0.01:
+        return None
+    return per_ire, len(lumas)
+
+
 def measure_its_white_level(field, lines=None):
     """The insertion test signal's white bar above its blanking baseline,
     in IRE, or None.
