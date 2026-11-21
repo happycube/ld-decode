@@ -90,6 +90,83 @@ Jump to a precise sample number in the file.
 ld-decode --start_fileloc 10000000 input.ldf output
 ```
 
+### Multi-Capture Stacking and Read-Time TBC
+
+These options let one decode read several captures of the same disc, or read
+one capture the way the reference decoder does not: with the time base
+corrected in the RF domain, before demodulation.
+
+#### `-i file`, `--input file`
+A source capture. Repeat it to stack several captures of the same disc; the
+first is the primary. The positional `infile` and `-i` are exclusive.
+- **Type:** String (path)
+- **Note:** The stacked captures must be fixed-width raw captures (`.s16`,
+  `.raw`, `.r16`, `.u16`, `.r8`, `.u8`, `.s8`, `.rf`) and must share one
+  sample rate. A compressed capture (`.ldf`, `.flac`) cannot be read at the
+  arbitrary positions this path needs.
+- **Note:** The sample rate comes from `-f`, or from the Domesday Duplicator
+  sidecar (a `.yaml` file with a `sample_rate_hz` key) next to the capture.
+
+**Example:**
+```bash
+ld-decode -i capture1.rf -i capture2.rf -i capture3.rf -o output
+```
+
+#### `-o base`, `--output base`
+The base name for the destination files. Needs `-i`.
+- **Type:** String (base name)
+
+#### `--tbc-mode read|resample`
+The time-base correction.
+- **Type:** `read` or `resample`
+- **Default:** `read`
+- **Note:** `read` locates every line straight from the RF and reads the RF
+  at the corrected positions before demodulating, instead of resampling the
+  demodulated video. It cannot run on stdin or on a compressed capture, and
+  it needs lines to be found; where it cannot run, and where it was not
+  asked for explicitly, the decode falls back to `resample` with a warning.
+- **Note:** `resample` is the reference decoder's way and keeps its bytes.
+  `read` is a better decode than the reference's and is therefore not the
+  reference's bytes. Several captures always use `read`.
+
+**Example:**
+```bash
+ld-decode --tbc-mode resample input.rf output
+```
+
+#### `--stack-weight adaptive|fixed`
+How a stack weighs its captures.
+- **Type:** `adaptive` or `fixed`
+- **Default:** `adaptive`
+- **Note:** `adaptive` weighs each capture per sample, by its carrier
+  amplitude, with a guard that fades out a capture that is not aligned.
+  `fixed` gives each capture one weight for the whole run.
+
+#### `--keep-audio-crosstalk`
+Leave the analog audio carriers' crosstalk in the video. The crosstalk is
+removed by default.
+- **Default:** Disabled
+
+#### `--keep-crystal-lines`
+Leave the clock lines in the RF: the player's EFM decoder crystal, its 4fsc
+video clock, the capture board's clocks. They are subtracted by default.
+
+#### `--keep-chroma-leak`
+Leave the composite chroma that leaks into the RF baseband (NTSC; it makes
+the fine wavering vertical stripes of saturated areas). It is cancelled by
+default.
+
+#### `--rf-out file`
+Also write the RF the decoder reads: the stacked or time-base corrected
+stream, as signed 16-bit at the input rate.
+- **Type:** String (path)
+- **Note:** Needs `--tbc-mode read`.
+
+**Example:**
+```bash
+ld-decode -i capture1.rf -i capture2.rf -o output --rf-out stacked.s16
+```
+
 ### Video Standard Options
 
 **Note:** Only one video standard can be selected. Selecting both PAL and NTSC (or NTSCJ) will result in an error.

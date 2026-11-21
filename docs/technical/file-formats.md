@@ -39,6 +39,16 @@ stream alongside the video output:
 See [EFM decoding](efm-decoding.md) for the demodulators that produce
 these streams and the quality oracle that scores them.
 
+## The written RF stream
+
+With `--rf-out`, the decoder also writes the RF it read: the stacked stream
+when several captures are combined, the time-base corrected stream otherwise.
+It is signed 16-bit at the capture's own sample rate, the same layout a
+`.s16` capture has, so it can be read back as one.
+
+See [stacked RF and the read-time TBC](stacked-rf-tbc.md) for what the
+stream contains.
+
 ## Example file sizes
 
 The following file sizes show the typical disc usage consumed by an end-to-end capture and decode of a LaserDisc.

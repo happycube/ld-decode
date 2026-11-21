@@ -109,6 +109,36 @@ even across mid-run calibration changes.  Every speculation reject and
 parameter event is recorded with its cause in the `speculation_log`
 table of the `.tbc.db` (and as DEBUG lines in the decode log).
 
+## Multi-capture stacking and read-time TBC
+
+`ld-decode -i capture1.rf -i capture2.rf -o output` decodes several
+captures of the same disc at once: the captures are combined in the RF
+domain, before demodulation, so a pass that drops out gives way to the
+others. The fields are paired by their VBI frame code, every capture is
+phase-locked onto the primary's carrier, and each is weighed per sample by
+its carrier amplitude.
+
+The same path reads one capture the way the reference decoder does not: the
+lines are located straight from the RF (the pass 0 never demodulates, so it
+has no MTF calibration and no VITS) and the RF is read at the corrected
+positions before the demodulator sees it. On the way it takes three things
+out of the signal that no amount of stacking removes, because they are on
+the disc or in the player and are the same in every copy:
+
+- the analog audio carriers' crosstalk into the video carrier (+0.48 to
+  +0.83 dB of weighted SNR on NTSC captures at 75 MHz);
+- the clock lines the player's EFM decoder crystal, its video clock and the
+  capture board leave in the capture (+0.09 dB);
+- the composite chroma that leaks into the RF baseband on NTSC, the "colour
+  wobble" of the saturated areas.
+
+Each can be switched off again (`--keep-audio-crosstalk`,
+`--keep-crystal-lines`, `--keep-chroma-leak`), and `--tbc-mode resample`
+goes back to the reference decoder's way of correcting the time base, which
+keeps its bytes. The path needs fixed-width raw captures, all at the same
+sample rate; see [the command reference](docs/user-guide/command.md) and
+[the technical page](docs/technical/stacked-rf-tbc.md).
+
 ## CVBS output mode
 
 ld-decode writes CVBS output by default (see

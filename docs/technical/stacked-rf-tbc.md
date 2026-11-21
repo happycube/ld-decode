@@ -1,0 +1,205 @@
+# Stacked RF and the read-time TBC
+
+SPDX-License-Identifier: GPL-3.0-or-later
+SPDX-FileCopyrightText: 2026 ld-decode contributors
+
+This page describes the multi-capture stacking and the read-time time-base
+correction: what they do, how they work, and what they cost. The command
+line is in the [command reference](../user-guide/command.md).
+
+## Why
+
+Two things limit a decode of one capture: the noise of that capture, and the
+artefacts that every copy of a disc carries (the player's own clock lines,
+the audio carriers' crosstalk into the video carrier, the chroma that leaks
+into the RF baseband).
+
+The first is fixed by reading more than one capture of the same disc and
+combining them. The second is not: the leak is on the disc, or in the
+player, so it is the same in every copy and averaging does not remove it.
+It has to be taken out of the signal.
+
+## The shape of it
+
+Everything happens in the RF domain, before demodulation. A decode reads a
+single RF stream, whatever produced it:
+
+```
+capture 1 ─┐
+capture 2 ─┼─► pass 0 ──► pairing ──► timeline ──► combine ──► corrections ──► RF
+capture 3 ─┘   (lines)    (VBI codes)  (positions)  (weights)    (3 of them)
+```
+
+The decoder itself is unchanged: it reads that stream and demodulates it as
+usual, so its sync, VBI, dropout and resampling stages are the same code
+either way. The output is a better decode, not a different format.
+
+## Pass 0: the lines, straight from the RF
+
+The decoder normally locates the lines in the *demodulated* video. The
+read-time TBC needs them a step earlier: it has to know where to read the
+RF before it has demodulated anything.
+
+So a first pass locates the lines directly from the RF. During a sync pulse
+the carrier sits at its lowest frequency, so a coarse frequency estimate is
+enough to find every pulse. Each horizontal sync is then refined the way the
+decoder refines it: the 50 % crossing of the leading edge, then the colour
+burst's phase (least squares at the colour subcarrier). The lines are
+placed on a grid, the fields are counted, and the vertical interval's lines
+carry the Philips code that identifies the frame.
+
+The pass never demodulates, so it has no MTF calibration, no VITS and no
+redo: it is a measurement of the RF, nothing more. On a full capture it
+finds the same fields, the same parities and the same frame codes as the
+decoder's own pass, with slightly less line-to-line noise (0.091 samples rms
+against 0.101, at 75 MHz).
+
+On PAL the lines lock onto the 3.75 MHz pilot the sync tip carries, not
+onto the burst: the pilot is on every line, the burst only on some.
+
+## Pairing the captures
+
+A capture's frame is identified by its VBI frame code: the CAV picture
+number and the CLV time code. Two captures of the same disc give the same
+code for the same frame, so the code is what pairs the fields.
+
+The pairing is deliberately conservative:
+
+- a secondary capture's field is only examined once that capture is finished
+  or has moved more than 16 fields past it;
+- if the same code appears again within those 16 fields, the code is
+  ambiguous and the field is left unpaired, rather than paired wrongly;
+- a primary field is only laid down once every secondary capture either
+  knows its code or has been paired past it.
+
+An unpaired capture contributes nothing at that instant, and the others
+carry on.
+
+## The timeline
+
+The primary capture's lines define the timeline: each anchor holds an ideal
+time and, for each capture, its absolute position there. Between two
+anchors the position is linear.
+
+Two details matter:
+
+- the anchors are placed to **half a line**, because a field overlaps the
+  next by a few lines and each line must be kept once, in order;
+- a capture whose line length differs from the primary's by more than 2 %
+  is left out of that segment. That is the first alignment guard: a capture
+  that jumped cannot be read at the primary's positions.
+
+## Combining: the phase lock and the weights
+
+Every output sample is read from every capture, at that capture's own
+position for that instant, with a Kaiser-windowed sinc (32 taps) for the
+full signal and a 128-tap analytic filter for the video band.
+
+**The phase lock.** The FM carrier keeps its coherence over a lag, while the
+band's noise loses it. Correlating a signal with itself delayed by that lag
+therefore measures the carrier alone, blind to the noise level: a dropout's
+noise, however loud, does not pass for a carrier. The measured rotation
+aligns the captures on the video carrier.
+
+**The guards.** A measured rotation is only trusted where it means
+something:
+
+- the *geometric* guard above (2 % of line length);
+- the *coherence* guard: where the two captures' carriers are not clean over
+  the window, the coherence says nothing about the alignment, so the
+  capture fades out instead of being rotated wrongly;
+- a zero-phase prior, which dominates when the measured rotation is noise:
+  pass 0 aligns the captures to within a few hundredths of a radian.
+
+**The weights.** Each capture is weighted by `1/sigma^2`, the inverse of its
+noise floor measured in the band where nothing of the disc lives. On top of
+that, the adaptive weight follows the carrier's amplitude sample by sample,
+so a capture that drops out stops contributing and the others carry the
+sample. The samples are normalised by the sum of the weights, so a stack
+never amplifies what it reads.
+
+The phase lock is applied to the **video band only**. The rest of each
+capture (the EFM and the analog audio carriers) is summed as read: a lock
+tuned on the video carrier would be wrong there.
+
+## The three corrections
+
+All three run on the combined stream, before the decoder sees it.
+
+### The audio carriers' crosstalk
+
+The analog audio carriers leak into the video carrier's phase. The leak is
+the same on every copy of a disc, so no amount of stacking removes it.
+
+Each carrier is taken out of the RF itself (mixed down to 0 Hz, narrowed
+with three boxcars, mixed back up), and the video band's instantaneous
+frequency is fitted on both by least squares: one complex gain each. The
+picture does not follow the carriers, so the fit measures the leak. The
+frequency error becomes a phase error, and the video band is turned back by
+it. The correction is kept above 3.0-3.6 MHz (NTSC), so the audio carriers
+and the EFM are left as they are.
+
+Measured on NTSC captures at 75 MHz: **+0.48 to +0.83 dB** weighted SNR
+over the reference's resampling. On PAL the audio carriers sit far below the
+video, and the correction is neutral.
+
+### The clock lines
+
+The player's EFM decoder crystal (16.9344 MHz) leaves its multiples of the
+192nd (88.2 kHz) in the capture; the player's 4fsc video clock and the
+capture board's clocks leave theirs. They are narrow lines that stand at one
+frequency all through the capture.
+
+They are found in four stretches spread over the capture: a line must be at
+least 10 dB over the local floor in all of them, and a local maximum of its
+neighbours. The crystal's drift is followed with a Goertzel recurrence every
+2^16 samples, so the line stays where it is.
+
+What is deliberately left out: the bands where the disc's own signal makes
+steady lines (the audio carriers, the chroma leak's band, the video
+carrier's swing), anything above 14.5 MHz (nothing the decoder reads reaches
+that high), and **any line with another one a line frequency away** - a
+still picture's RF is a comb, and without that guard a PAL still picture
+produced 183 false lines.
+
+Measured: **+0.09 dB** at 75 MHz, 37.41 to 37.55 dB at 40 MHz where more
+lines fold into the band, neutral in a stack (the captures' lines, at
+unrelated phases, already average down).
+
+### The chroma leak
+
+On NTSC the composite chroma leaks into the RF baseband around the colour
+subcarrier. It beats with the video carrier and makes the fine wavering
+vertical stripes of saturated areas - the "colour wobble" the player's own
+output shows.
+
+The chroma is the video band's instantaneous frequency through the band; the
+RF's same band is fitted on it with a 13-tap filter, and the fit is
+subtracted. The fit is only applied where it explains at least 5 % of the
+band's power, so a disc (or a stretch) without the leak is left byte for
+byte as it was.
+
+Measured: the bump at 4.73-4.95 MHz over its neighbours goes from **+5.8 dB
+to -0.2 dB**, and the VITS measures do not move - it removes an artefact,
+it does not smooth the picture.
+
+## What it costs
+
+The pass 0 reads the capture once more (it runs alongside the decode), and
+the corrections run on every chunk. On a 2^21-sample chunk (28 ms of signal
+at 75 MHz, three captures) the two corrections that work on the video band
+take about 10.5 ms (crosstalk) and 8.5 ms (chroma leak) on the CPU pool.
+
+## The limits
+
+- **Fixed-width raw captures only.** The path reads a capture at arbitrary
+  positions, which a compressed capture cannot serve.
+- **One sample rate.** Every capture must be at the same rate.
+- **The fallback.** Where the read-time TBC cannot run - stdin, a
+  compressed capture, no lines found - and where it was not asked for
+  explicitly, the decode falls back to the reference's resampling, with a
+  warning. An explicit `--tbc-mode read` that fails is an error.
+- **Not the reference's bytes.** The read-time TBC and the corrections make
+  a better decode than the reference's, so they do not produce the
+  reference's output. Use `--tbc-mode resample` when byte parity with the
+  reference matters.
