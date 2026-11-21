@@ -30,6 +30,7 @@ from dataclasses import dataclass
 from typing import Callable, Iterator, Optional, Sequence
 
 import numpy as np
+from scipy.signal import lfilter
 from scipy.special import i0 as _bessel_i0
 
 __all__ = [
@@ -67,6 +68,11 @@ MAX_LINE_DEV = 3.0
 #: Samples processed per step, and the context read on each side of them.
 CHUNK = 1 << 22
 MARGIN = 1 << 17
+
+#: Points of the coarse grid gathered at a time.  The gather is the whole
+#: cost of the coarse stage, and a block that fits in the cache keeps it
+#: there.
+GRID_BLOCK = 1 << 15
 
 #: Lines each field records past the next field's first line.
 OVERLAP_LINES = 10
@@ -309,6 +315,9 @@ class _Fir:
     ----------
     kernel : numpy.ndarray
         The complex taps (a copy; never mutated).
+    kernel_rev : numpy.ndarray
+        The taps, reversed: the correlation the filter computes is a
+        convolution with them (never mutated).
     half : int
         The kernel's half length, in taps.
     size : int
@@ -334,10 +343,11 @@ class _Fir:
         im = a * np.sin(ph)
         padded = (taps + 7) // 8 * 8
         self.kernel = np.concatenate([re + 1j * im, np.zeros(padded - taps, dtype=np.complex128)])
+        self.kernel_rev = np.ascontiguousarray(self.kernel[::-1])
         self.half = (taps - 1) // 2
         self.size = padded
 
-    def outputs(self, x: np.ndarray, c0: int, c1: int, block: int = 4096) -> np.ndarray:
+    def outputs(self, x: np.ndarray, c0: int, c1: int) -> np.ndarray:
         """The complex output of the filter at every position in a range.
 
         The output at `c` is the filter centred on `x[c]`, as the Rust's
@@ -351,8 +361,6 @@ class _Fir:
             The first position.
         c1 : int
             The last position (inclusive).
-        block : int
-            How many outputs to compute at a time.
 
         Returns
         -------
@@ -360,42 +368,78 @@ class _Fir:
             A new complex128 array of `c1 - c0 + 1` outputs.
         """
         n = c1 - c0 + 1
-        out = np.empty(n, dtype=np.complex128)
-        size = self.size
-        for s in range(0, n, block):
-            e = min(s + block, n)
-            m = e - s
-            start = c0 + s - self.half
-            xs = x[start : start + m + size - 1]
-            win = np.lib.stride_tricks.sliding_window_view(xs, size)
-            out[s:e] = win @ self.kernel
-        return out
+        if n <= 0:
+            return np.zeros(0, dtype=np.complex128)
+        # The correlation is a convolution with the reversed kernel: the
+        # convolution of the samples `[c0 - half, c0 - half + n + size)` holds
+        # it from its `size - 1`th sample on.
+        start = c0 - self.half
+        xs = x[start : start + n + self.size - 1]
+        conv = np.convolve(xs, self.kernel_rev)
+        return conv[self.size - 1 : self.size - 1 + n]
 
-    def outputs_at(self, x: np.ndarray, positions: np.ndarray, block: int = 8192) -> np.ndarray:
-        """The complex output of the filter at the given positions.
+    def outputs_grid(
+        self,
+        x: np.ndarray,
+        base: int,
+        step: int,
+        count: int,
+        shifts: Sequence[int],
+        block: int = GRID_BLOCK,
+    ) -> list[np.ndarray]:
+        """The complex output of the filter on a grid of positions.
+
+        The output is taken at the positions `base + m * step + s`, for
+        `m = 0..count - 1` and every shift `s` of `shifts`.
+
+        The samples the filter needs are gathered once per block of the grid
+        and the taps are applied to them with one matrix product per shift:
+        the coarse stage needs the filter at a few positions per step of the
+        grid, and gathering them is what the whole stage costs.
 
         Parameters
         ----------
         x : numpy.ndarray
             The input samples (float64).
-        positions : numpy.ndarray
-            The positions to evaluate at (int64).
+        base : int
+            The position of the first point of the grid.
+        step : int
+            The step between two points of the grid, in samples.
+        count : int
+            The number of points of the grid.
+        shifts : sequence of int
+            The shifts of every point of the grid, in samples.
         block : int
-            How many outputs to compute at a time.
+            How many points of the grid are gathered at a time.
 
         Returns
         -------
-        numpy.ndarray
-            A new complex128 array, one output per position.
+        list of numpy.ndarray
+            One complex128 array of the outputs per shift.  The arrays are
+            shorter than `count` when the samples run out before the grid
+            does.
         """
-        n = positions.size
-        out = np.empty(n, dtype=np.complex128)
-        taps = np.arange(self.size, dtype=np.int64)
-        for s in range(0, n, block):
-            e = min(s + block, n)
-            idx = positions[s:e, None] - self.half + taps[None, :]
-            out[s:e] = x[idx] @ self.kernel
-        return out
+        out = [np.zeros(count, dtype=np.complex128) for _ in shifts]
+        if count <= 0:
+            return out
+        size = self.size
+        span = size + max(shifts) + 1
+        valid = 0
+        for s in range(0, count, block):
+            e = min(s + block, count)
+            m = e - s
+            start = base - self.half + s * step
+            xs = x[start : start + (m - 1) * step + span]
+            if xs.size < span:
+                break
+            win = np.lib.stride_tricks.sliding_window_view(xs, span)[::step]
+            m = win.shape[0]
+            for j, shift in enumerate(shifts):
+                out[j][s : s + m] = win[:, shift : shift + size] @ self.kernel
+            valid = s + m
+            if m < e - s:
+                break
+        return [o[:valid] for o in out]
 
 
 def _inst_freq(fir: _Fir, x: np.ndarray, c0: int, c1: int, fs: float) -> np.ndarray:
@@ -738,19 +782,16 @@ def _refine(
             bb0 = (1.0 + k * t1) / (1.0 + k * t2)
             bb1 = (1.0 - k * t1) / (1.0 + k * t2)
             aa1 = (1.0 - k * t2) / (1.0 + k * t2)
-            de = np.empty_like(f)
-            x1 = 0.0
-            y1 = 0.0
-            for i, val in enumerate(f):
-                y = bb0 * float(val) + bb1 * x1 - aa1 * y1
-                de[i] = y
-                x1 = float(val)
-                y1 = y
-            light = np.empty_like(de)
-            for i in range(de.size):
-                a = max(i - 4, 0)
-                b = min(i + 5, de.size)
-                light[i] = de[a:b].mean()
+            # The bilinear de-emphasis is a two-tap filter into a one-tap
+            # recursive one: y = bb0 * f + bb1 * f[-1] - aa1 * y[-1].
+            de = lfilter([bb0, bb1], [1.0, aa1], f)
+            # The light average: nine samples, centred, the edges cut short.
+            n = de.size
+            cs = np.concatenate(([0.0], np.cumsum(de)))
+            idx = np.arange(n)
+            lo = np.maximum(idx - 4, 0)
+            hi = np.minimum(idx + 5, n)
+            light = (cs[hi] - cs[lo]) / (hi - lo)
             code = _philips(light, c0, edge, porch, fs, extra.hz_ire)
     return _Fine(edge=edge, psi=psi, code=code)
 
@@ -1282,11 +1323,17 @@ def locate(
         g0 = -(-max(b0 + h + 1, 0) // step) * step
         n = max(0, (b0 + buf.size - h - 10 - reach) - g0) // step
         if n > 1:
-            positions = g0 - b0 + np.arange(n, dtype=np.int64) * step
-            prods = np.zeros(n, dtype=np.complex128)
-            for off in offsets:
-                a = coarse.outputs_at(buf, positions + off)
-                b = coarse.outputs_at(buf, positions + off + 1)
+            # The coarse filter is needed at every point of the grid, and at
+            # the sample just after it (the phase step between the two gives
+            # the frequency).
+            base = g0 - b0
+            shifts = tuple(offsets) + tuple(off + 1 for off in offsets)
+            values = coarse.outputs_grid(buf, base, step, n, shifts)
+            m = values[0].size
+            prods = np.zeros(m, dtype=np.complex128)
+            for j in range(len(offsets)):
+                a = values[j]
+                b = values[len(offsets) + j]
                 prods += b * np.conj(a)
             freq = np.angle(prods[:-1] + prods[1:]) * (fs / (2.0 * math.pi))
             t0 = g0 + step / 2.0
