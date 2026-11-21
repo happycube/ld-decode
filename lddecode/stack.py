@@ -27,6 +27,9 @@ over 128 samples before the sum; the rest (the full signal minus the
 video band: the EFM and the analog audio carriers) is summed as read,
 since a phase lock tuned on the video carrier would be wrong there.
 
+The fractional-delay filters are the hottest loops of the module and run
+in Numba (``_fir_kernel``); the rest is vectorised NumPy.
+
 The sibling modules are imported lazily, so this module stands alone:
 
 * :mod:`lddecode.rf_sync` - the line locator (``locate_fields`` below is
@@ -48,6 +51,7 @@ from dataclasses import dataclass
 from typing import Callable, Sequence
 
 import numpy as np
+from numba import njit
 from scipy.special import i0 as _bessel_i0
 
 from .rf_sync import frame_code
@@ -198,9 +202,6 @@ PAL_LINE_US = 64.0
 #: The video standards' names, as the rest of the project spells them.
 SYSTEM_NTSC = "NTSC"
 SYSTEM_PAL = "PAL"
-#: Samples the FIR gather does at a time (a block of the (n, taps) gather,
-#: kept small enough for the cache).
-FIR_BLOCK = 4096
 
 
 # --------------------------------------------------------------------------
@@ -304,6 +305,59 @@ def video_band_lut(fs: float, split: tuple[float, float]) -> np.ndarray:
     return _video_band_response(tau, fs, split, top) * (_bessel_i0(HI_BETA * np.sqrt(window)) / i0b)
 
 
+@njit(cache=True, nogil=True)
+def _fir_kernel(
+    raw: np.ndarray,
+    base: np.ndarray,
+    phase: np.ndarray,
+    lut: np.ndarray,
+    first_tap: int,
+    out: np.ndarray,
+) -> None:
+    """The tabulated fractional-delay filter at the given positions.
+
+    One output per position: the taps of the filter's phase applied to the
+    input's samples around it, the samples outside the input read as its
+    first or its last one (the same clipping the NumPy path does).
+
+    Parameters
+    ----------
+    raw : numpy.ndarray
+        The input's samples (float64, contiguous).
+    base : numpy.ndarray
+        The integer sample of each position (int64).
+    phase : numpy.ndarray
+        The fractional phase of each position (int64): the row of `lut`.
+    lut : numpy.ndarray
+        The filter table (float64, one row per phase).
+    first_tap : int
+        The offset of the table's first tap from the integer sample.
+    out : numpy.ndarray
+        Where the outputs are written (float64, one per position).
+    """
+    ntaps = lut.shape[1]
+    limit = raw.shape[0] - 1
+    if limit < 0:
+        return
+    nphases = lut.shape[0]
+    for i in range(base.shape[0]):
+        b = base[i]
+        p = phase[i]
+        if p < 0:
+            p = 0
+        elif p >= nphases:
+            p = nphases - 1
+        s = 0.0
+        for d in range(ntaps):
+            idx = b + d - first_tap
+            if idx < 0:
+                idx = 0
+            elif idx > limit:
+                idx = limit
+            s += lut[p, d] * raw[idx]
+        out[i] = s
+
+
 def _fir(
     raw: np.ndarray, base: np.ndarray, phase: np.ndarray, lut: np.ndarray, first_tap: int
 ) -> np.ndarray:
@@ -315,15 +369,15 @@ def _fir(
     ``first_tap`` is the offset of the table's first tap from the integer
     sample.  Returns a new float64 array.
     """
-    ntaps = lut.shape[1]
-    offsets = np.arange(ntaps, dtype=np.int64) - first_tap
     out = np.zeros(base.shape, dtype=np.float64)
-    limit = max(raw.shape[0] - 1, 0)
-    for start in range(0, base.shape[0], FIR_BLOCK):
-        stop = min(start + FIR_BLOCK, base.shape[0])
-        index = base[start:stop, None] + offsets[None, :]
-        np.clip(index, 0, limit, out=index)
-        out[start:stop] = np.einsum("ij,ij->i", raw[index], lut[phase[start:stop]])
+    _fir_kernel(
+        np.ascontiguousarray(raw, dtype=np.float64),
+        np.ascontiguousarray(base, dtype=np.int64),
+        np.ascontiguousarray(phase, dtype=np.int64),
+        np.ascontiguousarray(lut, dtype=np.float64),
+        int(first_tap),
+        out,
+    )
     return out
 
 
