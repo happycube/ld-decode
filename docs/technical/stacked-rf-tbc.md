@@ -190,6 +190,22 @@ the corrections run on every chunk. On a 2^21-sample chunk (28 ms of signal
 at 75 MHz, three captures) the two corrections that work on the video band
 take about 10.5 ms (crosstalk) and 8.5 ms (chroma leak) on the CPU pool.
 
+Measured on this machine (one core, NumPy 2.5, Numba 0.68), on synthetic NTSC
+captures:
+
+| stage | rate | an hour of RF at 75 MHz (270 M samples) |
+| --- | --- | --- |
+| the line location (the pass 0) | 27 M samples/s at 40 MHz, 34 M at 75 MHz | 8 s |
+| the clock lines' detection (once per capture) | 7 M samples/s | 40 s |
+| the stacking (the read of the virtual stream) | 2 M samples/s | 2 min 15 s |
+
+The hot loop of the fractional delay filters, which read every capture at its
+own position, runs in Numba, like the demodulator's own. The rest is vectorised
+NumPy.
+
+The pass 0 costs the same whether it is used for the stacking or on its own:
+it is a measurement of the RF, and it is over long before the decode is.
+
 ## The limits
 
 - **Fixed-width raw captures only.** The path reads a capture at arbitrary
