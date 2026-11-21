@@ -7,7 +7,8 @@ import traceback
 import numpy as np
 
 from lddecode.decoder import LDdecode
-from lddecode.fileio import ldf_pipe, make_loader, parse_frequency, samples_to_s16
+from lddecode.fileio import (RawCapture, capture_sample_rate, ldf_pipe, make_loader,
+                             parse_frequency, raw_layout, samples_to_s16)
 from lddecode.utils_logging import init_logging
 
 # FLAC decode threads for a compressed input when the decode itself is
@@ -35,9 +36,75 @@ def build_parser():
     from lddecode import __version__
     parser.add_argument("-v", "--version", action="version", version=__version__,
                         help="print the version and exit")
-    parser.add_argument("infile", metavar="infile", type=str, help="source file")
+    parser.add_argument("infile", metavar="infile", type=str, nargs="?",
+                        help="source file (or use -i)")
     parser.add_argument(
-        "outfile", metavar="outfile", type=str, help="base name for destination files"
+        "outfile", metavar="outfile", type=str, nargs="?",
+        help="base name for destination files (or use -o)"
+    )
+    parser.add_argument(
+        "-i",
+        "--input",
+        dest="inputs",
+        metavar="file",
+        action="append",
+        help="source file; repeat to stack several captures of the same disc. "
+             "The first is the primary",
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        dest="output",
+        metavar="base",
+        help="base name for destination files (with -i)",
+    )
+    parser.add_argument(
+        "--tbc-mode",
+        dest="tbc_mode",
+        choices=("read", "resample"),
+        default=None,
+        help="time-base correction: 'read' (the default) locates the lines "
+             "straight from the RF and reads the RF at the corrected positions "
+             "before demodulating; 'resample' resamples the demodulated video, "
+             "the reference decoder's way",
+    )
+    parser.add_argument(
+        "--stack-weight",
+        dest="stack_weight",
+        choices=("adaptive", "fixed"),
+        default="adaptive",
+        help="how a stack weighs its inputs: 'adaptive' (per sample, by "
+             "carrier amplitude, with an alignment guard) or 'fixed' (one "
+             "weight per input)",
+    )
+    parser.add_argument(
+        "--keep-audio-crosstalk",
+        dest="keep_audio_crosstalk",
+        action="store_true",
+        help="leave the analog audio carriers' crosstalk in the video "
+             "(--tbc read takes it out by default)",
+    )
+    parser.add_argument(
+        "--keep-crystal-lines",
+        dest="keep_crystal_lines",
+        action="store_true",
+        help="leave the clock lines in the RF (--tbc read subtracts them by "
+             "default)",
+    )
+    parser.add_argument(
+        "--keep-chroma-leak",
+        dest="keep_chroma_leak",
+        action="store_true",
+        help="leave the chroma that leaks into the RF baseband (NTSC; --tbc "
+             "read cancels it by default)",
+    )
+    parser.add_argument(
+        "--rf-out",
+        dest="rf_out",
+        metavar="file",
+        default=None,
+        help="also write the RF the decoder reads (the stacked or "
+             "time-base corrected stream, s16 at the input rate)",
     )
     parser.add_argument(
         "--start",
@@ -715,6 +782,81 @@ def physical_cpu_count(sysfs="/sys/devices/system/cpu",
     return cores if 0 < cores <= logical else logical
 
 
+def resolve_io(args):
+    """The capture list and the output base name.
+
+    The positional form (infile outfile) and the -i/-o form are exclusive.
+    -i may be repeated: the captures are then stacked, the first one is the
+    primary.  Raises ValueError when the two forms are mixed or when the
+    output name is missing.
+    """
+    positional = args.infile is not None
+    flagged = bool(args.inputs)
+    if positional and flagged:
+        raise ValueError("give either infile or -i, not both")
+    if flagged and args.output is None:
+        raise ValueError("-i needs -o, the base name for the destination files")
+    if not flagged and args.output is not None:
+        raise ValueError("-o needs -i")
+    inputs = list(args.inputs) if flagged else [args.infile]
+    outname = args.output if flagged else args.outfile
+    if outname is None:
+        raise ValueError("no output file name given")
+    if any(path == "-" for path in inputs):
+        raise ValueError("read-time TBC reads its input at random positions, "
+                         "which stdin cannot do")
+    return inputs, outname
+
+
+def build_stacked_source(inputs, args, vid_standard):
+    """The stacked, time-base-corrected RF source the decoder reads.
+
+    Returns (source, fs), the source and the capture rate in Hz.  Raises
+    ValueError when the captures cannot be read that way: a capture that is
+    not fixed-width raw, a capture whose sample rate is unknown, or captures
+    that do not share one sample rate.
+    """
+    # The captures are checked before the stacking module is imported, so
+    # that a capture the read-time TBC cannot serve is reported as such.
+    rates = set()
+    for path in inputs:
+        if raw_layout(path) is None:
+            raise ValueError(
+                "--tbc read needs a fixed-width raw input (s16, raw, r16, u16, "
+                f"r8, u8, s8, rf); {path} is not one"
+            )
+        rate = capture_sample_rate(path, args.inputfreq)
+        if rate is None:
+            raise ValueError(
+                "--tbc read needs the capture's sample rate: pass --inputfreq, "
+                f"or keep the Domesday Duplicator sidecar next to {path}"
+            )
+        rates.add(round(rate))
+    if len(rates) > 1:
+        raise ValueError("stacked captures must share one sample rate")
+    fs = float(rates.pop())
+
+    from lddecode.stack import StackInput, StackedSource
+
+    captures = []
+    for path in inputs:
+        capture = RawCapture(path)
+        captures.append(
+            StackInput(path=path, read_fn=capture.read, length=capture.length)
+        )
+    source = StackedSource(
+        captures,
+        fs,
+        ntsc=(vid_standard != "PAL"),
+        stack_weight=args.stack_weight,
+        cancel_xtalk=not args.keep_audio_crosstalk,
+        cancel_xtal=not args.keep_crystal_lines,
+        cancel_leak=not args.keep_chroma_leak,
+        rf_out=args.rf_out,
+    )
+    return source, fs
+
+
 def main(args=None):
     # Handle --version early before argparse requires positional arguments
     check_args = args if args is not None else sys.argv[1:]
@@ -725,8 +867,12 @@ def main(args=None):
     parser = build_parser()
     args = parser.parse_args(args)
     # print(args)
-    filename = args.infile
-    outname = args.outfile
+    try:
+        inputs, outname = resolve_io(args)
+    except ValueError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(1)
+    filename = inputs[0]
     firstframe = args.start
     req_frames = args.length
     options = build_options(args)
@@ -734,6 +880,20 @@ def main(args=None):
     analog_audio_freq = options["analog_audio_freq"]
     extra_options = options["extra_options"]
     DecoderParamsOverride = options["decoder_params_override"]
+
+    # The time-base correction: "read" (the default) locates the lines
+    # straight from the RF and reads the RF at the corrected positions
+    # before demodulating; "resample" is the reference decoder's way, and
+    # keeps its bytes.
+    tbc_mode = args.tbc_mode if args.tbc_mode is not None else "read"
+    if tbc_mode == "resample" and len(inputs) > 1:
+        print("ERROR: several inputs are stacked with read-time TBC; "
+              "--tbc-mode resample takes a single input", file=sys.stderr)
+        sys.exit(1)
+    if args.rf_out is not None and tbc_mode != "read":
+        print("ERROR: --rf-out writes the read-time corrected RF; it needs "
+              "--tbc-mode read", file=sys.stderr)
+        sys.exit(1)
 
     # Safety check: ensure --write-test-ldf doesn't overwrite the input file
     if args.write_test_ldf is not None:
@@ -766,6 +926,23 @@ def main(args=None):
 
     from lddecode import __version__
     logger.debug("ld-decode version " + __version__)
+
+    if tbc_mode == "read":
+        try:
+            source, fs = build_stacked_source(inputs, args, vid_standard)
+        except Exception as e:
+            # "read" is the default, not asked for: a source it cannot read
+            # (a compressed format) or one it finds no lines in is decoded
+            # the reference's way instead.
+            if args.tbc_mode is None and len(inputs) == 1:
+                logger.warning("--tbc read: %s; decoding with --tbc resample", e)
+            else:
+                print(f"ERROR: --tbc read: {e}", file=sys.stderr)
+                sys.exit(1)
+        else:
+            loader = lambda _infile, sample, readlen: source.read(sample, readlen)
+            logger.info("Read-time TBC: %d capture(s) at %g MHz, %s weights",
+                        len(inputs), fs / 1e6, args.stack_weight)
 
     ldd = LDdecode(
         filename,

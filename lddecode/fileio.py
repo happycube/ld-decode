@@ -4,6 +4,7 @@ Originally split out of utils.py, which now only re-exports it.
 """
 
 import logging
+import os
 import shlex
 import subprocess
 import threading
@@ -126,6 +127,119 @@ def make_loader(filename, inputfreq=None, decode_threads=1):
 
     # Fallback to LoadFFmpeg for other formats (with stdin input)
     return LoadFFmpeg()
+
+
+#: The fixed-width raw captures, and the sample layout each one holds.
+#: The read-time TBC path reads a capture at arbitrary positions, which only
+#: a fixed-width file can serve: a packed (.lds) or compressed (.ldf, .flac)
+#: capture cannot be read at an arbitrary offset.
+RAW_LAYOUTS = {
+    ".s16": ("int16", 2),
+    ".raw": ("int16", 2),
+    ".r16": ("uint16", 2),
+    ".u16": ("uint16", 2),
+    ".r8": ("uint8", 1),
+    ".u8": ("uint8", 1),
+    ".s8": ("int8", 1),
+    ".rf": ("float32", 4),
+}
+
+
+def raw_layout(filename):
+    """The (sample dtype, bytes per sample) of a fixed-width raw capture.
+
+    Returns None for a capture that is not fixed-width (a packed .lds, a
+    compressed .ldf or .flac), which cannot be read at arbitrary positions.
+    """
+    name = filename.lower()
+    for ext, layout in RAW_LAYOUTS.items():
+        if name.endswith(ext):
+            return layout
+    return None
+
+
+class RawCapture:
+    """A fixed-width raw capture, read at absolute sample positions.
+
+    The samples come back in the same units the matching loader returns
+    (signed 16-bit, unsigned 16-bit centred on 32768, unsigned 8-bit, signed
+    8-bit scaled up to the 16-bit range, or 32-bit float scaled by 32768), so
+    a decode reads the same scale whether it takes one capture or a stack.
+
+    This is the reader the stacking source injects: it asks for a range of
+    samples and gets an array of floats, whatever the file's own dtype.
+    """
+
+    def __init__(self, filename):
+        """Open filename; raises ValueError when it is not a fixed-width raw capture."""
+        layout = raw_layout(filename)
+        if layout is None:
+            raise ValueError(
+                f"{filename} is not a fixed-width raw capture "
+                "(s16, raw, r16, u16, r8, u8, s8, rf)"
+            )
+        self.filename = filename
+        self.dtype, self.width = layout
+        self._file = open(filename, "rb")
+        self._length = os.path.getsize(filename) // self.width
+
+    @property
+    def length(self):
+        """The capture's length in samples."""
+        return self._length
+
+    def read(self, start, count):
+        """The samples [start, start + count) as float64.
+
+        Samples before the file and past its end read as zero, so a caller
+        may ask for a range that overhangs either end.  Returns a new array;
+        it does not share memory with the file.
+        """
+        out = np.zeros(count, dtype=np.float64)
+        lo = max(0, int(start))
+        hi = min(self._length, int(start) + int(count))
+        if hi <= lo:
+            return out
+        self._file.seek(lo * self.width)
+        data = np.fromfile(self._file, dtype=self.dtype, count=hi - lo)
+        if self.dtype == "float32":
+            data = data * 32768.0
+        elif self.dtype == "int8":
+            # The same scale-up the .s8 loader applies, so the two paths
+            # decode identically.
+            data = data.astype(np.float64) * 256.0
+        out[lo - int(start) : lo - int(start) + len(data)] = data
+        return out
+
+    def close(self):
+        """Close the file."""
+        if self._file is not None:
+            self._file.close()
+            self._file = None
+
+
+def capture_sample_rate(filename, inputfreq=None):
+    """The capture's own sample rate in Hz.
+
+    inputfreq is the rate the user gave (in MHz); when it is None the rate
+    is read from the Domesday Duplicator sidecar that sits next to the
+    capture (a .yaml file with a "sample_rate_hz" key).  Returns None when
+    neither is available.
+    """
+    if inputfreq is not None:
+        return float(inputfreq) * 1e6
+    sidecar = os.path.splitext(filename)[0] + ".yaml"
+    if not os.path.isfile(sidecar):
+        return None
+    try:
+        with open(sidecar, "r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                key, sep, value = line.partition(":")
+                if sep and key.strip() == "sample_rate_hz":
+                    return float(value.strip().split("#")[0].strip()) * 1e6
+    except (OSError, ValueError):
+        return None
+    return None
 
 
 def load_unpacked_data(infile, sample, readlen, sampletype):

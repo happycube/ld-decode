@@ -14,7 +14,7 @@ elsewhere, and which combinations are rejected outright.
 import pytest
 
 from lddecode import cut
-from lddecode.main import build_options, build_parser
+from lddecode.main import build_options, build_parser, resolve_io
 
 pytestmark = [pytest.mark.unit]
 
@@ -58,10 +58,18 @@ def test_an_unknown_flag_is_refused():
 
 
 def test_the_positionals_are_required():
-    with pytest.raises(SystemExit) as exit_info:
-        build_parser().parse_args(["capture.lds"])
+    """The positional form names both the capture and the output.
 
-    assert exit_info.value.code == 2
+    argparse cannot express "one of these two forms", so the positionals are
+    optional at the parser's level and the check happens in resolve_io();
+    see tests/unit/test_stack_cli.py.
+    """
+    args = build_parser().parse_args(["capture.lds"])
+    assert args.infile == "capture.lds"
+    assert args.outfile is None
+
+    with pytest.raises(ValueError, match="no output file name"):
+        resolve_io(args)
 
 
 @pytest.mark.parametrize("flag", ["--PAL", "-p", "--pal"])
