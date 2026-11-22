@@ -12,10 +12,13 @@ two forms; nothing here touches a file or starts a decode.
 All signals are synthetic.
 """
 
+import logging
 import types
 
+import numpy as np
 import pytest
 
+from lddecode import main
 from lddecode.main import build_parser, build_stacked_source, resolve_io
 
 pytestmark = [pytest.mark.unit, pytest.mark.decode]
@@ -134,3 +137,83 @@ def test_a_compressed_capture_is_refused_by_the_read_time_path():
     """
     with pytest.raises(ValueError, match="fixed-width"):
         build_stacked_source(["capture.ldf"], _args(), "NTSC")
+
+
+# --- the rate the decoder is told about --------------------------------
+
+
+class _FakeDecoder:
+    """The decoder, stubbed: it records how it was built and does nothing."""
+
+    def __init__(self, *args, **kwargs):
+        self.kwargs = kwargs
+        self.fdoffset = 0
+        self.fields_written = 0
+        self.leadOut = False
+        self.output_cvbs = True
+
+    def roughseek(self, *args, **kwargs):
+        pass
+
+    def readfield(self):
+        return None
+
+    def close(self):
+        pass
+
+
+class _FakeSource:
+    """The virtual stream, stubbed: it reads as silence."""
+
+    def read(self, sample, readlen):
+        return np.zeros(readlen, dtype=np.int16)
+
+
+def _run_main(monkeypatch, argv, rate_hz):
+    """Run main() with the decoder, the loader and the source stubbed out."""
+    built = []
+
+    class _Decoder(_FakeDecoder):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            built.append(kwargs)
+
+    monkeypatch.setattr(main, "LDdecode", _Decoder)
+    monkeypatch.setattr(main, "init_logging", lambda name: logging.getLogger("lddecode-test"))
+    monkeypatch.setattr(main, "make_loader", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        main, "build_stacked_source", lambda *args, **kwargs: (_FakeSource(), rate_hz)
+    )
+    main.main(argv)
+    return built[0]
+
+
+def test_the_decoder_demodulates_the_virtual_stream_at_its_own_rate(monkeypatch):
+    """The read-time TBC path serves the virtual stream at the captures' own
+    rate, and the decoder is told that rate.
+
+    The reference's loader resamples the RF to 40 MHz, so that is the rate
+    the decoder expects there.  Told 40 MHz for a 75 MHz stream, it would
+    look for the sync pulses of a 2542-sample line in a stream whose lines
+    are 4767 samples long, and find none: the decode would produce nothing.
+    """
+    kwargs = _run_main(
+        monkeypatch,
+        ["-i", "capture.rf", "-o", "out", "-f", "75", "--tbc-mode", "read"],
+        75e6,
+    )
+
+    assert kwargs["inputfreq"] == 75.0
+
+
+def test_the_reference_path_demodulates_at_40_mhz(monkeypatch):
+    """The reference's way resamples the RF to 40 MHz, and the decoder is
+    told 40 MHz."""
+    kwargs = _run_main(
+        monkeypatch,
+        ["capture.rf", "out", "-f", "75", "--tbc-mode", "resample"],
+        75e6,
+    )
+
+    assert kwargs["inputfreq"] == 40
+

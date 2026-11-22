@@ -927,6 +927,10 @@ def main(args=None):
     from lddecode import __version__
     logger.debug("ld-decode version " + __version__)
 
+    # The rate the decoder demodulates at.  The loader resamples the RF to
+    # 40 MHz, so that is the rate the decoder is told about.
+    decoder_inputfreq = 40
+
     if tbc_mode == "read":
         try:
             source, fs = build_stacked_source(inputs, args, vid_standard)
@@ -941,6 +945,12 @@ def main(args=None):
                 sys.exit(1)
         else:
             loader = lambda _infile, sample, readlen: source.read(sample, readlen)
+            # The virtual stream is at the captures' own rate: the decoder
+            # demodulates it there, as the reference implementation does.
+            # Told 40 MHz, it would look for the sync pulses of a line that
+            # is 4767 samples long at 75 MHz in a 2542-sample line, and find
+            # none.
+            decoder_inputfreq = fs / 1e6
             logger.info("Read-time TBC: %d capture(s) at %g MHz, %s weights",
                         len(inputs), fs / 1e6, args.stack_weight)
 
@@ -950,6 +960,7 @@ def main(args=None):
         loader,
         logger,
         est_frames=req_frames,
+        inputfreq=decoder_inputfreq,
         analog_audio=0 if args.daa else analog_audio_freq,
         digital_audio=not args.noefm,
         system=vid_standard,
