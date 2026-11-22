@@ -73,7 +73,8 @@ def test_otherwise_the_field_is_measured_afresh(precomputed):
     (True, True, False, ["measure_its_2t_ratio"]),
 ])
 def test_the_measurements_follow_the_servos_that_pool_them(auto_mtf, two_t, veq, want):
-    it = types.SimpleNamespace(autoMTF=auto_mtf, mtf_2t_servo=two_t, veq_servo=veq)
+    it = types.SimpleNamespace(autoMTF=auto_mtf, mtf_2t_servo=two_t, veq_servo=veq,
+                               mtf_servo_reference="2t")
     assert LDdecode._vits_servo_measures(it) == want
 
 

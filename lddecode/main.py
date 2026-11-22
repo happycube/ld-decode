@@ -229,6 +229,17 @@ def build_parser():
         "default, never runs the servo)",
     )
     parser.add_argument(
+        "--mtf_servo_reference",
+        choices=("staircase", "2t"),
+        default=None,
+        help="What the PAL MTF level servo holds: '2t' (default) holds the "
+        "ITS 2T pulse-to-bar ratio at unity; 'staircase' keeps the FM "
+        "channel linear, holding the raw differential gain of the ITS "
+        "modulated staircase at zero, which on a pressing whose 2T pulse "
+        "is recorded soft gives less differential gain and edge ringing and "
+        "a flatter multiburst.  NTSC's pole pair always uses the 2T pulse",
+    )
+    parser.add_argument(
         "--calibration_frames",
         metavar="frames",
         type=int,
@@ -686,6 +697,7 @@ def build_options(args, core_count=None):
         "MTF_level": args.MTF,
         "MTF_offset": args.MTF_offset,
         "mtf_servo": not args.no_mtf_servo,
+        "mtf_servo_reference": args.mtf_servo_reference,
         # parse_frequency gives MHz; the audio filters take Hz
         "audio_filterwidth": (
             args.audio_filterwidth * 1000000 if args.audio_filterwidth is not None else None

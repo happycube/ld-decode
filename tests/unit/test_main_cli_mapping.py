@@ -417,6 +417,13 @@ def test_the_mtf_servo_runs_unless_switched_off():
     assert extra("--no_mtf_servo")["mtf_servo"] is False
 
 
+def test_the_mtf_servo_reference_is_left_to_the_decoder_unless_named():
+    assert extra()["mtf_servo_reference"] is None
+    assert extra("--mtf_servo_reference", "2t")["mtf_servo_reference"] == "2t"
+    assert (extra("--mtf_servo_reference", "staircase")["mtf_servo_reference"]
+            == "staircase")
+
+
 def test_the_diagnostic_outputs_are_off_by_default():
     result = extra()
 

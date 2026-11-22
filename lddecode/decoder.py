@@ -41,6 +41,7 @@ from .metrics import (
     measure_its_white_level,
     measure_vits_multiburst,
     precompute_vits,
+    staircase_linearity,
 )
 from .dsp import (FieldInfo, concatenate_blocks, nb_abs, readout_cutoff_from_tilt,
                   roundfloat, video_eq_db)
@@ -212,6 +213,30 @@ def measure_vits_dg_staircase(field, lines=None):
         if abs(phase_per_ire) > 0.5:
             continue
         return per_ire, phase_per_ire, line
+    return None
+
+
+def measure_staircase_linearity(field, lines=None):
+    """metrics.staircase_linearity() on the field's modulated staircase,
+    or None: the line and parity are measure_vits_dg_staircase()'s
+    (_VITS_DG_LAYOUT), read from dspicture, which is upstream of the
+    write-time DG corrector.  Returns (slope_per_ire, treads, line)."""
+    layout = _VITS_DG_LAYOUT.get(field.rf.system)
+    if layout is None or field.dspicture is None:
+        return None
+    _, default_lines, on_first_fields = layout
+    if bool(field.isFirstField) != on_first_fields:
+        return None
+    fs_mhz = field.rf.SysParams["outfreq"]
+    for line in (lines or default_lines):
+        try:
+            row = field.output_to_ire(
+                field.dspicture[field.lineslice_tbc(line)].astype(np.float64))
+        except Exception:
+            continue
+        got = staircase_linearity(row, fs_mhz)
+        if got is not None:
+            return got[0], got[1], line
     return None
 
 
@@ -578,22 +603,50 @@ class LDdecode:
             # until it is recalibrated.
             and self.rf.mtf_model != "readout"
         )
-        self._servo_samples = []   # (field readloc, level_used, pulse/bar)
+        self._servo_samples = []   # (field readloc, level_used, reading, parity)
+        # Under the staircase reference, the 2T readings it hands over to
+        # when the channel cannot be made linear inside the clip (see
+        # _mtf_servo_choose).
+        self._servo_samples_2t = []
+        self._servo_handed_over = False   # see _mtf_servo_choose
         self._servo_last_adopt = None   # _servo_pos of last servo adoption
-        self._servo_engaged = False     # 2T servo has measured this disc
-        # Loop gain is 1/|d(pulse/bar)/d(level)| — a near-Newton step.
-        # Measured slope: -0.11..-0.17 on PAL (Louvre/jason sweeps);
-        # -0.05 on NTSC over the servo's operating range of 0..+1.5
-        # (he010 radius sweeps — MTF_basemult 0.4 plus a flattening
-        # response make the NTSC exponent much weaker per level unit).
-        # The dead-band, estimate-scatter gate, and speculation
-        # tolerance are level-unit quantities, so they scale with the
-        # gain to stay the same size in ratio units.
-        self.mtf_servo_gain = 6.0 if system == "PAL" else 20.0
-        self.mtf_servo_deadband = 0.10 * self.mtf_servo_gain / 6.0
-        self.mtf_servo_scatter = 0.35 * self.mtf_servo_gain / 6.0
-        self.mtf_speculation_tolerance = (
-            self.MTF_SPECULATION_TOLERANCE * self.mtf_servo_gain / 6.0)
+        self._servo_engaged = False     # the servo has measured this disc
+        # What the servo holds (see MTF_SERVO_REFERENCES): the 2T pulse
+        # by default, or on PAL, asked for, the FM channel's linearity -
+        # the raw differential gain of the ITS modulated staircase at
+        # zero.  The staircase's Jacobian was only measured on PAL.
+        reference = self.mtf_servo_reference_for(
+            system, extra_options.get("mtf_servo_reference"))
+        self.mtf_servo_reference = reference
+        if reference == "staircase":
+            # Loop gain is 1/|d(slope)/d(level)|: the raw staircase slope
+            # falls by 1.0-2.5e-3 per IRE per level unit across the PAL
+            # radius sweep (steeper at outer radius and at higher level),
+            # so 1.5e-3 is a near-Newton step that never overshoots by
+            # more than two thirds.  A per-field reading scatters by 0.1
+            # to 0.5 level units (DD86 inner the most), so the scatter
+            # gate is wider than the 2T servo's; the dead-band and the
+            # speculation tolerance are the 2T servo's in level units.
+            self.mtf_servo_gain = 1.0 / self.MTF_LINEARITY_SLOPE_PER_LEVEL
+            self.mtf_servo_deadband = 0.10
+            self.mtf_servo_scatter = self.MTF_LINEARITY_SCATTER
+            self.mtf_speculation_tolerance = self.MTF_SPECULATION_TOLERANCE
+            self.mtf_servo_min_samples = self.MTF_LINEARITY_MIN_SAMPLES
+        else:
+            # Loop gain is 1/|d(pulse/bar)/d(level)| — a near-Newton step.
+            # Measured slope: -0.11..-0.17 on PAL (Louvre/jason sweeps);
+            # -0.05 on NTSC over the servo's operating range of 0..+1.5
+            # (he010 radius sweeps — MTF_basemult 0.4 plus a flattening
+            # response make the NTSC exponent much weaker per level unit).
+            # The dead-band, estimate-scatter gate, and speculation
+            # tolerance are level-unit quantities, so they scale with the
+            # gain to stay the same size in ratio units.
+            self.mtf_servo_gain = 6.0 if system == "PAL" else 20.0
+            self.mtf_servo_deadband = 0.10 * self.mtf_servo_gain / 6.0
+            self.mtf_servo_scatter = 0.35 * self.mtf_servo_gain / 6.0
+            self.mtf_speculation_tolerance = (
+                self.MTF_SPECULATION_TOLERANCE * self.mtf_servo_gain / 6.0)
+            self.mtf_servo_min_samples = self.MTF_SERVO_MIN_SAMPLES
         # PAL clip covers the validated +0.55..-0.65 with margin (and
         # ggv-mb rides it, so it must not move).  NTSC needs +1.0 at
         # he010's inner radius and must stay far below level ~2, where
@@ -605,6 +658,11 @@ class LDdecode:
         # at 0 pins the servo exactly where the b/w mapping lands at
         # those radii, and the correctable regime (ratio > 1, inner
         # radius, real slope) still converges normally.
+        #
+        # Under the staircase reference the clip also marks where the
+        # channel's linearity is out of reach: at inner radius the
+        # staircase's null lies near +2, and the servo then hands the
+        # level to the 2T pulse (see _mtf_servo_choose).
         if system == "PAL":
             self.mtf_servo_clip = (-1.0, 1.0)
         else:
@@ -1156,6 +1214,54 @@ class LDdecode:
     # a stale radius estimate.
     MTF_SERVO_MIN_SAMPLES = 8
     MTF_SERVO_KEEP = 60
+    #: What the MTF servo may hold (--mtf_servo_reference):
+    #:
+    #: "staircase" - the FM channel's linearity: the raw differential
+    #:     gain of the ITS modulated staircase, before the write-time DG
+    #:     corrector, held at zero.  A zero-phase pre-demodulation
+    #:     response H gives a demodulated error of about
+    #:     -1/2 d/dt[(H''/H)(w_i) theta''] (theta the FM phase, w_i its
+    #:     instantaneous frequency); chroma riding on luminance reads the
+    #:     slope of H''/H across the carrier swing as differential gain,
+    #:     and a luminance edge reads the same slope as a ring that
+    #:     follows rising edges and not falling ones.  Both vanish
+    #:     together when H''/H is flat, which an affine H satisfies
+    #:     exactly - and an affine H also leaves the linear video response
+    #:     flat, since (H(fc - f) + H(fc + f)) / 2 H(fc) is then 1.  See
+    #:     docs/technical/vits-servos.md, "The level that keeps the FM
+    #:     channel linear".
+    #: "2t" - the ITS 2T pulse-to-bar ratio, held at unity.  That reads a
+    #:     pulse recorded soft as a channel fault and corrects it with
+    #:     pre-demodulation curvature, which is the non-linearity above.
+    MTF_SERVO_REFERENCES = ("staircase", "2t")
+
+    @classmethod
+    def mtf_servo_reference_for(cls, system, requested=None):
+        """The reference the MTF servo holds on a system: the 2T pulse
+        unless the staircase is asked for on PAL.  The staircase's loop
+        gain was measured on PAL only, so NTSC's pole pair keeps the 2T
+        pulse whatever is asked (NTSC's default readout model runs no
+        servo at all).  The 2T pulse stays the default because the
+        conformance lane is held to it; see docs/technical/vits-servos.md,
+        "The level that keeps the FM channel linear", for what the
+        staircase changes and where it costs checks."""
+        if requested is not None and requested not in cls.MTF_SERVO_REFERENCES:
+            raise ValueError(f"unknown MTF servo reference {requested!r}")
+        if system != "PAL" or requested is None:
+            return "2t"
+        return requested
+
+    #: Fall of the raw staircase slope (fraction per IRE) per MTF level
+    #: unit; the reciprocal is the staircase servo's loop gain.  Measured
+    #: 1.0-2.5e-3 over the PAL radius sweep at levels -1 to +1.
+    MTF_LINEARITY_SLOPE_PER_LEVEL = 1.5e-3
+    #: Per-sample spread, in level units, past which the staircase pool
+    #: is not trusted (per-field readings spread 0.12 (GGV1011 middle) to
+    #: 0.51 (DD86-DS2 inner) level units on real staircases).
+    MTF_LINEARITY_SCATTER = 0.8
+    #: The staircase rides second fields only, so this is six frames.
+    MTF_LINEARITY_MIN_SAMPLES = 6
+
     MTF_SERVO_MAX_AGE_FIELDS = 240
     # Committed-decode adoption rate limit: radius drift is glacial, so
     # after the warmup has converged there is no reason to adopt more
@@ -2041,6 +2147,19 @@ class LDdecode:
             return None
 
         level_used = getattr(field, "decoded_mtf_level", None)
+        if (level_used is not None and field.dspicture is not None
+                and self.mtf_servo_reference == "staircase"):
+            # The raw differential gain: dspicture is upstream of the
+            # write-time DG corrector, and the inverse-MTF and video EQ
+            # filters are linear, so they scale every tread's chroma alike
+            # and leave the normalised slope alone - nothing to divide out.
+            m = measure_staircase_linearity(field)
+            if m is not None:
+                self._servo_samples = pool_reading(
+                    self._servo_samples,
+                    (field.readloc, level_used, float(m[0]),
+                     bool(field.isFirstField)),
+                    self.MTF_SERVO_KEEP)
         if level_used is not None and field.dspicture is not None:
             m = self._vits_measurement(field, measure_its_2t_ratio)
             if m is not None:
@@ -2062,16 +2181,32 @@ class LDdecode:
                 # A field that comes through again (a redo, or the
                 # committed decode passing over the calibration pass's
                 # fields) replaces its sample rather than counting twice.
-                self._servo_samples = pool_reading(
-                    self._servo_samples, (key, level_used, ratio, parity),
-                    self.MTF_SERVO_KEEP)
+                if self.mtf_servo_reference == "staircase":
+                    self._servo_samples_2t = pool_reading(
+                        self._servo_samples_2t,
+                        (key, level_used, ratio, parity), self.MTF_SERVO_KEEP)
+                else:
+                    self._servo_samples = pool_reading(
+                        self._servo_samples, (key, level_used, ratio, parity),
+                        self.MTF_SERVO_KEEP)
 
         horizon = (self._servo_pos
                    - self.MTF_SERVO_MAX_AGE_FIELDS * self.bytes_per_field)
         self._servo_samples = [s for s in self._servo_samples
                                if s[0] >= horizon]
+        if self.mtf_servo_reference == "staircase":
+            self._servo_samples_2t = [s for s in self._servo_samples_2t
+                                      if s[0] >= horizon]
+            chosen = self._mtf_servo_choose(
+                self._servo_samples, self._servo_samples_2t,
+                self.mtf_servo_min_samples, self.MTF_SERVO_MIN_SAMPLES)
+            if chosen is None:
+                return None
+            estimate, self._servo_handed_over = chosen
+            self._servo_engaged = True
+            return estimate
 
-        if len(self._servo_samples) < self.MTF_SERVO_MIN_SAMPLES:
+        if len(self._servo_samples) < self.mtf_servo_min_samples:
             return None
         # Consistency gate: a real ITS gives tight estimates (ratio
         # sigma ~0.01-0.02/field); noisy or misdetected content scatters
@@ -2082,7 +2217,56 @@ class LDdecode:
         self._servo_engaged = True
         return estimate
 
-    def _mtf_servo_pooled(self, samples):
+    #: The PAL 2T servo's loop gain, dead-band-scaled scatter gate, used
+    #: when the staircase reference hands over to the pulse.
+    MTF_2T_GAIN_PAL = 6.0
+    MTF_2T_SCATTER_PAL = 0.35
+    #: How far inside the clip the staircase's null must read before a
+    #: level handed to the 2T pulse is taken back (see _mtf_servo_choose).
+    MTF_LINEARITY_HANDBACK = 0.5
+
+    def _mtf_servo_choose(self, staircase, pulse, min_staircase, min_pulse):
+        """The staircase reference's level from its pool and the 2T pool,
+        or None while the staircase pool is too small or too scattered.
+
+        The staircase's null is the level at which the FM channel is
+        linear.  At inner radius the upper sidebands are past the optical
+        cutoff and no level inside the clip reaches it (+1.8 to +2.0 on
+        GGV1011, Industrial and DD86): the channel is single-sideband
+        there, and lifting what is left of the upper side buys linearity
+        with noise and mid-band response (DD86-DS2 inner at +1.0: 1-4 MHz
+        about 1 dB down, the chrominance references 10-13 % low).  With
+        linearity out of reach the linear response is the one criterion
+        left, so the level is then the 2T pulse's, as the 2T reference
+        would set it; with no usable pulse, the staircase's clipped
+        estimate.
+
+        The decision has hysteresis.  The staircase's slope per level unit
+        is smaller at inner radius (1.0e-3 per IRE) than the loop gain
+        assumes, so a null read from fields decoded far below it lands
+        short - inside the clip - and handing back there made DD86-DS2
+        inner cycle between the two references.  Once handed over, the
+        staircase takes the level back only when its null reads
+        MTF_LINEARITY_HANDBACK inside the clip.
+
+        Returns (estimate, handed_over), or None.
+        """
+        if len(staircase) < min_staircase:
+            return None
+        raw, scatter = self._mtf_servo_pooled(staircase, clip=False)
+        if scatter > self.mtf_servo_scatter:
+            return None
+        lo, hi = self.mtf_servo_clip
+        margin = self.MTF_LINEARITY_HANDBACK if self._servo_handed_over else 0.0
+        if lo + margin <= raw <= hi - margin:
+            return raw, False
+        if len(pulse) >= min_pulse:
+            level, spread = self._mtf_servo_pooled(pulse, reference="2t")
+            if spread <= self.MTF_2T_SCATTER_PAL:
+                return level, True
+        return float(np.clip(raw, lo, hi)), self._servo_handed_over
+
+    def _mtf_servo_pooled(self, samples, reference=None, clip=True):
         """The 2T servo's mtf_level estimate from samples, and its scatter:
         (estimate, scatter), the estimate clipped to mtf_servo_clip.
 
@@ -2105,18 +2289,26 @@ class LDdecode:
         A disc whose pulse scatters by that much per field is the disc on
         which the level is the wrong correction.
         """
-        target = self._mtf_servo_target()
+        reference = reference or self.mtf_servo_reference
+        if reference == "staircase":
+            target, gain = 0.0, self.mtf_servo_gain
+        elif reference == self.mtf_servo_reference:
+            target, gain = self._mtf_servo_target(), self.mtf_servo_gain
+        else:   # the 2T pool the staircase reference hands over to
+            target, gain = self._mtf_servo_target(), self.MTF_2T_GAIN_PAL
         by_parity = {True: [], False: []}
         for _, lv, r, parity in samples:
-            by_parity[parity].append(
-                lv + (r - target) * self.mtf_servo_gain)
+            by_parity[parity].append(lv + (r - target) * gain)
         meds = [np.median(v) for v in by_parity.values() if len(v) >= 3]
         if not meds:
-            meds = [np.median([lv + (r - target) * self.mtf_servo_gain
+            meds = [np.median([lv + (r - target) * gain
                                for _, lv, r, _ in samples])]
         ests = [e for v in by_parity.values() for e in v]
         scatter = float(np.std(ests))
-        return float(np.clip(np.mean(meds), *self.mtf_servo_clip)), scatter
+        estimate = float(np.mean(meds))
+        if clip:
+            estimate = float(np.clip(estimate, *self.mtf_servo_clip))
+        return estimate, scatter
 
     #: Fields decoded at the level in force that the warm-up wants to
     #: agree with it before the first frame (see _mtf_servo_settled):
@@ -2142,8 +2334,22 @@ class LDdecode:
         """
         if not self.mtf_2t_servo or not self._servo_samples:
             return True
-        if len(self._servo_samples) < self.MTF_SERVO_MIN_SAMPLES:
+        if len(self._servo_samples) < self.mtf_servo_min_samples:
             return False
+        if self.mtf_servo_reference == "staircase":
+            if self._mtf_servo_choose(
+                    self._servo_samples, self._servo_samples_2t,
+                    self.mtf_servo_min_samples,
+                    self.MTF_SERVO_MIN_SAMPLES) is None:
+                return True    # scattered: the servo will not move
+            here = [x for x in self._servo_samples if x[1] == self.mtf_level]
+            here_2t = [x for x in self._servo_samples_2t
+                       if x[1] == self.mtf_level]
+            chosen = self._mtf_servo_choose(
+                here, here_2t, self.MTF_SERVO_SETTLE_SAMPLES,
+                self.MTF_SERVO_SETTLE_SAMPLES)
+            return (chosen is not None
+                    and abs(chosen[0] - self.mtf_level) < self.mtf_servo_deadband)
         _, scatter = self._mtf_servo_pooled(self._servo_samples)
         if scatter > self.mtf_servo_scatter:
             return True
@@ -2237,7 +2443,10 @@ class LDdecode:
             return np.abs(self.mtf_level - oldmtf) < 0.05
 
         estimate = self._mtf_servo_estimate(field)
-        source = "2T servo"
+        servo_source = ("staircase linearity servo"
+                        if self.mtf_servo_reference == "staircase"
+                        else "2T servo")
+        source = servo_source
         # The servo's closed-loop estimate carries more measurement
         # noise than the open-loop ratio mapping; the wider dead-band
         # also damps limit cycles (clip-bound hunting on ggv-mb, and a
@@ -2289,7 +2498,7 @@ class LDdecode:
         if np.abs(estimate - self.mtf_level) < deadband:
             return True
 
-        if source == "2T servo" and self.fields_written > 0:
+        if source == servo_source and self.fields_written > 0:
             if (self._servo_last_adopt is not None
                     and (self._servo_pos - self._servo_last_adopt)
                     < self.MTF_SERVO_MIN_ADOPT_FIELDS * self.bytes_per_field):
@@ -3161,6 +3370,8 @@ class LDdecode:
         the worker, and decode_stage2 here."""
         names = []
         if self.autoMTF and self.mtf_2t_servo:
+            # the staircase reference hands over to the pulse when the
+            # channel cannot be made linear (_mtf_servo_choose)
             names.append("measure_its_2t_ratio")
         if self.veq_servo:
             names.append("measure_vits_multiburst")
