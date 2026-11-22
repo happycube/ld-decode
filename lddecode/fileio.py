@@ -223,13 +223,42 @@ class RawCapture:
 DEFAULT_CAPTURE_RATE_HZ = 40.0e6
 
 
+def open_raw_reader(filename):
+    """A reader of the fixed-width raw capture ``filename``: ``read(start, count)``.
+
+    Module-level, so ``functools.partial(open_raw_reader, filename)`` can be
+    sent to another process, which opens the capture itself (the stacked
+    source's pass 0 does).  The file stays open for the process's life.
+    """
+    return RawCapture(filename).read
+
+
+def sidecar_sample_rate(lines):
+    """The sample rate (Hz) a Domesday Duplicator sidecar gives, or None.
+
+    ``lines`` is the sidecar's text, line by line.  The rate is the
+    ``sample_rate_hz`` key, in hertz, which the Domesday Duplicator writes
+    quoted (``"sample_rate_hz": 75000000``, under ``"capture"``); a bare
+    key is read as well.  A trailing comment is ignored.
+    """
+    for line in lines:
+        key, sep, value = line.partition(":")
+        if sep and key.strip().strip("\"'") == "sample_rate_hz":
+            try:
+                rate = float(value.split("#")[0].strip().strip("\"'"))
+            except ValueError:
+                return None
+            return rate if rate > 0 else None
+    return None
+
+
 def capture_sample_rate(filename, inputfreq=None):
     """The capture's own sample rate in Hz.
 
     inputfreq is the rate the user gave (in MHz); when it is None the rate
     is read from the Domesday Duplicator sidecar that sits next to the
-    capture (a .yaml file with a "sample_rate_hz" key), and failing that it
-    is DEFAULT_CAPTURE_RATE_HZ, as for any other decode.  Returns None only
+    capture (a .yaml file, see sidecar_sample_rate), and failing that it is
+    DEFAULT_CAPTURE_RATE_HZ, as for any other decode.  Returns None only
     when the sidecar exists but its rate cannot be read.
     """
     if inputfreq is not None:
@@ -239,13 +268,9 @@ def capture_sample_rate(filename, inputfreq=None):
         return DEFAULT_CAPTURE_RATE_HZ
     try:
         with open(sidecar, "r", encoding="utf-8", errors="replace") as f:
-            for line in f:
-                key, sep, value = line.partition(":")
-                if sep and key.strip() == "sample_rate_hz":
-                    return float(value.strip().split("#")[0].strip()) * 1e6
-    except (OSError, ValueError):
+            return sidecar_sample_rate(f)
+    except OSError:
         return None
-    return None
 
 
 def load_unpacked_data(infile, sample, readlen, sampletype):

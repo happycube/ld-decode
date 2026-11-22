@@ -295,3 +295,21 @@ def test_the_device_needs_the_read_time_tbc():
 def test_the_device_defaults_to_the_cpu_in_double_precision():
     args = _parse("capture.rf", "out")
     assert (args.device, args.device_precision) == ("cpu", "double")
+
+
+def test_the_domesday_duplicator_sidecar_gives_the_rate_in_hertz():
+    """The Domesday Duplicator writes its keys quoted, the rate in hertz."""
+    import io
+
+    from lddecode.fileio import sidecar_sample_rate
+
+    text = (
+        '"schema_version": 1\n'
+        '"capture":\n'
+        '  "file": "copy_2_stack_small_1.ddd.s16"\n'
+        '  "sample_rate_hz": 75000000\n'
+        '  "duration_seconds": 10.206\n'
+    )
+    assert sidecar_sample_rate(io.StringIO(text)) == 75.0e6
+    assert sidecar_sample_rate(io.StringIO("sample_rate_hz: 40000000  # DdD\n")) == 40.0e6
+    assert sidecar_sample_rate(io.StringIO('"capture":\n  "file": "x"\n')) is None

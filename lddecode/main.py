@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import functools
 import signal
 import sys
 import argparse
@@ -8,7 +9,7 @@ import numpy as np
 
 from lddecode.decoder import LDdecode
 from lddecode.fileio import (RawCapture, capture_sample_rate, ldf_pipe, make_loader,
-                             parse_frequency, raw_layout, samples_to_s16)
+                             open_raw_reader, parse_frequency, raw_layout, samples_to_s16)
 from lddecode.utils_logging import init_logging
 
 # FLAC decode threads for a compressed input when the decode itself is
@@ -861,7 +862,12 @@ def build_stacked_source(inputs, args, vid_standard):
             capture = RawCapture(path)
             files.append(capture)
             captures.append(
-                StackInput(path=path, read_fn=capture.read, length=capture.length)
+                StackInput(
+                    path=path,
+                    read_fn=capture.read,
+                    length=capture.length,
+                    open_reader=functools.partial(open_raw_reader, path),
+                )
             )
         source = StackedSource(
             captures,

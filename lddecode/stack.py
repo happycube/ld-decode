@@ -233,11 +233,20 @@ class StackInput:
         the capture and past its end read as zero.
     length : int
         The capture's length, in samples.
+    open_reader : Callable[[], Callable[[int, int], np.ndarray]], optional
+        A picklable factory that opens the capture again and returns a
+        reader like ``read_fn`` (for a raw capture,
+        ``functools.partial(fileio.open_raw_reader, filename)``).  With it,
+        the capture's pass 0 runs in a process of its own, as the reference
+        runs it on a thread of its own: the scan is Python and NumPy, and on
+        a thread of this process it would hold the interpreter from the
+        stream's own computation.  Without it, the scan runs on a thread.
     """
 
     path: str
     read_fn: Callable[[int, int], np.ndarray]
     length: int
+    open_reader: Callable[[], Callable[[int, int], np.ndarray]] | None = None
 
 
 # --------------------------------------------------------------------------
@@ -956,6 +965,41 @@ def locate_fields(
     from .rf_sync import locate, system_for
 
     return locate(read_fn, fs, system_for(ntsc), stop=stop, length=length)
+
+
+def _scan_process(
+    open_reader: Callable[[], Callable[[int, int], np.ndarray]],
+    length: int,
+    fs: float,
+    ntsc: bool,
+    stop: object,
+    records: object,
+) -> None:
+    """Pass 0 of one capture, in a process of its own.
+
+    Opens the capture through ``open_reader``, locates its fields and puts
+    ``("rec", record)`` on ``records`` as they are found, then
+    ``("done", None)``, or ``("error", message)``.  ``stop`` (an event) ends
+    the scan at its next chunk.  The reader is cut at ``length``, as the
+    stacked source's own readers are.
+    """
+    try:
+        reader = open_reader()
+
+        def read_fn(start: int, count: int) -> np.ndarray:
+            data = np.asarray(reader(int(start), int(count)), dtype=np.float64).ravel()
+            limit = max(0, int(length) - int(start))
+            return data[:limit] if data.shape[0] > limit else data
+
+        from .rf_sync import locate, system_for
+
+        for rec in locate(read_fn, fs, system_for(ntsc), stop=stop.is_set, length=length):
+            if stop.is_set():
+                break
+            records.put(("rec", rec))
+        records.put(("done", None))
+    except Exception as exc:  # noqa: BLE001 - sent to the parent
+        records.put(("error", f"{type(exc).__name__}: {exc}"))
 
 
 # --------------------------------------------------------------------------
@@ -1733,6 +1777,8 @@ class StackedSource:
             names=[inp.path for inp in self.inputs],
         )
         self._cache: _ChunkCache | None = None
+        #: The pass 0 processes' stop events (see _scan_in_process).
+        self._scan_stops: list = []
         self._pass0 = [
             threading.Thread(target=self._scan, args=(index,), name=f"stack-pass0-{index}", daemon=True)
             for index in range(len(self.inputs))
@@ -1840,7 +1886,14 @@ class StackedSource:
         return read_fn
 
     def _scan(self, index: int) -> None:
-        """Pass 0 of input ``index``: its field records into the timeline."""
+        """Pass 0 of input ``index``: its field records into the timeline.
+
+        In a process of its own when the input can be opened again
+        (``StackInput.open_reader``), on this thread otherwise.
+        """
+        if self.inputs[index].open_reader is not None:
+            self._scan_in_process(index)
+            return
         live = self._live
         try:
             for rec in locate_fields(
@@ -1853,6 +1906,55 @@ class StackedSource:
                 if live.stopped():
                     break
                 live.push(index, rec)
+        except Exception as exc:  # noqa: BLE001 - reported to the stream's reader
+            live.finish(index, exc)
+        else:
+            live.finish(index)
+
+    def _scan_in_process(self, index: int) -> None:
+        """Pass 0 of input ``index`` in a process of its own.
+
+        The process opens the capture itself and sends its field records
+        back; this thread hands them to the timeline.  ``close()`` stops the
+        process through a shared event, at its next chunk.
+        """
+        import multiprocessing
+        import queue as queue_module
+
+        live = self._live
+        inp = self.inputs[index]
+        ctx = multiprocessing.get_context("spawn")
+        records = ctx.Queue()
+        stop = ctx.Event()
+        self._scan_stops.append(stop)
+        if live.stopped():
+            stop.set()
+        proc = ctx.Process(
+            target=_scan_process,
+            args=(inp.open_reader, inp.length, self.fs, self.ntsc, stop, records),
+            name=f"stack-pass0-{index}",
+            daemon=True,
+        )
+        proc.start()
+        try:
+            while True:
+                try:
+                    kind, value = records.get(timeout=0.5)
+                except queue_module.Empty:
+                    if live.stopped():
+                        stop.set()
+                    if not proc.is_alive():
+                        raise RuntimeError(
+                            f"the pass 0 process ended with exit code {proc.exitcode}"
+                        ) from None
+                    continue
+                if kind == "rec":
+                    if not live.stopped():
+                        live.push(index, value)
+                elif kind == "error":
+                    raise RuntimeError(value)
+                else:
+                    break
         except Exception as exc:  # noqa: BLE001 - reported to the stream's reader
             live.finish(index, exc)
         else:
@@ -2008,6 +2110,8 @@ class StackedSource:
         live = getattr(self, "_live", None)
         if live is not None:
             live.stop()
+        for stop in list(getattr(self, "_scan_stops", ())):
+            stop.set()
         cache = getattr(self, "_cache", None)
         if cache is not None:
             cache.stop()

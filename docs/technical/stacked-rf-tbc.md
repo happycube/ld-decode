@@ -499,12 +499,22 @@ each one is the value it was, bit for bit.
 
 ## Pass 0, alongside the decode
 
-As in the reference, the pass 0 runs on threads of its own while the decoder
-reads the stream: one scan per capture feeds its fields to the timeline as it
-finds them (`LiveTimeline`, the reference's `Live`), and a chunk of the stream
-waits only for the anchors it needs. When the decode stops, so does the pass
-0, at its next chunk: a `--length 10` decode of an hour of RF locates a few
-seconds of it, not the hour.
+As in the reference, the pass 0 runs alongside the decoder's reads: one scan
+per capture feeds its fields to the timeline as it finds them
+(`LiveTimeline`, the reference's `Live`), and a chunk of the stream waits
+only for the anchors it needs. When the decode stops, so does the pass 0, at
+its next chunk: a `--length 10` decode of an hour of RF locates a few seconds
+of it, not the hour.
+
+The reference runs each scan on a thread. Here each scan of a raw capture
+runs in a process of its own, which opens the capture by its name and sends
+its fields back: the scan is Python and NumPy, and eighteen scans on threads
+of the decoder's own process held its interpreter from the stream's
+computation. Measured on the eighteen captures of the reference stack (75
+MHz, 10 s each), the read of the stream went from 0.69 M samples/s with the
+scans on threads to 1.94 once the scans in processes are over; they are over
+85 s after the start, having located 13.8 G samples. While they run, they
+hold most of the cores, and the stream runs slower.
 
 The pairing is the reference's live one. A secondary capture's field is
 examined once that capture is finished or 16 fields past it; a primary field
@@ -606,7 +616,29 @@ quicker than the host; `single` is the one that pays, and pays most with many
 captures, since the read and the combination grow with them while the rest
 does not. It needs pyopencl (`pip install 'ld-decode[opencl]'`) and an OpenCL
 driver; the GPU with the most compute units is taken, or the one
-`PYOPENCL_CTX` names.
+`PYOPENCL_CTX` names. In the Nix environment pyopencl comes with the package
+and the development shell, where nixpkgs builds it; outside NixOS, point its
+driver loader at the system's drivers with `OCL_ICD_VENDORS=/etc/OpenCL/vendors`.
+
+## On the real captures, after the changes above
+
+The eighteen captures of the reference stack (NTSC, 75 MHz, 10 s each, 13.8 G
+samples in all), with the three corrections on, on a 32-thread CPU and an
+RTX 5080 laptop GPU:
+
+| | CPU | OpenCL, single |
+| --- | --- | --- |
+| the stream, once the pass 0 is over | 1.94 M samples/s | 2.44 M samples/s |
+| 15 frames, from the start | 110 s | 101 s |
+| the whole stack (646 fields) | - | **548 s** |
+
+The reference decodes the same stack in 880 s (645 fields). The picture is the
+previous port's to 78-80 dB of PSNR (a median over the fields), so the changes
+above changed what it computes by rounding only; the GPU's is the host's to
+105 dB. Against the reference it is 41.8 dB over the first ninety fields, and
+35.5-36.7 dB from there on: that drop is in the previous port's output too,
+field for field, and starts where rev 8's own servos (the MTF level, the auto
+chroma) settle, so it is the two decoders that differ there, not the stacks.
 
 The pass 0 costs the same whether it is used for the stacking or on its own:
 it is a measurement of the RF, and it is over long before the decode is.
