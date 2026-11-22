@@ -244,7 +244,8 @@ same eighteen captures, the same 75 MHz, the same `--tbc read`.
   of **1.0** over a signal of 4822 (**73.7 dB** down), and the correlation is
   0.99999998.
 - **The picture.** The same fields, in the same order, with the same VBI
-  codes and the same CLV timecode: **42.5 dB** of PSNR and a correlation of
+  codes (the VBI rows are identical, one for one), the same CLV timecode
+  and the same sync confidence: **42.5 dB** of PSNR and a correlation of
   0.9984.
 - **Where the last half of a decibel goes.** The same difference appears on
   the reference's own path (`--tbc resample`), which this port does not
@@ -256,6 +257,10 @@ same eighteen captures, the same 75 MHz, the same `--tbc read`.
   noise in the 6-10 MHz band of the picture than this decoder's (89 600
   against 115 300), at 40 MHz as well as at 75 MHz: that is the demodulator,
   not the rate.
+- **The chroma burst.** The reference measures the burst at 15.0 IRE and this
+  decoder at 20.0, in both modes: the two demodulators agree on everything
+  else (the sync confidence, the EFM's timing values, to 0.1 %) and not on
+  the burst's level.
 
 The comparison found one bug on this side, and it was a blocking one: the
 decoder was not told the rate of the virtual stream, and looked for the sync
