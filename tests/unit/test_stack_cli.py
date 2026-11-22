@@ -95,8 +95,13 @@ def test_the_keep_flags_default_to_off():
     assert not args.keep_audio_crosstalk
     assert not args.keep_crystal_lines
     assert not args.keep_chroma_leak
-    kept = _parse("capture.rf", "out", "--keep-audio-crosstalk",
-                  "--keep-crystal-lines", "--keep-chroma-leak")
+    kept = _parse(
+        "capture.rf",
+        "out",
+        "--keep-audio-crosstalk",
+        "--keep-crystal-lines",
+        "--keep-chroma-leak",
+    )
     assert kept.keep_audio_crosstalk
     assert kept.keep_crystal_lines
     assert kept.keep_chroma_leak
@@ -110,8 +115,14 @@ def test_rf_out_defaults_to_off():
 
 def _args(**kwargs):
     """The arguments build_stacked_source reads."""
-    base = dict(inputfreq=None, stack_weight="adaptive", keep_audio_crosstalk=False,
-                keep_crystal_lines=False, keep_chroma_leak=False, rf_out=None)
+    base = dict(
+        inputfreq=None,
+        stack_weight="adaptive",
+        keep_audio_crosstalk=False,
+        keep_crystal_lines=False,
+        keep_chroma_leak=False,
+        rf_out=None,
+    )
     base.update(kwargs)
     return types.SimpleNamespace(**base)
 

@@ -168,6 +168,12 @@ Measured: **+0.09 dB** at 75 MHz, 37.41 to 37.55 dB at 40 MHz where more
 lines fold into the band, neutral in a stack (the captures' lines, at
 unrelated phases, already average down).
 
+The lines are measured over a super-block of 2^22 samples, in one pass: the
+phasors of all the lines are taken over all the blocks of the super-block at
+once, and the subtraction reuses the same tables of exponentials from one
+piece to the next. That is **177 Msamples/s** for the measurement and
+**17.5 Msamples/s** for the subtraction, on one core.
+
 ### The chroma leak
 
 On NTSC the composite chroma leaks into the RF baseband around the colour
@@ -185,6 +191,36 @@ Measured: the bump at 4.73-4.95 MHz over its neighbours goes from **+5.8 dB
 to -0.2 dB**, and the VITS measures do not move - it removes an artefact,
 it does not smooth the picture.
 
+## On real captures
+
+The pass 0 and the clock lines were checked against the reference
+implementation on real NTSC captures at 75 MHz (ten seconds of signal
+each, a disc segment captured three times over).
+
+- **The fields.** The pass 0 finds the same number of fields as the
+  reference: 646 on the primary capture of the reference stack, 852 on the
+  longest one, every one of them with its frame code, and the parities
+  alternating all the way.
+- **The lines.** The line grid comes out at 4767.16 samples a line (the
+  reference says 4767) and 273 lines a field, the overlap into the next
+  field included (263 without it). The jitter of the lines about their
+  own grid is **0.085 samples rms**, against the reference's 0.091.
+- **The clock lines.** The crystal's frequency, the multiples subtracted
+  and the other steady lines are the same as the reference's on all
+  eighteen captures of the reference stack, to the kilohertz.
+
+The stacking itself was then run on three captures of the same segment
+(809 M samples each at 75 MHz), with the three corrections on:
+
+- **The build.** The pass 0 over the three captures, the clock lines'
+  detection and the pairing of the fields took **64.9 s**, that is 37 M
+  samples a second over the 2.4 G samples of the three captures.
+- **The read.** The virtual stream runs at **0.54 M samples/s** on one core
+  (111 s for 60 M samples of the stream, 180 M samples read out of the
+  three captures). The synthetic captures used for the figures below are
+  close to four times quicker: they carry no clock line, and the subtraction
+  of the clock lines is a fifth of the time.
+
 ## What it costs
 
 The pass 0 reads the capture once more (it runs alongside the decode), and
@@ -200,6 +236,10 @@ captures:
 | the line location (the pass 0) | 27 M samples/s at 40 MHz, 34 M at 75 MHz | 8 s |
 | the clock lines' detection (once per capture) | 7 M samples/s | 40 s |
 | the stacking (the read of the virtual stream) | 2 M samples/s | 2 min 15 s |
+
+On a real capture, which carries the clock lines to subtract, the read of the
+virtual stream runs at **0.54 M samples/s** instead (8 min 20 s for an hour
+of RF), and the build of the stack at 37 M samples/s.
 
 The hot loop of the fractional delay filters, which read every capture at its
 own position, runs in Numba, like the demodulator's own. The rest is vectorised
