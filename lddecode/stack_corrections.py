@@ -860,24 +860,21 @@ class CrystalLines:
 
     # -- measurement ------------------------------------------------------
 
-    def _at(self, raw: np.ndarray, f: float, a: int, table: Optional[np.ndarray] = None) -> complex:
+    def _at(self, raw: np.ndarray, f: float, a: int) -> complex:
         """The phasor of a line's frequency over a block of the capture.
 
         The block starts at `a` (within `raw`, the super-block's samples).
         The phasor is referenced to the super-block's first sample.
 
-        `table` is the block's table of exponentials for that frequency; it
-        is the same for every block of the super-block, and is computed
-        here when it is not given.
+        This is the reference of `_ats`, which measures the same phasors
+        over all the blocks at once.
         """
         w = TAU * f / self.fs
         seg = raw[a : a + XTAL_BLOCK]
         m = seg.shape[0]
         if m == 0:
             return 0j
-        if table is None:
-            table = np.exp(-1j * w * np.arange(XTAL_BLOCK))
-        acc = np.dot(seg, table[:m])
+        acc = np.dot(seg, np.exp(-1j * w * np.arange(m)))
         return complex((2.0 / m) * acc * np.exp(-1j * w * a))
 
     def _ats(self, raw: np.ndarray, freqs: Sequence[float]) -> list[np.ndarray]:
