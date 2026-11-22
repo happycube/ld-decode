@@ -516,6 +516,37 @@ def test_locate_an_empty_capture_finds_no_fields():
     assert list(locate(_reader(np.zeros(0)), FS, system_for(True))) == []
 
 
+def test_locate_stops_at_the_length_of_the_capture(ntsc_records, ntsc_capture):
+    """A reader that pads past the end does not make the scan run forever.
+
+    The project's own raw capture reader hands out zeros past the end of the
+    file, so it never reports the end of the capture: the length is what
+    ends the scan.
+    """
+    rf, _, _ = ntsc_capture
+
+    def padded_reader(start: int, count: int) -> np.ndarray:
+        # Always the whole count: the end of the capture is not reported.
+        out = np.zeros(count, dtype=np.float64)
+        lo = max(0, start)
+        hi = min(rf.size, start + count)
+        if hi > lo:
+            out[lo - start : hi - start] = rf[lo:hi]
+        return out
+
+    records = list(locate(padded_reader, FS, system_for(True), length=rf.size))
+    assert len(records) == len(ntsc_records)
+    assert [r.first for r in records] == [r.first for r in ntsc_records]
+    assert [r.code for r in records] == [r.code for r in ntsc_records]
+
+
+def test_locate_without_a_length_stops_where_the_reader_reports_the_end(ntsc_records, ntsc_capture):
+    """A reader that reports the end of the capture ends the scan by itself."""
+    rf, _, _ = ntsc_capture
+    records = list(locate(_reader(rf), FS, system_for(True)))
+    assert len(records) == len(ntsc_records)
+
+
 def test_locate_stops_when_the_caller_asks():
     """The scan stops where the caller stops it."""
     system = system_for(True)

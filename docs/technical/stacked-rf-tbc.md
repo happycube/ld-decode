@@ -152,8 +152,10 @@ frequency all through the capture.
 
 They are found in four stretches spread over the capture: a line must be at
 least 10 dB over the local floor in all of them, and a local maximum of its
-neighbours. The crystal's drift is followed with a Goertzel recurrence every
-2^16 samples, so the line stays where it is.
+neighbours. The stretches run from the capture's first located line to its
+end, so the detection covers the part of the capture that carries a picture.
+The crystal's drift is followed with a Goertzel recurrence every 2^16
+samples, so the line stays where it is.
 
 What is deliberately left out: the bands where the disc's own signal makes
 steady lines (the audio carriers, the chroma leak's band, the video

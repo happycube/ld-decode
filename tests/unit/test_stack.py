@@ -158,7 +158,10 @@ def _install_locator(monkeypatch, captures, deltas) -> None:
     """
     keys = {_reader_key(cap.read_fn): delta for cap, delta in zip(captures, deltas)}
 
-    def locate(read_fn, fs, ntsc, stop=None):
+    def locate(read_fn, fs, ntsc, stop=None, length=None):
+        # The capture's length is passed on, so the scan ends even when the
+        # reader pads past the end of the capture.
+        assert length is not None
         return _records(keys[_reader_key(read_fn)])
 
     monkeypatch.setattr(stack, "locate_fields", locate)

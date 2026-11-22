@@ -733,6 +733,8 @@ class CrystalLines:
         *,
         ntsc: bool,
         line_hz: float,
+        length: Optional[int] = None,
+        start: int = 0,
     ) -> "CrystalLines":
         """Find the lines in a capture.
 
@@ -749,6 +751,15 @@ class CrystalLines:
             ntsc: True for NTSC (its excluded bands and line frequency),
                 False for PAL.
             line_hz: the picture's line frequency (Hz).
+            length: the capture's length in samples.  It is found by probing
+                `read_fn` when it is not given, which needs a reader that
+                reports the end of the capture by returning fewer samples
+                than were asked for; a reader that pads with zeros past the
+                end never reports it.
+            start: where the stretches start, in samples.  It is the
+                capture's first located line: the stretches are spread from
+                there to the end of the capture, so the detection covers the
+                part of the capture that carries a picture.
 
         Returns:
             A `CrystalLines` holding the lines found (possibly none: its
@@ -757,15 +768,16 @@ class CrystalLines:
         """
         n = XTAL_FFT
         segments = XTAL_SEGMENTS
-        total = _capture_length(read_fn)
-        room = max(0, total - n)
+        total = int(length) if length is not None else _capture_length(read_fn)
+        start = max(0, int(start))
+        room = max(0, total - start - n)
         exclude = LINE_EXCLUDE_HZ if ntsc else PAL_LINE_EXCLUDE_HZ
 
         # The detection spectrum: Hann-windowed FFTs over the stretches.
         win = 0.5 - 0.5 * np.cos(TAU * np.arange(n) / n)
         seg_powers = []
         for seg in range(segments):
-            at = room * seg // max(1, segments - 1)
+            at = start + room * seg // max(1, segments - 1)
             raw = np.asarray(read_fn(at, n), dtype=np.float64)
             if raw.shape[0] < n:
                 raw = np.concatenate((raw, np.zeros(n - raw.shape[0], dtype=np.float64)))

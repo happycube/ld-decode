@@ -280,6 +280,66 @@ def test_a_clock_line_is_found_and_removed(small_xtal):
     assert 20 * math.log10(before / after) > 20.0
 
 
+def test_the_detection_starts_where_the_caller_says(small_xtal):
+    """The stretches are spread from the capture's first located line to its
+    end: the reader is asked for them there, and nowhere else."""
+    rng = np.random.default_rng(206)
+    capture = _capture(rng, [XLINE_HZ])
+    asked: list[int] = []
+
+    def reader(start, count):
+        asked.append(int(start))
+        return _reader(capture)(start, count)
+
+    start = XN // 4
+    stack_corrections.CrystalLines.detect(
+        reader,
+        XFS,
+        ntsc=True,
+        line_hz=stack_corrections.NTSC_LINE_HZ,
+        length=XN,
+        start=start,
+    )
+
+    assert len(asked) == stack_corrections.XTAL_SEGMENTS
+    # The first stretch starts at the given position, the last one at the end
+    # of the capture.
+    assert asked[0] == start
+    assert asked[-1] == XN - stack_corrections.XTAL_FFT
+    assert asked == sorted(asked)
+
+
+def test_the_detection_reads_no_further_than_the_captures_length(small_xtal):
+    """A reader that pads past the end of the capture needs the length.
+
+    Without it the capture's length is probed, and a reader that never
+    reports the end of the capture sends the stretches past it.
+    """
+    rng = np.random.default_rng(207)
+    capture = _capture(rng, [XLINE_HZ])
+
+    def padding_reader(start, count):
+        # Always the whole count: the end of the capture is not reported.
+        out = np.zeros(count, dtype=np.float64)
+        lo = max(0, start)
+        hi = min(capture.shape[0], start + count)
+        if hi > lo:
+            out[lo - start : hi - start] = capture[lo:hi]
+        return out
+
+    lines = stack_corrections.CrystalLines.detect(
+        padding_reader,
+        XFS,
+        ntsc=True,
+        line_hz=stack_corrections.NTSC_LINE_HZ,
+        length=capture.shape[0],
+    )
+
+    assert lines.has_lines
+    assert len(lines.others) == 1
+    assert lines.others[0] == pytest.approx(XLINE_HZ, rel=1e-4)
+
+
 def test_a_comb_at_the_line_frequency_is_not_taken_for_a_clock_line(small_xtal):
     """A still picture's RF is a comb of lines a line frequency apart; it
     must not be taken for a clock line and subtracted."""

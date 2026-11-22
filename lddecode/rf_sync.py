@@ -1251,6 +1251,7 @@ def locate(
     system: SyncSystem,
     *,
     stop: Optional[Callable[[], bool]] = None,
+    length: Optional[int] = None,
 ) -> Iterator[FieldRecord]:
     """Locate every field of a capture, straight from its RF.
 
@@ -1272,8 +1273,7 @@ def locate(
     ----------
     read_fn : callable
         ``read_fn(start, count) -> ndarray``: the RF samples
-        `[start, start + count)` as float.  It returns fewer than `count`
-        samples at the end of the capture.  The library never opens a file
+        `[start, start + count)` as float.  The library never opens a file
         itself.
     fs : float
         The capture's sample rate, in Hz.
@@ -1282,6 +1282,14 @@ def locate(
     stop : callable, optional
         Returns True when the caller wants the scan to stop (the decoder
         stops where the decode stops).
+    length : int, optional
+        The capture's length, in samples.  The scan stops there.
+
+        The scan also stops where the reader reports the end of the capture
+        by returning fewer samples than were asked for.  A reader that pads
+        with zeros past the end of the capture - the project's own raw
+        capture reader does - never reports it, so it must pass the length
+        here, or the scan never ends.
 
     Yields
     ------
@@ -1304,7 +1312,7 @@ def locate(
     reach = offsets[-1]
     tracker = _Tracker(fs, system)
     own0 = 0
-    total: Optional[int] = None
+    total: Optional[int] = None if length is None else max(0, int(length))
     # The last broad pulse seen, kept across the chunks: the VBI candidate
     # lines are the ones a few lines after it, and the broad pulse can be in
     # the previous chunk.  (The Rust resets this per chunk, which loses the
@@ -1314,7 +1322,7 @@ def locate(
         b0 = own0 - MARGIN
         buf, eof = _read_window(read_fn, b0, CHUNK + 2 * MARGIN)
         if eof is not None:
-            total = eof
+            total = eof if total is None else min(total, eof)
         if stop is not None and stop():
             return
         # Coarse frequency on a grid aligned to absolute multiples of the

@@ -726,7 +726,11 @@ def build_timeline(
 
 
 def locate_fields(
-    read_fn: Callable[[int, int], np.ndarray], fs: float, ntsc: bool, stop: object = None
+    read_fn: Callable[[int, int], np.ndarray],
+    fs: float,
+    ntsc: bool,
+    stop: object = None,
+    length: int | None = None,
 ) -> list:
     """Locate the lines of one input, from its RF.
 
@@ -744,6 +748,10 @@ def locate_fields(
         True for NTSC, False for PAL.
     stop : object
         An optional callable the locator polls to know it may stop.
+    length : int, optional
+        The capture's length, in samples.  The scan stops there; without it
+        the reader has to report the end of the capture by returning fewer
+        samples than were asked for.
 
     Returns
     -------
@@ -752,7 +760,7 @@ def locate_fields(
     """
     from .rf_sync import locate, system_for
 
-    return list(locate(read_fn, fs, system_for(ntsc), stop=stop))
+    return list(locate(read_fn, fs, system_for(ntsc), stop=stop, length=length))
 
 
 # --------------------------------------------------------------------------
@@ -1327,7 +1335,7 @@ class StackedSource:
                 if lines.size:
                     first = int(lines[0])
             if self.cancel_xtal:
-                self._crystal[index] = self._detect_crystal(index)
+                self._crystal[index] = self._detect_crystal(index, first)
             sigma2 = noise_floor(self._readers[index], first, self.fs)
             _logger.info("stack: %s noise floor %.4e (weight %.4e)", inp.path, sigma2, 1.0 / sigma2)
             self.weight.append(1.0 / sigma2)
@@ -1358,11 +1366,18 @@ class StackedSource:
         """Locate every input's lines, one pass per input, in parallel."""
         with ThreadPoolExecutor(max_workers=len(self.inputs)) as pool:
             futures = [
-                pool.submit(locate_fields, reader, self.fs, self.ntsc) for reader in self._readers
+                pool.submit(
+                    locate_fields,
+                    reader,
+                    self.fs,
+                    self.ntsc,
+                    length=inp.length,
+                )
+                for reader, inp in zip(self._readers, self.inputs)
             ]
             return [list(future.result()) for future in futures]
 
-    def _detect_crystal(self, index: int) -> object | None:
+    def _detect_crystal(self, index: int, first: int) -> object | None:
         """The capture's crystal lines, or None when there are none."""
         try:
             from .stack_corrections import CrystalLines
@@ -1376,6 +1391,8 @@ class StackedSource:
                 self.fs,
                 ntsc=self.ntsc,
                 line_hz=line_hz,
+                length=self.inputs[index].length,
+                start=first,
             )
         except TypeError as exc:
             _logger.warning("stack: the crystal-line detector does not fit: %s", exc)
