@@ -227,6 +227,45 @@ The stacking itself was then run on three captures of the same segment
   lines the reference subtracts are dropped by **31 to 59 dB** (43 dB in
   the middle): what is left of them is the numerical floor.
 
+## Against the reference implementation
+
+The reference implementation (the Rust rewrite) was built on this machine and
+run on the same captures, so the two could be compared on the same data: the
+same eighteen captures, the same 75 MHz, the same `--tbc read`.
+
+- **The clock lines.** The same eight multiples of the EFM decoder's crystal
+  and the same seven other steady lines, to the kilohertz, on all eighteen
+  captures.
+- **The stack's weights.** The noise floor each capture is weighed by comes
+  out identical on all eighteen (2.4954e4 and 4.0073e-5 for the capture with
+  the least noise, 3.6393e4 and 2.7478e-5 for the one with the most).
+- **The RF the decoder reads.** The two streams are aligned to the sample:
+  **45 %** of the samples are bit for bit the same, the difference has an rms
+  of **1.5** over a signal of 4881 (70 dB down), and the correlation is
+  0.99999995.
+- **The picture.** The same fields, in the same order, with the same VBI
+  codes and the same CLV timecode: **42.5 dB** of PSNR and a correlation of
+  0.9984.
+- **Where the last half of a decibel goes.** The same difference appears on
+  the reference's own path (`--tbc resample`), which this port does not
+  touch: it is the difference between the two demodulators, not between the
+  two stacking implementations. The reference is bit reproducible run to run
+  (two runs of the same command differ by nothing), but its own output moved
+  by 270 rms when its stack was made faster, in November.
+- **The noise floor.** The reference's demodulator carries **2.2 dB less**
+  noise in the 6-10 MHz band of the picture than this decoder's (89 600
+  against 115 300), at 40 MHz as well as at 75 MHz: that is the demodulator,
+  not the rate.
+
+The comparison found one bug on this side, and it was a blocking one: the
+decoder was not told the rate of the virtual stream, and looked for the sync
+pulses of a 2542-sample line in a stream whose lines are 4767 samples long.
+It found none, and decoded nothing at all.
+
+The reference decodes the eighteen captures in 880 s (645 fields); this port
+takes about 19 s a frame for the same result, the demodulator being the
+reference implementation's own.
+
 ## What it costs
 
 The pass 0 reads the capture once more (it runs alongside the decode), and
