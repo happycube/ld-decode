@@ -240,10 +240,10 @@ same eighteen captures, the same 75 MHz, the same `--tbc read`.
   out identical on all eighteen (2.4954e4 and 4.0073e-5 for the capture with
   the least noise, 3.6393e4 and 2.7478e-5 for the one with the most).
 - **The RF the decoder reads.** The two streams are aligned to the sample:
-  **93 %** of the samples are bit for bit the same, the difference has an rms
-  of **0.64** over a signal of 4471 (**77 dB** down), and the correlation is
-  0.999999990. (Before the step-by-step comparison below, it was 54 % and an
-  rms of 1.0 on the stack of eighteen captures.)
+  **94 %** of the samples are bit for bit the same on the stack of the
+  eighteen captures, the difference has an rms of **0.27** over a signal of
+  4864 (**85 dB** down), and the correlation is 0.9999999984. (Before the
+  step-by-step comparison below, it was 54 % and an rms of 1.0.)
 - **The picture.** The same fields, in the same order, with the same VBI
   codes (the VBI rows are identical, one for one), the same CLV timecode
   and the same sync confidence: **42.4 dB** of PSNR and a correlation of
@@ -340,12 +340,23 @@ On one capture, the RF the two decoders read, compared sample by sample:
 | rms of the difference | 4.451 | **0.635** |
 | correlation | 0.999999504 | **0.999999990** |
 
+On the stack of the eighteen captures, over the first chunk of the stream:
+
+| | before | after |
+| --- | --- | --- |
+| bit-for-bit identical samples | 53.9 % | **93.8 %** |
+| rms of the difference | 1.001 | **0.272** |
+| over a signal of | 4822 | 4864 |
+| ratio | 73.7 dB | **85.1 dB** |
+| correlation | 0.99999998 | 0.9999999984 |
+
 The picture itself did not move: it is still 42.4 dB of PSNR against the
 reference, because what is left of the difference is the difference between
 the two demodulators (the reference is on revision 7 of the reference
 decoder, this one on revision 8), not between the two stacking
 implementations. The RF the decoder reads, on the other hand, is now the
-reference's to within 0.6 rms on a signal of 4471.
+reference's to within 0.6 rms on a signal of 4471, and to within 0.3 rms on
+the stack of eighteen captures.
 
 ### What is still not the same
 
