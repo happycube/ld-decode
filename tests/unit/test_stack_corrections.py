@@ -23,7 +23,7 @@ import math
 import numpy as np
 import pytest
 
-from lddecode import stack_corrections
+from lddecode import stack_corrections, stack_kernels
 
 pytestmark = [pytest.mark.unit, pytest.mark.dsp]
 
@@ -546,3 +546,71 @@ def test_the_chroma_leak_is_taken_out_in_double_precision():
     # The other order (the leak rounded first) is not the same.
     other = (rf.astype(np.float32) - leak.astype(np.float32)).astype(np.float32)
     assert not np.array_equal(out, other)
+
+
+def test_the_cleaning_kernel_matches_the_reference(small_xtal):
+    """The compiled subtraction gives the vectorised reference's samples,
+    from a start that is not on a seed and across a super-block."""
+    rng = np.random.default_rng(205)
+    capture = _capture(rng, [XLINE_HZ])
+    lines = stack_corrections.CrystalLines.detect(
+        _reader(capture), XFS, ntsc=True, line_hz=stack_corrections.NTSC_LINE_HZ
+    )
+    assert lines.has_lines
+    start = 777
+    span = capture[start : start + (1 << 17)]
+    np.testing.assert_allclose(
+        lines.clean(span, start), lines.clean_reference(span, start), rtol=0, atol=1e-7
+    )
+
+
+def test_the_narrow_band_kernel_matches_the_reference():
+    """The compiled mixing down gives the vectorised reference's narrow band,
+    span edges and chunk ends included."""
+    rng = np.random.default_rng(206)
+    out = rng.standard_normal(70001) * 1000.0
+    w = -stack_corrections.TAU * 2.301136e6 / FS
+    want = stack_corrections._carrier_narrow_band(out, w, 16, 320, 1024)
+    got = np.empty(want.shape[0], dtype=np.complex128)
+    stack_kernels.narrow_band_kernel(out, w, 16, 320, 1024, got)
+    np.testing.assert_allclose(got, want, rtol=1e-9, atol=1e-9)
+
+
+def test_the_crosstalk_correction_kernel_matches_the_reference():
+    """The compiled correction gives the vectorised reference's, the faded
+    edges and both branches of the small-turn series included."""
+    rng = np.random.default_rng(207)
+    n, dec, taper = 40000, 16, 1024
+    narrow = [
+        (rng.standard_normal(n // dec + 1) + 1j * rng.standard_normal(n // dec + 1)) * s
+        for s in (1.0, 400.0)
+    ]
+    ws = [-stack_corrections.TAU * f / FS for f in CARRIERS]
+    gains = np.array([30000.0 + 2000.0j, -1500.0 + 900.0j])
+    band = (rng.standard_normal(n) + 1j * rng.standard_normal(n)) * 3000.0
+    t = np.arange(n)
+    want = stack_corrections._crosstalk_correction_reference(
+        t, narrow, ws, gains, CARRIERS, dec, n, taper, band
+    )
+    got = np.empty(n, dtype=np.float64)
+    stack_kernels.crosstalk_correction_kernel(
+        narrow[0], narrow[1], np.asarray(ws), gains, np.asarray(CARRIERS, dtype=np.float64),
+        dec, taper, band, got,
+    )
+    np.testing.assert_allclose(got, want, rtol=1e-9, atol=1e-6)
+
+
+def test_the_line_phasor_kernel_matches_the_matrix_products(small_xtal):
+    """The compiled measure of the lines gives the matrix products'
+    phasors, every line on every block."""
+    rng = np.random.default_rng(208)
+    capture = _capture(rng, [XLINE_HZ])
+    lines = stack_corrections.CrystalLines.detect(
+        _reader(capture), XFS, ntsc=True, line_hz=stack_corrections.NTSC_LINE_HZ
+    )
+    raw = capture[: stack_corrections.XTAL_SUPER].astype(np.float64)
+    freqs = [XLINE_HZ, 2.0 * XLINE_HZ, 1.234e6]
+    got = lines._ats(raw, freqs)
+    want = lines._ats_reference(raw, freqs)
+    for g, w in zip(got, want):
+        np.testing.assert_allclose(g, w, rtol=1e-9, atol=1e-9 * np.abs(w).max())

@@ -62,11 +62,11 @@ def build_parser():
         "--tbc-mode",
         dest="tbc_mode",
         choices=("read", "resample"),
-        default=None,
-        help="time-base correction: 'read' (the default) locates the lines "
-             "straight from the RF and reads the RF at the corrected positions "
-             "before demodulating; 'resample' resamples the demodulated video, "
-             "the reference decoder's way",
+        default="resample",
+        help="time-base correction: 'resample' (the default) resamples the "
+             "demodulated video, the reference decoder's way; 'read' locates "
+             "the lines straight from the RF and reads the RF at the corrected "
+             "positions before demodulating (needed to stack several -i)",
     )
     parser.add_argument(
         "--stack-weight",
@@ -97,6 +97,22 @@ def build_parser():
         action="store_true",
         help="leave the chroma that leaks into the RF baseband (NTSC; --tbc "
              "read cancels it by default)",
+    )
+    parser.add_argument(
+        "--device",
+        dest="device",
+        choices=("cpu", "opencl"),
+        default="cpu",
+        help="where --tbc-mode read reads and combines the captures: 'cpu' "
+             "(every core, the default) or 'opencl' (a GPU; needs pyopencl)",
+    )
+    parser.add_argument(
+        "--device-precision",
+        dest="device_precision",
+        choices=("double", "single"),
+        default="double",
+        help="the precision of --device opencl: 'double' (the default) or "
+             "'single' (faster on a consumer GPU)",
     )
     parser.add_argument(
         "--rf-out",
@@ -802,9 +818,6 @@ def resolve_io(args):
     outname = args.output if flagged else args.outfile
     if outname is None:
         raise ValueError("no output file name given")
-    if any(path == "-" for path in inputs):
-        raise ValueError("read-time TBC reads its input at random positions, "
-                         "which stdin cannot do")
     return inputs, outname
 
 
@@ -820,6 +833,9 @@ def build_stacked_source(inputs, args, vid_standard):
     # that a capture the read-time TBC cannot serve is reported as such.
     rates = set()
     for path in inputs:
+        if path == "-":
+            raise ValueError("the read-time TBC reads its input at random positions, "
+                             "which stdin cannot do")
         if raw_layout(path) is None:
             raise ValueError(
                 "--tbc read needs a fixed-width raw input (s16, raw, r16, u16, "
@@ -828,8 +844,8 @@ def build_stacked_source(inputs, args, vid_standard):
         rate = capture_sample_rate(path, args.inputfreq)
         if rate is None:
             raise ValueError(
-                "--tbc read needs the capture's sample rate: pass --inputfreq, "
-                f"or keep the Domesday Duplicator sidecar next to {path}"
+                f"the sidecar next to {path} gives no readable sample_rate_hz; "
+                "pass the capture's rate with -f/--frequency"
             )
         rates.add(round(rate))
     if len(rates) > 1:
@@ -838,23 +854,61 @@ def build_stacked_source(inputs, args, vid_standard):
 
     from lddecode.stack import StackInput, StackedSource
 
-    captures = []
-    for path in inputs:
-        capture = RawCapture(path)
-        captures.append(
-            StackInput(path=path, read_fn=capture.read, length=capture.length)
+    files = []
+    try:
+        captures = []
+        for path in inputs:
+            capture = RawCapture(path)
+            files.append(capture)
+            captures.append(
+                StackInput(path=path, read_fn=capture.read, length=capture.length)
+            )
+        source = StackedSource(
+            captures,
+            fs,
+            ntsc=(vid_standard != "PAL"),
+            stack_weight=args.stack_weight,
+            cancel_xtalk=not args.keep_audio_crosstalk,
+            cancel_xtal=not args.keep_crystal_lines,
+            cancel_leak=not args.keep_chroma_leak,
+            rf_out=args.rf_out,
+            rf_out_dtype=raw_layout(inputs[0])[0],
+            device=args.device,
+            device_precision=args.device_precision,
         )
-    source = StackedSource(
-        captures,
-        fs,
-        ntsc=(vid_standard != "PAL"),
-        stack_weight=args.stack_weight,
-        cancel_xtalk=not args.keep_audio_crosstalk,
-        cancel_xtal=not args.keep_crystal_lines,
-        cancel_leak=not args.keep_chroma_leak,
-        rf_out=args.rf_out,
-    )
-    return source, fs
+    except BaseException:
+        for capture in files:
+            capture.close()
+        raise
+    return StackedLoader(source, files), fs
+
+
+class StackedLoader:
+    """The stacked source in the loader protocol the decoder reads.
+
+    Called as ``loader(infile, sample, readlen)`` like every capture loader
+    (``infile`` is ignored: the source reads its own captures).  The decoder
+    closes its reader through ``_close``, which stops the source's
+    read-ahead, closes the ``--rf-out`` file and the captures.
+
+    Thread-safety: the decoder serialises its raw reads under one reader
+    lock, and the source serves one reader at a time.
+    """
+
+    def __init__(self, source, files=()):
+        self.source = source
+        self._files = list(files)
+
+    def __call__(self, _infile, sample, readlen):
+        return self.source.read(sample, readlen)
+
+    def _close(self):
+        try:
+            self.source.close()
+        finally:
+            for capture in self._files:
+                capture.close()
+            self._files = []
 
 
 def main(args=None):
@@ -881,14 +935,25 @@ def main(args=None):
     extra_options = options["extra_options"]
     DecoderParamsOverride = options["decoder_params_override"]
 
-    # The time-base correction: "read" (the default) locates the lines
-    # straight from the RF and reads the RF at the corrected positions
-    # before demodulating; "resample" is the reference decoder's way, and
-    # keeps its bytes.
-    tbc_mode = args.tbc_mode if args.tbc_mode is not None else "read"
+    # The time-base correction: "resample" (the default) is the reference
+    # decoder's way, and keeps its bytes; "read" locates the lines straight
+    # from the RF and reads the RF at the corrected positions before
+    # demodulating.  It is only ever what was asked for: the mode never
+    # changes with the input, and a "read" that cannot run is an error.
+    tbc_mode = args.tbc_mode
+    if args.write_test_ldf is not None and tbc_mode == "read":
+        # --write-test-ldf re-reads the capture at the positions the decode
+        # read; those of the virtual stream are not the capture's.
+        print("ERROR: --write-test-ldf copies the capture the decoder read; it needs "
+              "--tbc-mode resample", file=sys.stderr)
+        sys.exit(1)
     if tbc_mode == "resample" and len(inputs) > 1:
-        print("ERROR: several inputs are stacked with read-time TBC; "
-              "--tbc-mode resample takes a single input", file=sys.stderr)
+        print("ERROR: several inputs are stacked with the read-time TBC; "
+              "pass --tbc-mode read", file=sys.stderr)
+        sys.exit(1)
+    if args.device != "cpu" and tbc_mode != "read":
+        print("ERROR: --device runs the read-time TBC; it needs --tbc-mode read",
+              file=sys.stderr)
         sys.exit(1)
     if args.rf_out is not None and tbc_mode != "read":
         print("ERROR: --rf-out writes the read-time corrected RF; it needs "
@@ -908,15 +973,17 @@ def main(args=None):
             print(f"Output: {args.write_test_ldf}", file=sys.stderr)
             sys.exit(1)
 
-    try:
-        loader = make_loader(
-            filename,
-            args.inputfreq,
-            decode_threads=FLAC_DECODE_THREADS if extra_options["threads"] > 1 else 1,
-        )
-    except ValueError as e:
-        print(e, file=sys.stderr)
-        sys.exit(1)
+    loader = None
+    if tbc_mode == "resample":
+        try:
+            loader = make_loader(
+                filename,
+                args.inputfreq,
+                decode_threads=FLAC_DECODE_THREADS if extra_options["threads"] > 1 else 1,
+            )
+        except ValueError as e:
+            print(e, file=sys.stderr)
+            sys.exit(1)
 
     # Wrap the LDdecode creation so that the signal handler is not taken by sub-threads,
     # allowing SIGINT/control-C's to be handled cleanly
@@ -933,26 +1000,17 @@ def main(args=None):
 
     if tbc_mode == "read":
         try:
-            source, fs = build_stacked_source(inputs, args, vid_standard)
+            loader, fs = build_stacked_source(inputs, args, vid_standard)
         except Exception as e:
-            # "read" is the default, not asked for: a source it cannot read
-            # (a compressed format) or one it finds no lines in is decoded
-            # the reference's way instead.
-            if args.tbc_mode is None and len(inputs) == 1:
-                logger.warning("--tbc read: %s; decoding with --tbc resample", e)
-            else:
-                print(f"ERROR: --tbc read: {e}", file=sys.stderr)
-                sys.exit(1)
-        else:
-            loader = lambda _infile, sample, readlen: source.read(sample, readlen)
-            # The virtual stream is at the captures' own rate: the decoder
-            # demodulates it there, as the reference implementation does.
-            # Told 40 MHz, it would look for the sync pulses of a line that
-            # is 4767 samples long at 75 MHz in a 2542-sample line, and find
-            # none.
-            decoder_inputfreq = fs / 1e6
-            logger.info("Read-time TBC: %d capture(s) at %g MHz, %s weights",
-                        len(inputs), fs / 1e6, args.stack_weight)
+            print(f"ERROR: --tbc-mode read: {e}", file=sys.stderr)
+            sys.exit(1)
+        # The virtual stream is at the captures' own rate: the decoder
+        # demodulates it there, as the reference implementation does.  Told
+        # 40 MHz, it would look for the sync pulses of a line that is 4767
+        # samples long at 75 MHz in a 2542-sample line, and find none.
+        decoder_inputfreq = fs / 1e6
+        logger.info("Read-time TBC: %d capture(s) at %g MHz, %s weights, on %s",
+                    len(inputs), fs / 1e6, args.stack_weight, args.device)
 
     ldd = LDdecode(
         filename,

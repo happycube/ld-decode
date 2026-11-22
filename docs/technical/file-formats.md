@@ -44,7 +44,10 @@ these streams and the quality oracle that scores them.
 With `--rf-out`, the decoder also writes the RF it read: the stacked stream
 when several captures are combined, the time-base corrected stream otherwise.
 It is signed 16-bit at the capture's own sample rate, the same layout a
-`.s16` capture has, so it can be read back as one.
+`.s16` capture has, so it can be read back as one. An unsigned capture's
+offset is taken out (`.u16`/`.r16`: minus 32768; `.u8`/`.r8`: times 256,
+minus 32768), so its stream lands centred on zero instead of clipped; each
+value is rounded half away from zero, as the reference writes it.
 
 See [stacked RF and the read-time TBC](stacked-rf-tbc.md) for what the
 stream contains.

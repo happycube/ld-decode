@@ -44,23 +44,26 @@ The sibling modules are imported lazily, so this module stands alone:
 
 from __future__ import annotations
 
+import bisect
 import logging
 import math
 import threading
-from concurrent.futures import ThreadPoolExecutor
+from collections import OrderedDict
 from dataclasses import dataclass
-from typing import Callable, Sequence
+from typing import Callable, Iterable, Sequence
 
 import numpy as np
 from numba import njit
 from scipy.special import i0 as _bessel_i0
 
 from .rf_sync import _round_half_away, frame_code
+from .stack_kernels import PARAM_NAMES, combine_primary, combine_secondary, read_input_kernel
 
 __all__ = [
     "StackInput",
     "StackedSource",
     "Timeline",
+    "LiveTimeline",
     "build_timeline",
     "locate_fields",
     "carrier_lag",
@@ -186,6 +189,10 @@ CHUNK = 1 << 21
 AHEAD = 3
 #: Chunks kept behind it, for the decoder's short rewinds.
 BEHIND = 1
+#: Chunks kept beyond those, least recently used first out: the decoder's
+#: field jobs (``-t N``) read several fields ahead of its inline reads, and
+#: a field is up to 1.3 M samples at 75 MHz.  A chunk is 8 MB (float32).
+SPARE_CHUNKS = 8
 #: Where the disc's own signal makes steady lines, left out of the crystal
 #: search (Hz, NTSC then PAL): the analog audio carriers, the chroma leak's
 #: band, and the video carrier's swing.  The crystal-line module holds these
@@ -203,6 +210,8 @@ PAL_LINE_US = 64.0
 #: The video standards' names, as the rest of the project spells them.
 SYSTEM_NTSC = "NTSC"
 SYSTEM_PAL = "PAL"
+#: The tuning constants the compiled kernels take, in their order.
+_KERNEL_PARAMS = np.array([globals()[name] for name in PARAM_NAMES], dtype=np.float64)
 
 
 # --------------------------------------------------------------------------
@@ -600,23 +609,280 @@ def _rec_key(rec: object) -> tuple[tuple[int, ...], bool] | None:
     return (tuple(words), _rec_first(rec))
 
 
+class LiveTimeline:
+    """The timeline, built while pass 0 runs.
+
+    One pass-0 scan per input feeds its field records in (:meth:`push`), and
+    the anchors are laid down as far as every input has been located.  The
+    stream's reads wait on it (:meth:`slice`), so pass 0 runs alongside the
+    decode of the stacked stream, and :meth:`stop` ends it where that decode
+    ends.  This is the reference's ``Live``, step for step.
+
+    The pairing: a secondary input's field is examined once that input is
+    finished or has moved more than ``PAIR_LOOKAHEAD`` fields past it, and
+    left unpaired when its code repeats within them (a skip back in that
+    capture).  A primary field is laid down once every secondary input
+    either knows its code, has been paired past it, or is finished.  Where a
+    secondary skips back, the moment that last condition is met can depend
+    on how far each scan has gone, as it does in the reference.
+
+    Thread-safe: every method takes the one lock (``_cv``) that guards the
+    state.
+    """
+
+    def __init__(
+        self,
+        ninputs: int,
+        linelen: float,
+        primary_length: int,
+        names: Sequence[str] | None = None,
+    ) -> None:
+        self._n = int(ninputs)
+        self._linelen = float(linelen)
+        self._prim_len = float(primary_length)
+        self._names = list(names) if names is not None else [f"input {i}" for i in range(ninputs)]
+        self._cv = threading.Condition(threading.Lock())
+        self._stop = threading.Event()
+        n = self._n
+        self._fields: list[list] = [[] for _ in range(n)]
+        self._done = [False] * n
+        self._error: str | None = None
+        #: Primary field index of each key (its first occurrence).
+        self._prim_map: dict = {}
+        #: Per secondary, the paired field of each key (None: ambiguous).
+        self._sec_map: list[dict] = [{} for _ in range(n)]
+        #: Secondary fields examined for pairing so far.
+        self._confirmed = [0] * n
+        #: 1 + the furthest primary field each secondary was paired with.
+        self._progress = [0] * n
+        self._paired = [0] * n
+        self._next_primary = 0
+        self._last = -math.inf
+        self._t: list[float] = []
+        self._pos: list[list[float]] = [[] for _ in range(n)]
+        self._finalized = False
+
+    # -- the scans' side ---------------------------------------------------
+
+    def push(self, index: int, rec: object) -> None:
+        """A field record of input ``index``, in that input's order."""
+        with self._cv:
+            if index == 0:
+                key = _rec_key(rec)
+                if key is not None:
+                    idx = self._prim_map.setdefault(key, len(self._fields[0]))
+                    for s in range(1, self._n):
+                        if key in self._sec_map[s]:
+                            self._progress[s] = max(self._progress[s], idx + 1)
+            self._fields[index].append(rec)
+            self._advance()
+            self._cv.notify_all()
+
+    def finish(self, index: int, error: BaseException | None = None) -> None:
+        """The scan of input ``index`` ended (``error``: it failed).
+
+        A failure after :meth:`stop` is the scan being stopped, not an error.
+        """
+        with self._cv:
+            self._done[index] = True
+            if error is not None and not self._stop.is_set() and self._error is None:
+                self._error = f"pass 0 of {self._names[index]}: {error}"
+            else:
+                _logger.info(
+                    "read-time TBC pass 0: %d fields in %s",
+                    len(self._fields[index]),
+                    self._names[index],
+                )
+            self._advance()
+            self._cv.notify_all()
+
+    def stopped(self) -> bool:
+        """Whether the decode is over, so the scans may stop."""
+        return self._stop.is_set()
+
+    def stop(self) -> None:
+        """Stop the scans (the stacked decode is over)."""
+        self._stop.set()
+        with self._cv:
+            self._cv.notify_all()
+
+    # -- the stream's side -------------------------------------------------
+
+    def wait_cover(self, end: float) -> int | None:
+        """Block until the timeline reaches the ideal time ``end``, or is
+        complete; return the stream's length (samples) once it is known."""
+        with self._cv:
+            while True:
+                if self._error is not None:
+                    raise RuntimeError(self._error)
+                if self._finalized:
+                    return int(self._t[-1])
+                if self._t and self._t[-1] >= end:
+                    return None
+                self._cv.wait()
+
+    def slice(self, s0: float, length: int) -> Timeline:
+        """The anchors around ``[s0, s0 + length)``, copied out (waits for
+        them)."""
+        self.wait_cover(s0 + length)
+        with self._cv:
+            a = self._segment(s0)
+            b = min(self._segment(s0 + length - 1) + 1, len(self._t) - 1)
+            return Timeline(
+                np.asarray(self._t[a : b + 1], dtype=np.float64),
+                [np.asarray(p[a : b + 1], dtype=np.float64) for p in self._pos],
+            )
+
+    def first_lines(self) -> list[float | None]:
+        """The absolute position of each input's first located line (waits
+        for every input to locate one, or to finish without)."""
+        with self._cv:
+            while True:
+                if self._error is not None:
+                    raise RuntimeError(self._error)
+                if all(self._done[i] or self._fields[i] for i in range(self._n)):
+                    out: list[float | None] = []
+                    for recs in self._fields:
+                        lines = _rec_lines(recs[0]) if recs else np.zeros(0)
+                        out.append(float(lines[0]) if lines.size else None)
+                    return out
+                self._cv.wait()
+
+    def wait_done(self) -> Timeline:
+        """Block until every scan has ended; the whole timeline.
+
+        Raises ValueError when a scan failed or the primary has no usable
+        line.
+        """
+        with self._cv:
+            while not all(self._done):
+                self._cv.wait()
+            if self._error is not None:
+                raise ValueError(self._error)
+            return Timeline(
+                np.asarray(self._t, dtype=np.float64),
+                [np.asarray(p, dtype=np.float64) for p in self._pos],
+            )
+
+    # -- the pairing (caller holds the lock) --------------------------------
+
+    def _segment(self, s: float) -> int:
+        if len(self._t) < 2:
+            return 0
+        k = bisect.bisect_right(self._t, s) - 1
+        return min(max(k, 0), len(self._t) - 2)
+
+    def _advance(self) -> None:
+        """Lay down every anchor all inputs are located for."""
+        n = self._n
+        linelen = self._linelen
+        for s in range(1, n):
+            fields = self._fields[s]
+            while self._confirmed[s] < len(fields) and (
+                self._done[s] or len(fields) - self._confirmed[s] > PAIR_LOOKAHEAD
+            ):
+                k = self._confirmed[s]
+                self._confirmed[s] += 1
+                key = _rec_key(fields[k])
+                if key is None:
+                    continue
+                end = min(k + 1 + PAIR_LOOKAHEAD, len(fields))
+                repeated = any(_rec_key(other) == key for other in fields[k + 1 : end])
+                smap = self._sec_map[s]
+                if key in smap:
+                    smap[key] = None
+                else:
+                    smap[key] = None if repeated else k
+                q = self._prim_map.get(key)
+                if q is not None:
+                    self._progress[s] = max(self._progress[s], q + 1)
+
+        primary = self._fields[0]
+        while self._next_primary < len(primary):
+            pf = self._next_primary
+            rec = primary[pf]
+            key = _rec_key(rec)
+            # Each secondary has this frame paired, or is past it (it has
+            # been paired with a later primary field), or is finished.
+            ready = all(
+                self._done[s]
+                or key is None
+                or key in self._sec_map[s]
+                or self._progress[s] > pf + 1
+                for s in range(1, n)
+            )
+            if not ready:
+                break
+            matched: list[int | None] = [None] * n
+            for s in range(1, n):
+                if key is not None:
+                    matched[s] = self._sec_map[s].get(key)
+                if matched[s] is not None:
+                    self._paired[s] += 1
+            secondary_lines = [
+                _rec_lines(self._fields[s][matched[s]]) if matched[s] is not None else None
+                for s in range(n)
+            ]
+            for line, a in enumerate(_rec_lines(rec)):
+                a = float(a)
+                # Fields overlap by a few lines; keep each line once, in order.
+                if a <= self._last + 0.25 * linelen:
+                    continue
+                if not self._t:
+                    # The timeline starts at the primary's own first line;
+                    # before it, the primary alone at its own rate (the
+                    # decoder needs that lead-in to find the first field).
+                    if a >= 1.0:
+                        self._t.append(0.0)
+                        self._pos[0].append(0.0)
+                        for p in self._pos[1:]:
+                            p.append(float("nan"))
+                    tk = a
+                else:
+                    # Half-line resolution, rounded half away from zero as
+                    # the reference rounds.
+                    lines = max(0.5, _round_half_away(2.0 * (a - self._last) / linelen) / 2.0)
+                    tk = self._t[-1] + lines * linelen
+                self._t.append(tk)
+                self._pos[0].append(a)
+                for s in range(1, n):
+                    lines_s = secondary_lines[s]
+                    p = float("nan")
+                    if lines_s is not None and line < lines_s.shape[0]:
+                        p = float(lines_s[line])
+                    self._pos[s].append(p)
+                self._last = a
+            self._next_primary += 1
+
+        if not self._finalized and self._done[0] and self._next_primary == len(primary):
+            self._finalized = True
+            if len(self._t) < 2:
+                if self._error is None:
+                    self._error = "pass 0 found no usable lines in the primary input"
+                return
+            # After the last line, the primary alone again (the tail).
+            tail = self._prim_len - self._pos[0][-1]
+            if tail >= 1.0:
+                self._t.append(self._t[-1] + tail)
+                self._pos[0].append(self._pos[0][-1] + tail)
+                for p in self._pos[1:]:
+                    p.append(float("nan"))
+            for s in range(1, n):
+                _logger.info(
+                    "stack: %s paired %d of the primary's %d fields",
+                    self._names[s],
+                    self._paired[s],
+                    len(primary),
+                )
+
+
 def build_timeline(
     fields: Sequence[Sequence[object]], linelen: float, primary_length: int
 ) -> Timeline:
-    """The virtual timeline from the pass-0 field records of every input.
+    """The virtual timeline from every input's complete pass-0 field records.
 
-    The fields of the same frame are paired across the inputs by their
-    frame code and their parity.  A secondary's field is examined only
-    once this many later fields of that input are known (``PAIR_LOOKAHEAD``),
-    so a frame code it repeats within them (a skip back in that capture) is
-    seen as ambiguous and the field is left unpaired, as a whole-file pass
-    would leave it.
-
-    The primary's lines define the timeline: each of them is an anchor, at
-    an ideal time of the nominal line length from the previous one (at half
-    a line's resolution), and every input's position at that anchor is
-    where its own line of the same field sits (NaN where it does not cover
-    it).
+    The same pairing as the live one (:class:`LiveTimeline`), fed the whole
+    of each input's records before they are finished.
 
     Parameters
     ----------
@@ -640,88 +906,13 @@ def build_timeline(
     ValueError
         When the primary has no usable line.
     """
-    ninputs = len(fields)
-    primary = fields[0]
-
-    # The secondaries' keys: the field of each frame code, or None where the
-    # code repeats in that input (ambiguous, so the field is left unpaired).
-    # A repeat within PAIR_LOOKAHEAD fields is seen as the field is examined;
-    # a later repeat leaves the key ambiguous as well, so the field is never
-    # paired with the wrong one.
-    sec_maps: list[dict[tuple[tuple[int, ...], bool], int | None]] = []
-    for s in range(1, ninputs):
-        smap: dict[tuple[tuple[int, ...], bool], int | None] = {}
-        for index, rec in enumerate(fields[s]):
-            key = _rec_key(rec)
-            if key is None:
-                continue
-            if key in smap:
-                smap[key] = None
-                continue
-            end = min(index + 1 + PAIR_LOOKAHEAD, len(fields[s]))
-            repeated = any(_rec_key(other) == key for other in fields[s][index + 1 : end])
-            smap[key] = None if repeated else index
-        sec_maps.append(smap)
-
-    times: list[float] = []
-    positions: list[list[float]] = [[] for _ in range(ninputs)]
-    last = -np.inf
-    for rec in primary:
-        key = _rec_key(rec)
-        matched: list[int | None] = [None] * ninputs
-        for s in range(1, ninputs):
-            if key is not None:
-                matched[s] = sec_maps[s - 1].get(key)
-        primary_lines = _rec_lines(rec)
-        secondary_lines = [
-            _rec_lines(fields[s][matched[s]]) if matched[s] is not None else None
-            for s in range(1, ninputs)
-        ]
-        for line, a in enumerate(primary_lines):
-            # Fields overlap by a few lines; keep each line once, in order.
-            if a <= last + 0.25 * linelen:
-                continue
-            if not times:
-                # The timeline starts at the primary's own first line;
-                # before it, the primary alone at its own rate (the decoder
-                # needs that lead-in to find the first field).
-                if a >= 1.0:
-                    times.append(0.0)
-                    positions[0].append(0.0)
-                    for p in positions[1:]:
-                        p.append(float("nan"))
-                tk = float(a)
-            else:
-                # Half-line resolution: the ideal time of an anchor.
-                # The rounding is the reference's (half away from zero), so
-                # an exact half lands on the same side as in the Rust.
-                lines = max(
-                    0.5,
-                    _round_half_away(2.0 * (a - last) / linelen) / 2.0,
-                )
-                tk = times[-1] + lines * linelen
-            times.append(tk)
-            positions[0].append(float(a))
-            for s in range(1, ninputs):
-                lines_s = secondary_lines[s - 1]
-                p = float("nan")
-                if lines_s is not None and line < lines_s.shape[0]:
-                    p = float(lines_s[line])
-                positions[s].append(p)
-            last = a
-
-    if len(times) < 2:
-        raise ValueError("pass 0 found no usable lines in the primary input")
-
-    # After the last line, the primary alone again (the tail).
-    tail = float(primary_length) - positions[0][-1]
-    if tail >= 1.0:
-        times.append(times[-1] + tail)
-        positions[0].append(positions[0][-1] + tail)
-        for p in positions[1:]:
-            p.append(float("nan"))
-
-    return Timeline(np.asarray(times, dtype=np.float64), positions)
+    live = LiveTimeline(len(fields), linelen, primary_length)
+    for index, recs in enumerate(fields):
+        for rec in recs:
+            live.push(index, rec)
+    for index in range(len(fields)):
+        live.finish(index)
+    return live.wait_done()
 
 
 # --------------------------------------------------------------------------
@@ -735,12 +926,12 @@ def locate_fields(
     ntsc: bool,
     stop: object = None,
     length: int | None = None,
-) -> list:
-    """Locate the lines of one input, from its RF.
+) -> Iterable:
+    """Locate the lines of one input, from its RF, field by field.
 
     This is the seam onto :func:`lddecode.rf_sync.locate` (imported lazily,
-    so this module stands alone); the pass-0 records it returns are the
-    field records :func:`build_timeline` takes.
+    so this module stands alone); the pass-0 records it yields are the
+    field records :class:`LiveTimeline` takes, as they are found.
 
     Parameters
     ----------
@@ -759,12 +950,12 @@ def locate_fields(
 
     Returns
     -------
-    list
-        The input's field records, in order.
+    Iterable
+        The input's field records, in order, as the scan finds them.
     """
     from .rf_sync import locate, system_for
 
-    return list(locate(read_fn, fs, system_for(ntsc), stop=stop, length=length))
+    return locate(read_fn, fs, system_for(ntsc), stop=stop, length=length)
 
 
 # --------------------------------------------------------------------------
@@ -774,11 +965,49 @@ def locate_fields(
 
 @dataclass
 class _InputSpan:
-    """One input's samples, and where they are read for a span of the stream."""
+    """One input's samples, and where they are read for a span of the stream.
+
+    The positions come either as an array (``positions``, one absolute
+    position per sample, NaN where the input does not cover it) or as the
+    per-segment law of a plan: ``seg`` (each sample's segment), ``seg_t0``
+    (each segment's first ideal time), ``a0`` (the position there, NaN where
+    the input does not cover the segment) and ``slope`` (input samples per
+    virtual sample), from the ideal time ``s0``.  A sample's position is then
+    ``a0[k] + ((s0 + j) - seg_t0[k]) * slope[k]``, which the kernels compute
+    themselves, on the host or on the device, as the reference does.
+    """
 
     raw: np.ndarray
     start: int
-    positions: np.ndarray
+    positions: np.ndarray | None = None
+    a0: np.ndarray | None = None
+    slope: np.ndarray | None = None
+    seg: np.ndarray | None = None
+    seg_t0: np.ndarray | None = None
+    s0: float = 0.0
+
+    def law(self) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]:
+        """``(seg, seg_t0, a0, slope, s0)``; from ``positions`` when the span
+        was given them (one segment per sample, of zero slope)."""
+        if self.a0 is not None:
+            return self.seg, self.seg_t0, self.a0, self.slope, float(self.s0)
+        positions = np.asarray(self.positions, dtype=np.float64)
+        n = positions.shape[0]
+        return (
+            np.arange(n, dtype=np.int64),
+            np.arange(n, dtype=np.float64),
+            positions,
+            np.zeros(n, dtype=np.float64),
+            0.0,
+        )
+
+    def position_array(self) -> np.ndarray:
+        """Every sample's absolute position (a new array)."""
+        if self.positions is not None:
+            return np.array(self.positions, dtype=np.float64)
+        seg, seg_t0, a0, slope, s0 = self.law()
+        times = s0 + np.arange(seg.shape[0], dtype=np.float64)
+        return a0[seg] + (times - seg_t0[seg]) * slope[seg]
 
 
 @dataclass
@@ -834,6 +1063,12 @@ def _plan(
     prim1 = timeline.pos[0][first + 1 : last + 1]
     span_times = seg_t[:nseg]
     span_width = seg_t[1 : nseg + 1] - span_times
+    # Each segment's first and last sample: the positions are linear over a
+    # segment, so their extremes are at these.
+    ks = np.arange(nseg)
+    j_first = np.searchsorted(seg, ks, side="left")
+    j_last = np.searchsorted(seg, ks, side="right") - 1
+    used = j_last >= j_first
     for i, inp in enumerate(inputs):
         a0 = timeline.pos[i][first:last].copy()
         a1 = timeline.pos[i][first + 1 : last + 1].copy()
@@ -844,13 +1079,21 @@ def _plan(
             a0 = np.where(bad | ~np.isfinite(a0), np.nan, a0)
             a1 = np.where(bad | ~np.isfinite(a1), np.nan, a1)
         slope = (a1 - a0) / span_width
-        positions = a0[seg] + (times - span_times[seg]) * slope[seg]
-        covered = np.isfinite(positions)
-        if not covered.any():
+        # A segment the input does not cover at both ends is not covered
+        # (the device tests a0 alone).
+        a0 = np.where(np.isfinite(slope), a0, np.nan)
+        live = used & np.isfinite(a0)
+        if not live.any():
             spans.append(None)
             continue
-        pmin = float(np.min(positions[covered]))
-        pmax = float(np.max(positions[covered]))
+        ends = np.concatenate(
+            (
+                a0[live] + ((s0 + j_first[live]) - span_times[live]) * slope[live],
+                a0[live] + ((s0 + j_last[live]) - span_times[live]) * slope[live],
+            )
+        )
+        pmin = float(np.min(ends))
+        pmax = float(np.max(ends))
         margin = HI_TAPS // 2 + 2
         start = int(np.floor(pmin)) - margin
         end = int(np.floor(pmax)) + margin
@@ -865,19 +1108,56 @@ def _plan(
             spans.append(None)
             continue
         raw = _read_span(readers[i], start, end - start)
-        spans.append(_InputSpan(raw=raw, start=start, positions=positions))
+        spans.append(
+            _InputSpan(
+                raw=raw, start=start, a0=a0, slope=slope, seg=seg, seg_t0=span_times, s0=s0
+            )
+        )
     return _Plan(s0=s0, length=length, seg=seg, seg_t0=span_times, inputs=spans)
 
 
 def _read_input(
+    span: _InputSpan, sinc: np.ndarray, hi: tuple[np.ndarray, np.ndarray]
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Read one input at its own positions, on every core.
+
+    ``hi`` is the video-band table's real and imaginary parts, each
+    C-contiguous.  Returns the full signal, the analytic video band and the
+    coverage (which samples the input covers at all), all new arrays.
+    """
+    seg, seg_t0, a0, slope, s0 = span.law()
+    length = seg.shape[0]
+    full = np.empty(length, dtype=np.float64)
+    band = np.empty(length, dtype=np.complex128)
+    covered = np.empty(length, dtype=np.bool_)
+    read_input_kernel(
+        np.ascontiguousarray(span.raw, dtype=np.float64),
+        int(span.start),
+        np.ascontiguousarray(seg, dtype=np.int64),
+        np.ascontiguousarray(seg_t0, dtype=np.float64),
+        np.ascontiguousarray(a0, dtype=np.float64),
+        np.ascontiguousarray(slope, dtype=np.float64),
+        float(s0),
+        sinc,
+        hi[0],
+        hi[1],
+        full,
+        band,
+        covered,
+    )
+    return full, band, covered
+
+
+def _read_input_reference(
     span: _InputSpan, sinc: np.ndarray, hi: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Read one input at its own positions.
+    """Read one input at its own positions: the vectorised reference the
+    kernel (:func:`_read_input`) is checked against.
 
     Returns the full signal, the analytic video band and the coverage (which
     samples the input covers at all).
     """
-    positions = span.positions
+    positions = span.position_array()
     length = positions.shape[0]
     full = np.zeros(length, dtype=np.float64)
     band = np.zeros(length, dtype=np.complex128)
@@ -960,7 +1240,52 @@ def _combine(
     lag: int,
     margin: int,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Combine the inputs' reads into the virtual stream.
+    """Combine the inputs' reads into the virtual stream, on every core.
+
+    The same parameters and results as :func:`_combine_reference`, the
+    vectorised reference it is checked against.  The inputs are added in
+    order, each over every sample at once.
+    """
+    full0, band0, cov0 = reads[0]
+    length = full0.shape[0]
+    nout = length - 2 * margin
+    half = LOCK_WIN // 2
+    chalf = CARRIER_WIN // 2
+    fixed = mode == "fixed"
+    acc = np.zeros(nout, dtype=np.float64)
+    wsum = np.zeros(nout, dtype=np.float64)
+    vacc = np.zeros(nout, dtype=np.complex128)
+    q0 = np.empty(nout, dtype=np.float64)
+    h0 = np.empty(nout, dtype=np.float64)
+    combine_primary(
+        full0, band0, cov0, lag, margin, nout, half, chalf,
+        float(weight[0]), float(afloor[0]), fixed, _KERNEL_PARAMS, acc, wsum, vacc, q0, h0,
+    )
+    for i in range(1, len(reads)):
+        full, band, cov = reads[i]
+        if not cov[margin : margin + nout].any():
+            continue
+        combine_secondary(
+            full, band, cov, band0, cov0, q0, h0, lag, margin, nout, half, chalf,
+            float(weight[i]), float(afloor[i]), fixed, _KERNEL_PARAMS, acc, wsum, vacc,
+        )
+
+    safe = np.where(wsum > 0.0, wsum, 1.0)
+    out = np.where(wsum > 0.0, acc / safe, 0.0)
+    combined = np.where(wsum > 0.0, vacc / safe, 0.0)
+    return out, wsum, combined
+
+
+def _combine_reference(
+    reads: Sequence[tuple[np.ndarray, np.ndarray, np.ndarray]],
+    weight: Sequence[float],
+    afloor: Sequence[float],
+    mode: str,
+    lag: int,
+    margin: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Combine the inputs' reads into the virtual stream: the vectorised
+    reference the kernels (:func:`_combine`) are checked against.
 
     Parameters
     ----------
@@ -1132,34 +1457,36 @@ class _ChunkCache:
 
     The producer computes the chunks the decoder is about to need, so the
     stacking overlaps the decode instead of stalling it on every read.
+
+    ``compute(index, chunk)`` returns the chunk, or None past the end of
+    the stream: the stream's length is only known once pass 0 has located
+    the primary to its end, so the end is found, not given.
     """
 
     def __init__(
         self,
-        compute: Callable[[int, int], np.ndarray],
-        length: int,
+        compute: Callable[[int, int], np.ndarray | None],
         chunk: int = CHUNK,
         ahead: int = AHEAD,
         behind: int = BEHIND,
     ) -> None:
         self._compute = compute
-        self._length = int(length)
+        #: The first chunk past the end of the stream, once it is known.
+        self._end: int | None = None
         self._chunk = int(chunk)
         self._ahead = int(ahead)
         self._behind = int(behind)
         self._lock = threading.Lock()
         self._cv = threading.Condition(self._lock)
-        self._chunks: dict[int, np.ndarray] = {}
+        self._chunks: OrderedDict[int, np.ndarray] = OrderedDict()
         self._want = 0
         self._error: str | None = None
         self._stop = False
         self._thread = threading.Thread(target=self._produce, name="stack-ahead", daemon=True)
         self._thread.start()
 
-    @property
-    def count(self) -> int:
-        """How many chunks the stream holds."""
-        return (self._length + self._chunk - 1) // self._chunk
+    def _past_end(self, index: int) -> bool:
+        return self._end is not None and index >= self._end
 
     def stop(self) -> None:
         """Stop the producer."""
@@ -1167,21 +1494,41 @@ class _ChunkCache:
             self._stop = True
             self._cv.notify_all()
 
+    @property
+    def capacity(self) -> int:
+        """How many chunks the buffer keeps at most."""
+        return self._ahead + self._behind + SPARE_CHUNKS
+
+    def _evict(self) -> None:
+        """Drop the least recently used chunks past the capacity.
+
+        The chunks the producer is filling ahead of the read position are
+        kept.  Eviction is by use, not by position: with ``-t N`` the
+        decoder's field jobs read several fields ahead of its own inline
+        reads, and a buffer that only kept what lies behind the last read
+        would compute the same chunks over and over.  Caller holds the lock.
+        """
+        window = range(self._want, self._want + self._ahead)
+        for k in list(self._chunks):
+            if len(self._chunks) <= self.capacity:
+                break
+            if k not in window:
+                del self._chunks[k]
+
     def get(self, index: int) -> np.ndarray | None:
         """The chunk ``index``, waiting for the producer; None past the end."""
         with self._cv:
             if index != self._want:
                 self._want = index
-                keep = index - self._behind
-                self._chunks = {k: v for k, v in self._chunks.items() if k >= keep}
                 self._cv.notify_all()
             while True:
                 if self._error is not None:
                     raise RuntimeError(self._error)
                 data = self._chunks.get(index)
                 if data is not None:
+                    self._chunks.move_to_end(index)
                     return data
-                if index >= self.count:
+                if self._past_end(index) or self._stop:
                     return None
                 self._cv.wait()
 
@@ -1200,8 +1547,8 @@ class _ChunkCache:
                     if self._stop or self._error is not None:
                         return
                     target = None
-                    for c in range(self._want, min(self._want + self._ahead, self.count)):
-                        if c not in self._chunks:
+                    for c in range(self._want, self._want + self._ahead):
+                        if not self._past_end(c) and c not in self._chunks:
                             target = c
                             break
                     if target is not None:
@@ -1215,36 +1562,70 @@ class _ChunkCache:
                     self._cv.notify_all()
                 return
             with self._cv:
-                self._chunks[target] = data
-                keep = self._want - self._behind
-                self._chunks = {k: v for k, v in self._chunks.items() if k >= keep}
+                if data is None:
+                    self._end = target if self._end is None else min(self._end, target)
+                else:
+                    self._chunks[target] = data
+                    self._evict()
                 self._cv.notify_all()
+
+
+def rf_out_scale(dtype: str) -> tuple[float, float]:
+    """How the stream's values map to the ``--rf-out`` file's s16 values.
+
+    Returns ``(scale, shift)``, s16 = value * scale + shift: the inverse of
+    how the primary capture's sample type was widened, so an unsigned
+    capture (centred on 32768, or on 128 for 8-bit) lands centred on zero
+    instead of clipped.  The decoder ignores the DC offset either way.
+    ``dtype`` is the capture's sample type, as ``fileio.RAW_LAYOUTS`` names
+    it.
+    """
+    if dtype == "uint16":
+        return 1.0, -32768.0
+    if dtype == "uint8":
+        return 256.0, -32768.0
+    return 1.0, 0.0
 
 
 class _RfOut:
     """The ``--rf-out`` file: the RF the decoder reads, as s16.
 
     The samples are written at their place in the stream, so a chunk that is
-    computed late leaves the span it skipped at zero.
+    computed late leaves the span it skipped at zero.  Each value is
+    ``value * scale + shift`` (see :func:`rf_out_scale`), from the stream's
+    single-precision chunk, rounded half away from zero and limited to the
+    s16 range, as the reference writes it.
+
+    Thread-safe: the producer writes while the decoder's thread may close;
+    ``_lock`` guards the file.
     """
 
-    def __init__(self, path: str) -> None:
+    def __init__(self, path: str, scale: float = 1.0, shift: float = 0.0) -> None:
         self.path = path
-        self._file = None
+        self._scale = np.float32(scale)
+        self._shift = np.float32(shift)
+        self._lock = threading.Lock()
+        # Created at once, so a path that cannot be written is reported
+        # before the decode starts.
+        self._file = open(path, "wb")
 
     def write(self, offset: int, data: np.ndarray) -> None:
         """Write the samples of the stream from ``offset`` (samples)."""
-        if self._file is None:
-            self._file = open(self.path, "wb")
-        values = np.clip(np.rint(data), -32768.0, 32767.0).astype("<i2")
-        self._file.seek(int(offset) * 2)
-        self._file.write(values.tobytes())
+        values = np.asarray(data, dtype=np.float32) * self._scale + self._shift
+        rounded = np.sign(values) * np.floor(np.abs(values) + np.float32(0.5))
+        out = np.clip(rounded, -32768.0, 32767.0).astype("<i2")
+        with self._lock:
+            if self._file is None:
+                return
+            self._file.seek(int(offset) * 2)
+            self._file.write(out.tobytes())
 
     def close(self) -> None:
         """Close the file."""
-        if self._file is not None:
-            self._file.close()
-            self._file = None
+        with self._lock:
+            if self._file is not None:
+                self._file.close()
+                self._file = None
 
 
 # --------------------------------------------------------------------------
@@ -1276,8 +1657,22 @@ class StackedSource:
         Cancel the chroma leak (NTSC only).
     rf_out : str | None
         Where to write the RF the decoder reads, as s16.
+    device : str
+        "cpu" (every core) or "opencl": the read and the combination on an
+        OpenCL device, as the reference's ``--device opencl``.
+    device_precision : str
+        The device's precision, "double" (the default) or "single".
+    opencl_factory : callable, optional
+        Builds the device backend (default
+        :class:`lddecode.stack_opencl.StackOpenCL`); the seam the tests
+        substitute.
+    rf_out_dtype : str
+        The primary capture's sample type (as ``fileio.RAW_LAYOUTS`` names
+        it): an unsigned capture's offset is taken out of the ``--rf-out``
+        file.
 
-    The class is not thread-safe: one reader at a time.
+    One reader at a time: the decoder serialises its raw reads under its
+    reader lock.  Pass 0 and the read-ahead run on threads of their own.
     """
 
     def __init__(
@@ -1291,11 +1686,23 @@ class StackedSource:
         cancel_xtal: bool = True,
         cancel_leak: bool = True,
         rf_out: str | None = None,
+        rf_out_dtype: str = "int16",
+        device: str = "cpu",
+        device_precision: str = "double",
+        opencl_factory: Callable[..., object] | None = None,
     ) -> None:
+        if device not in ("cpu", "opencl"):
+            raise ValueError(f"unknown device {device!r}")
         if not inputs:
             raise ValueError("the stack needs at least one capture")
         if stack_weight not in ("adaptive", "fixed"):
             raise ValueError(f"unknown stack weight {stack_weight!r}")
+        if device_precision not in ("double", "single"):
+            raise ValueError(f"unknown device precision {device_precision!r}")
+        self.device = device
+        self.device_precision = device_precision
+        self._opencl_factory = opencl_factory
+        self._gpu = None
         self.inputs = list(inputs)
         self.fs = float(fs)
         self.ntsc = bool(ntsc)
@@ -1307,7 +1714,7 @@ class StackedSource:
         self.line_us = NTSC_LINE_US if self.ntsc else PAL_LINE_US
         self.linelen = self.fs * self.line_us / 1e6
         self.lag = carrier_lag(self.fs)
-        self._rf_out = _RfOut(rf_out) if rf_out is not None else None
+        self._rf_out = _RfOut(rf_out, *rf_out_scale(rf_out_dtype)) if rf_out is not None else None
         self._crystal: list[object | None] = [None] * len(self.inputs)
         self._xtalk_broken = False
         self._leak_broken = False
@@ -1316,15 +1723,46 @@ class StackedSource:
         # detector finds the capture's length by probing it).
         self._readers = [self._reader(inp) for inp in self.inputs]
 
-        # Pass 0: one line-locating pass per input, in parallel.
-        fields = self._run_pass0()
-        self.timeline = build_timeline(fields, self.linelen, self.inputs[0].length)
-        self.length = int(self.timeline.t[-1])
+        # Pass 0: one line-locating scan per input, each on its own thread,
+        # feeding the timeline as it goes.  It runs alongside the decode and
+        # is stopped by close(), where the decode stops.
+        self._live = LiveTimeline(
+            len(self.inputs),
+            self.linelen,
+            self.inputs[0].length,
+            names=[inp.path for inp in self.inputs],
+        )
+        self._cache: _ChunkCache | None = None
+        self._pass0 = [
+            threading.Thread(target=self._scan, args=(index,), name=f"stack-pass0-{index}", daemon=True)
+            for index in range(len(self.inputs))
+        ]
+        for thread in self._pass0:
+            thread.start()
+        try:
+            self._setup()
+        except BaseException:
+            self.close()
+            raise
+
+    def _setup(self) -> None:
+        """The filters, the weights and the crystal lines, once every input
+        has located its first line."""
+        try:
+            firsts = self._live.first_lines()
+        except RuntimeError as exc:
+            raise ValueError(str(exc)) from exc
+        if firsts[0] is None:
+            raise ValueError("pass 0 found no usable lines in the primary input")
 
         # The filters.
         split = (SPLIT_LO_HZ, SPLIT_HI_HZ) if self.ntsc else PAL_SPLIT_HZ
         self._sinc = sinc_lut()
         self._hi = video_band_lut(self.fs, split)
+        self._hi_parts = (
+            np.ascontiguousarray(self._hi.real),
+            np.ascontiguousarray(self._hi.imag),
+        )
         # The noise floor is a per-sample variance (white); through the video
         # band it is scaled by the filter's energy.
         gain = float(np.sum(np.abs(self._hi[0]) ** 2))
@@ -1333,12 +1771,8 @@ class StackedSource:
         # The weights: 1/sigma^2 from each input's noise floor, measured
         # where pass 0 first located it.
         self.weight: list[float] = []
-        for index, (inp, recs) in enumerate(zip(self.inputs, fields)):
-            first = 0
-            if recs:
-                lines = _rec_lines(recs[0])
-                if lines.size:
-                    first = int(lines[0])
+        for index, inp in enumerate(self.inputs):
+            first = int(firsts[index]) if firsts[index] is not None else 0
             if self.cancel_xtal:
                 self._crystal[index] = self._detect_crystal(index, first)
             sigma2 = noise_floor(self._readers[index], first, self.fs)
@@ -1346,7 +1780,45 @@ class StackedSource:
             self.weight.append(1.0 / sigma2)
         self.afloor = [AMP_FLOOR * (gain / w) ** 0.5 for w in self.weight]
 
-        self._cache = _ChunkCache(self._compute_chunk, self.length)
+        self._gpu = None
+        if self.device == "opencl":
+            self._gpu = self._open_device()
+        self._cache = _ChunkCache(self._compute_chunk)
+
+    def _open_device(self) -> object:
+        """The OpenCL backend, with the tables, the weights and the constants."""
+        factory = self._opencl_factory
+        if factory is None:
+            from .stack_opencl import StackOpenCL as factory
+        constants = {
+            "PHASES": SINC_PHASES,
+            "SINC_TAPS": SINC_TAPS,
+            "HI_TAPS": HI_TAPS,
+            "LOCK_WIN": LOCK_WIN,
+            "CARRIER_WIN": CARRIER_WIN,
+        }
+        constants.update({name: globals()[name] for name in PARAM_NAMES})
+        return factory(
+            self._sinc,
+            self._hi,
+            self.weight,
+            self.afloor,
+            constants,
+            lag=self.lag,
+            adaptive=self.stack_weight == "adaptive",
+            want_band=self._wants_band(),
+            double=self.device_precision == "double",
+        )
+
+    @property
+    def length(self) -> int:
+        """The stream's length, in samples (waits for pass 0 to end)."""
+        return int(self.timeline.t[-1])
+
+    @property
+    def timeline(self) -> Timeline:
+        """The whole timeline (waits for pass 0 to end)."""
+        return self._live.wait_done()
 
     # -- pass 0 ----------------------------------------------------------
 
@@ -1367,20 +1839,24 @@ class StackedSource:
 
         return read_fn
 
-    def _run_pass0(self) -> list[list]:
-        """Locate every input's lines, one pass per input, in parallel."""
-        with ThreadPoolExecutor(max_workers=len(self.inputs)) as pool:
-            futures = [
-                pool.submit(
-                    locate_fields,
-                    reader,
-                    self.fs,
-                    self.ntsc,
-                    length=inp.length,
-                )
-                for reader, inp in zip(self._readers, self.inputs)
-            ]
-            return [list(future.result()) for future in futures]
+    def _scan(self, index: int) -> None:
+        """Pass 0 of input ``index``: its field records into the timeline."""
+        live = self._live
+        try:
+            for rec in locate_fields(
+                self._readers[index],
+                self.fs,
+                self.ntsc,
+                stop=live.stopped,
+                length=self.inputs[index].length,
+            ):
+                if live.stopped():
+                    break
+                live.push(index, rec)
+        except Exception as exc:  # noqa: BLE001 - reported to the stream's reader
+            live.finish(index, exc)
+        else:
+            live.finish(index)
 
     def _detect_crystal(self, index: int, first: int) -> object | None:
         """The capture's crystal lines, or None when there are none."""
@@ -1406,13 +1882,27 @@ class StackedSource:
 
     # -- the stream ------------------------------------------------------
 
-    def _compute_chunk(self, index: int, chunk: int) -> np.ndarray:
-        """The chunk ``index`` of the stream: ``chunk`` samples from its start."""
+    def _compute_chunk(self, index: int, chunk: int) -> np.ndarray | None:
+        """The chunk ``index`` of the stream: ``chunk`` samples from its
+        start, fewer at the end; None past the end.  Waits for pass 0 to
+        cover it."""
         s0 = index * chunk
-        n = max(0, min(chunk, self.length - s0))
         margin = LOCK_MARGIN
-        plan = _plan(self.timeline, s0 - margin, n + 2 * margin, self.inputs, self._readers)
+        known = self._live.wait_cover(s0 + chunk + margin)
+        n = chunk
+        if known is not None:
+            if s0 >= known:
+                return None
+            n = min(chunk, known - s0)
+        timeline = self._live.slice(s0 - margin, n + 2 * margin)
+        plan = _plan(timeline, s0 - margin, n + 2 * margin, self.inputs, self._readers)
         length = n + 2 * margin
+        if self._gpu is not None:
+            for i, span in enumerate(plan.inputs):
+                if span is not None and self._crystal[i] is not None:
+                    self._clean_crystal(i, span)
+            out, combined = self._gpu.run(plan, margin, n)
+            return self._finish_chunk(s0, out, combined)
         reads = []
         for i, span in enumerate(plan.inputs):
             if span is None:
@@ -1426,16 +1916,27 @@ class StackedSource:
                 continue
             if self._crystal[i] is not None:
                 self._clean_crystal(i, span)
-            full, band, covered = _read_input(span, self._sinc, self._hi)
+            full, band, covered = _read_input(span, self._sinc, self._hi_parts)
             reads.append((full, band, covered))
         out, _, combined = _combine(
             reads, self.weight, self.afloor, self.stack_weight, self.lag, margin
         )
-        if self.cancel_xtalk or (self.cancel_leak and self.ntsc):
+        return self._finish_chunk(s0, out, combined)
+
+    def _wants_band(self) -> bool:
+        """Whether a cancellation needs the combined video band."""
+        return self.cancel_xtalk or (self.cancel_leak and self.ntsc)
+
+    def _finish_chunk(self, s0: int, out: np.ndarray, combined: np.ndarray | None) -> np.ndarray:
+        """The cancellations on a combined chunk, then the chunk as kept."""
+        if self._wants_band():
             self._cancel(out, combined)
+        # Kept in single precision, as the reference keeps its chunks: the
+        # read-ahead holds several of them.
+        chunk_out = out.astype(np.float32)
         if self._rf_out is not None:
-            self._rf_out.write(s0, out)
-        return out
+            self._rf_out.write(s0, chunk_out)
+        return chunk_out
 
     def _clean_crystal(self, index: int, span: _InputSpan) -> None:
         """Subtract the capture's crystal lines from the samples read."""
@@ -1468,19 +1969,23 @@ class StackedSource:
                 self._leak_broken = True
 
     def read(self, sample: int, readlen: int) -> np.ndarray:
-        """Return ``readlen`` samples of the virtual stream from ``sample``.
+        """Return up to ``readlen`` samples of the virtual stream from ``sample``.
 
-        The samples are int16, as the capture loaders return them; the
-        samples past the end of the stream read as zero.
+        The samples are float32, in the captures' own units, neither rounded
+        nor clipped (the reference's virtual source hands the decoder f32):
+        a stack carries finer steps than any one capture, and an unsigned
+        16-bit capture reads up to 65535, past the int16 range.
+
+        Fewer samples come back at the end of the stream, none past it: the
+        decoder takes a short read as the end of its input, as it does from
+        a capture loader.  Returns a new array.
         """
         readlen = int(readlen)
-        out = np.zeros(readlen, dtype=np.int16)
-        if readlen <= 0:
-            return out
+        out = np.zeros(max(readlen, 0), dtype=np.float32)
         pos = 0
         while pos < readlen:
             at = int(sample) + pos
-            if at < 0 or at >= self.length:
+            if at < 0:
                 break
             index = at // CHUNK
             chunk = self._cache.get(index)
@@ -1490,16 +1995,25 @@ class StackedSource:
             if offset >= chunk.shape[0]:
                 break
             take = min(chunk.shape[0] - offset, readlen - pos)
-            values = np.clip(np.rint(chunk[offset : offset + take]), -32768.0, 32767.0)
-            out[pos : pos + take] = values.astype(np.int16)
+            out[pos : pos + take] = chunk[offset : offset + take]
             pos += take
-        return out
+        return out[:pos]
 
     def close(self) -> None:
-        """Stop the read-ahead and close the ``--rf-out`` file."""
-        self._cache.stop()
-        if self._rf_out is not None:
-            self._rf_out.close()
+        """Stop pass 0 and the read-ahead, and close the ``--rf-out`` file.
+
+        Pass 0 stops at its next chunk: it is not joined (its threads are
+        daemons, and a scan mid-chunk would hold the close up).
+        """
+        live = getattr(self, "_live", None)
+        if live is not None:
+            live.stop()
+        cache = getattr(self, "_cache", None)
+        if cache is not None:
+            cache.stop()
+        rf_out = getattr(self, "_rf_out", None)
+        if rf_out is not None:
+            rf_out.close()
 
     def __del__(self) -> None:
         try:

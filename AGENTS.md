@@ -45,9 +45,9 @@ layers **below** it.
 
 | Layer | Modules | May import from |
 |-------|---------|-----------------|
-| 0 — primitives | `dsp`, `fft8`, `fdls`, `efm_pll`, `efm_demod`, `efm_score`, `ac3rf`, `commpy_filters`, `profiling`, `utils_logging`, `utils_plotting`, `lds`, `ldf_reader` | stdlib / third-party only |
-| 1 — parameters & I/O | `filters`, `params`, `fileio`, `cvbs`, `shared_filter_bank` | layer 0 |
-| 2 — measurement | `pulses`, `metrics`, `audio`, `cx`, `parallel` | layers 0–1 |
+| 0 — primitives | `dsp`, `fft8`, `fdls`, `efm_pll`, `efm_demod`, `efm_score`, `ac3rf`, `commpy_filters`, `profiling`, `utils_logging`, `utils_plotting`, `lds`, `ldf_reader`, `rf_sync`, `stack_kernels`, `stack_opencl` | stdlib / third-party only |
+| 1 — parameters & I/O | `filters`, `params`, `fileio`, `cvbs`, `shared_filter_bank`, `stack_corrections` | layer 0 |
+| 2 — measurement | `pulses`, `metrics`, `audio`, `cx`, `parallel`, `stack` | layers 0–1 |
 | 3 — demodulation & fields | `rfdecode`, `field` | layers 0–2 |
 | 4 — orchestration | `decoder` (`LDdecode`) | layers 0–3 |
 | 5 — entry points & facades | `main`, `cut`, `compress`, `start_finder`, `stack_efm_data`, `compare_efm_data`, `core`, `utils` | layers 0–4 |

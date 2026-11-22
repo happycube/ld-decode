@@ -367,14 +367,9 @@ the stack of eighteen captures.
 - **The order of the summations.** The reference's sums over a task of 65536
   samples, this port's over a chunk of 2^21: the same sums, rounded
   differently, to about 1e-13.
-- **The pass 0 runs before the decode.** The reference runs the pass 0
-  alongside the decode, and the virtual stream waits for the lines it needs.
-  This port runs the pass 0 over the whole capture first. The timeline is the
-  same, but the reference stops the pass 0 when the decode stops, and this
-  port does not.
 - **The features the reference does not have.** The `.rfx` container and
-  `--recompute-tbc`, the `--device opencl` path and the `--preset` choice
-  are not ported.
+  `--recompute-tbc` are not ported, nor the `--preset` choice (the GPU's
+  precision is `--device-precision` instead).
 
 ## What the branch adds, and what rev 8 adds
 
@@ -479,15 +474,73 @@ every copy of the same disc:
 The first two are the only rev 8 cancellations worth bringing into the
 stacking path.
 
+## The decoder at the capture's rate
+
+The capture loaders resample the RF to 40 MHz, so rev 8's decoder had only
+ever run at that rate, and three of its stages held it as a constant. The
+read-time TBC hands it the captures' own rate, where all three were wrong.
+The reference implementation had the same three, and fixed them in its
+decoder (`e923c39`, `58f28bc`); they are ported here the same way. At 40 MHz
+each one is the value it was, bit for bit.
+
+- **The EFM PLL** (`--efm_demod pll`) took its channel bit period as 40 MHz
+  over the bit rate whatever the input: 9.26 samples where 75 MHz has 17.35,
+  far outside its +-10 % window, so it never locked. It now takes the input
+  rate. The default timing demodulator already followed it.
+- **The EFM band-pass** was built against a 20 MHz Nyquist frequency: at
+  75 MHz its 20 kHz-1.6 MHz band moved to 37.5 kHz-3 MHz, and let the 2.3 MHz
+  audio carrier into the EFM at full level. It now uses the input rate's
+  Nyquist frequency.
+- **The block's end cut** was the filter delay, 32 samples. The analog
+  audio is cut by `cut // audio_fdiv`, and at 75 MHz `audio_fdiv` is 64: a
+  block was 495.5 audio samples long, so the audio drifted half a sample per
+  block against the video. The cut is now rounded up to a multiple of
+  `audio_fdiv` (64 at 75 MHz, still 32 at 40 MHz).
+
+## Pass 0, alongside the decode
+
+As in the reference, the pass 0 runs on threads of its own while the decoder
+reads the stream: one scan per capture feeds its fields to the timeline as it
+finds them (`LiveTimeline`, the reference's `Live`), and a chunk of the stream
+waits only for the anchors it needs. When the decode stops, so does the pass
+0, at its next chunk: a `--length 10` decode of an hour of RF locates a few
+seconds of it, not the hour.
+
+The pairing is the reference's live one. A secondary capture's field is
+examined once that capture is finished or 16 fields past it; a primary field
+is laid down once every secondary knows its code, has been paired past it, or
+is finished. A code that repeats further than 16 fields on is seen after its
+first field was paired, and does not undo that pairing. Where a secondary
+skips back, the moment the last condition is met can depend on how far each
+scan has gone, as it can in the reference.
+
+## How the decoder reads the stream
+
+The stream reaches the decoder through the loader protocol, as a capture
+does, with two properties it relies on:
+
+- **The samples are float32**, neither rounded nor clipped, as the reference
+  hands its decoder f32. A stack carries finer steps than any one capture,
+  and an unsigned 16-bit capture reads up to 65535, past the int16 range.
+- **The end of the stream is a short read**: the decoder takes a read that
+  returns fewer samples than asked as the end of its input.
+
+The read-ahead keeps its chunks by use, not by position: with `-t N` the
+decoder's field jobs read several fields ahead of its own inline reads, and
+a buffer that only kept what lies behind the newest read would compute the
+same chunks again. The decoder serialises its raw reads under one lock, so
+the source serves one reader at a time.
+
 ## What it costs
 
-The pass 0 reads the capture once more (it runs alongside the decode), and
+The pass 0 reads the capture once more (it runs alongside the decode, and
+stops where the decode stops), and
 the corrections run on every chunk. On a 2^21-sample chunk (28 ms of signal
 at 75 MHz, three captures) the two corrections that work on the video band
 take about 10.5 ms (crosstalk) and 8.5 ms (chroma leak) on the CPU pool.
 
 Measured on this machine (one core, NumPy 2.5, Numba 0.68), on synthetic NTSC
-captures:
+captures, before the stages below were compiled:
 
 | stage | rate | an hour of RF at 75 MHz (270 M samples) |
 | --- | --- | --- |
@@ -499,9 +552,61 @@ On a real capture, which carries the clock lines to subtract, the read of the
 virtual stream runs at **0.54 M samples/s** instead (8 min 20 s for an hour
 of RF), and the build of the stack at 37 M samples/s.
 
-The hot loop of the fractional delay filters, which read every capture at its
-own position, runs in Numba, like the demodulator's own. The rest is vectorised
-NumPy.
+### On every core
+
+The figures above are the first port's, on one core. The reference runs its
+CPU path over every core; the port now does too, for the three stages that
+weighed most. They are compiled kernels in `lddecode/stack_kernels.py`, each
+checked against the vectorised version it replaced (kept as
+`_read_input_reference`, `_combine_reference`, `CrystalLines.clean_reference`):
+
+- **the read of each capture**: the sinc and both halves of the video band in
+  one pass over the taps, instead of three;
+- **the combination**: the carrier measure, the phase lock, the guard and the
+  weights, sample by sample. The running sums behind the windowed measures
+  are taken per block of 8192 samples, from the first sample the block's
+  windows reach, so the blocks run in parallel. The blocks are fixed, so a
+  sample's sums do not depend on the number of threads;
+- **the clock lines' subtraction**: piece by piece, each piece between two
+  seeds of the super-block.
+
+Every output sample is computed on its own from the same terms, so a chunk
+comes out the same whatever the number of threads. Measured on synthetic NTSC
+captures at 75 MHz carrying five clock lines each, with the three corrections
+on (32 threads, NumPy 2.5, Numba 0.68):
+
+The plan no longer builds every sample's position: it hands each capture's
+per-segment law (`a0`, `slope`) to the kernels, which compute the positions
+themselves, as the reference's GPU kernel does, and the span each capture is
+read over comes from the segments' ends. The audio crosstalk's narrow bands
+and correction, and the measure of the clock lines on each super-block (one
+pass over the samples for every line), are compiled kernels as well.
+
+| captures | one core, vectorised | every core | OpenCL, double | OpenCL, single |
+| --- | --- | --- | --- | --- |
+| 3 | 0.64 M samples/s | **5.5 M samples/s** | 5.7 M samples/s | **6.7 M samples/s** |
+| 18 | - | **2.0 M samples/s** | 1.7 M samples/s | **3.2 M samples/s** |
+
+## On a GPU: `--device opencl`
+
+As in the reference, `--device opencl` reads every capture at its own
+positions and combines them on an OpenCL device (`lddecode/stack_opencl.py`,
+the reference's kernels less the 16-bit code input of its `.rfx` archives).
+The clock lines are subtracted on the host before the samples are sent, and
+the cancellations run on the host after. The positions are computed on the
+device in double precision from each segment's law; the dot products and the
+combination run in `--device-precision double` (the default) or `single`.
+
+Measured on the synthetic captures above, against the host's compiled path:
+the double precision stream differs by 9e-5 rms over a signal of 2206 (147 dB
+down; 71 % of the float32 samples are the same bit for bit), the single
+precision one by 2.5e-4 rms (139 dB down). On a consumer GPU, whose double
+precision runs at a small fraction of its single precision, `double` is no
+quicker than the host; `single` is the one that pays, and pays most with many
+captures, since the read and the combination grow with them while the rest
+does not. It needs pyopencl (`pip install 'ld-decode[opencl]'`) and an OpenCL
+driver; the GPU with the most compute units is taken, or the one
+`PYOPENCL_CTX` names.
 
 The pass 0 costs the same whether it is used for the stacking or on its own:
 it is a measurement of the RF, and it is over long before the decode is.
@@ -511,14 +616,14 @@ it is a measurement of the RF, and it is over long before the decode is.
 - **Fixed-width raw captures only.** The path reads a capture at arbitrary
   positions, which a compressed capture cannot serve.
 - **One sample rate.** Every capture must be at the same rate.
-- **The fallback.** Where the read-time TBC cannot run - stdin, a
-  compressed capture, no lines found - and where it was not asked for
-  explicitly, the decode falls back to the reference's resampling, with a
-  warning. An explicit `--tbc-mode read` that fails is an error.
+- **Only when asked for.** `--tbc-mode resample`, the reference's way, is
+  the default whatever the input; the read-time TBC runs only with
+  `--tbc-mode read`, which stacking several captures needs. Where it cannot
+  run - stdin, a compressed capture, no lines found - it is an error: the
+  decode never changes mode on its own.
 - **Not the reference's bytes.** The read-time TBC and the corrections make
   a better decode than the reference's, so they do not produce the
-  reference's output. Use `--tbc-mode resample` when byte parity with the
-  reference matters.
+  reference's output.
 - **The field's position.** A field decoded from the virtual stream is
   reported at its position in that stream (`diskLoc`, `fileLoc` in the
   `.tbc.db`), where the reference reports the position in the primary

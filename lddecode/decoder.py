@@ -414,7 +414,7 @@ class LDdecode:
                         eq_taps=_eq_taps,
                     )
                 else:
-                    self.efm_pll = efm_pll.EFM_PLL()
+                    self.efm_pll = efm_pll.EFM_PLL(float(inputfreq) * 1e6)
                     # Gear-shift / fast-reacquire PLL: ON by default.  While the loop
                     # is locked it runs bit-for-bit identical to the original fixed-gain
                     # loop, so clean discs are unchanged; it only speeds pull-in on cold

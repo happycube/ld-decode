@@ -31,6 +31,7 @@ from .params import (
     SysParams_PAL,
 )
 from .filters import (
+    block_cut_end,
     build_hilbert,
     calczc,
     emphasis_iir,
@@ -364,7 +365,9 @@ class RFDecode:
 
         # The 0.5mhz filter is rolled back to align with the data, so there
         # are a few unusable samples at the end.
-        self.blockcut_end = self.Filters["F05_offset"]
+        self.blockcut_end = block_cut_end(
+            self.Filters["F05_offset"], self.Filters.get("audio_fdiv", 1)
+        )
 
 
     def computefilters(self):
@@ -463,11 +466,13 @@ class RFDecode:
         # is built across self.blocklen bins, so a hard-coded length made the
         # EFM band-pass the one array that could not follow a changed block
         # length.  Identical at the shipped 32768.
-        # TODO: the Nyquist argument is still the 40 Msps literal; making it
-        # self.freq_hz_half would also correct a non-40 Msps input, which is a
-        # behaviour change and needs its own measurement.
+        # The Nyquist argument follows the input rate.  It was the 40 Msps
+        # literal (20 MHz), which put the band elsewhere at any other rate
+        # (37.5 kHz-3 MHz at 75 MHz); at 40 MHz the two are the same value,
+        # so the filter is unchanged bit for bit there.  Only the read-time
+        # TBC hands the decoder another rate: the loaders resample to 40 MHz.
         self.Filters["Fefm"] *= gen_bpf_supergauss(
-            _sglow, _sghigh, _sgorder, 20000000, self.blocklen
+            _sglow, _sghigh, _sgorder, self.freq_hz_half, self.blocklen
         )
 
     def computeefmhalffilter(self):

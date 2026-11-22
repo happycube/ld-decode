@@ -21,6 +21,7 @@ All signals are synthetic.
 
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass
 
 import numpy as np
@@ -28,6 +29,7 @@ import pytest
 
 from lddecode import stack
 from lddecode.stack import (
+    PAIR_LOOKAHEAD,
     QN_CARRIER,
     QN_LOCK,
     StackedSource,
@@ -490,7 +492,9 @@ def test_the_fractional_phase_is_rounded_half_away_from_zero():
     sinc = sinc_lut()
     # Half a phase above the sample 100.
     span = stack._InputSpan(raw=raw, start=0, positions=np.array([100.0 + 1.0 / 2048.0]))
-    full, _band, _covered = stack._read_input(span, sinc, video_band_lut(FS, (2.5e6, 3.6e6)))
+    hi = video_band_lut(FS, (2.5e6, 3.6e6))
+    parts = (np.ascontiguousarray(hi.real), np.ascontiguousarray(hi.imag))
+    full, _band, _covered = stack._read_input(span, sinc, parts)
     above = np.dot(sinc[1, :], raw[100 - 15 : 100 - 15 + 32])
     below = np.dot(sinc[0, :], raw[100 - 15 : 100 - 15 + 32])
     np.testing.assert_allclose(full[0], above, rtol=1e-12, atol=1e-9)
@@ -532,10 +536,59 @@ def test_read_returns_exactly_readlen_samples(monkeypatch):
     for readlen in (1, 1000, 12345):
         got = source.read(0, readlen)
         assert got.shape == (readlen,)
-    # Past the end of the stream: zeros, but still the samples asked for.
-    got = source.read(source.length, 100)
-    assert got.shape == (100,)
-    assert not got.any()
+        assert got.dtype == np.float32
+
+
+def test_read_is_short_at_the_end_of_the_stream(monkeypatch):
+    """The decoder takes a short read as the end of its input, so the
+    stream ends with one: the samples left, then none at all."""
+    rng = np.random.default_rng(7)
+    capture = _capture(0.0, rng, 5.0)
+    source = _source(monkeypatch, [capture], [0.0])
+    assert source.read(source.length - 10, 100).shape == (10,)
+    assert source.read(source.length, 100).shape == (0,)
+
+
+def test_read_keeps_values_past_the_int16_range(monkeypatch):
+    """An unsigned 16-bit capture reads up to 65535: the stream hands its
+    values on unclipped and unrounded, as the reference's f32 source does."""
+    n = CAPTURE_LENGTH
+    samples = 40000.0 + 0.25 * np.cos(2.0 * np.pi * CARRIER_HZ / FS * np.arange(n))
+
+    def read_fn(start: int, count: int) -> np.ndarray:
+        out = np.zeros(count, dtype=np.float64)
+        lo, hi = max(0, start), min(n, start + count)
+        if hi > lo:
+            out[lo - start : hi - start] = samples[lo:hi]
+        return out
+
+    capture = StackInput(path="u16", read_fn=read_fn, length=n)
+    source = _source(monkeypatch, [capture], [0.0])
+    middle = source.read(n // 2, 1000).astype(np.float64)
+    np.testing.assert_allclose(middle.mean(), 40000.0, rtol=0, atol=1.0)
+    # Not rounded to whole units: the quarter-unit carrier is still there.
+    assert np.abs(middle - np.rint(middle)).max() > 0.01
+
+
+def test_the_read_ahead_keeps_recent_chunks_whatever_their_position():
+    """A read behind the last one finds its chunk again: the field jobs of
+    a threaded decode read ahead of the decoder's own reads, and a buffer
+    that dropped everything behind the newest read would compute the same
+    chunks over and over."""
+    computed = []
+
+    def compute(index, chunk):
+        computed.append(index)
+        return np.full(chunk, index, dtype=np.float32)
+
+    cache = stack._ChunkCache(compute, chunk=16, ahead=1, behind=0)
+    try:
+        for index in (0, 6, 1, 0, 6):
+            assert cache.get(index)[0] == index
+    finally:
+        cache.stop()
+    assert computed.count(0) == 1
+    assert computed.count(6) == 1
 
 
 def test_the_stream_length_matches_the_primarys_coverage(monkeypatch):
@@ -679,3 +732,173 @@ def test_the_fixed_weight_mode_uses_the_noise_weights(monkeypatch):
     assert fixed.stack_weight == "fixed"
     # Both serve the same number of samples.
     assert adaptive.length == fixed.length
+
+
+# --------------------------------------------------------------------------
+# Pass 0, alongside the decode
+# --------------------------------------------------------------------------
+
+
+def _field(index: int, code: int, first: bool) -> _Record:
+    """Field ``index`` of a capture with no offset, carrying ``code``."""
+    lines = [FIRST_LINE + (index * LINES_PER_FIELD + k) * LINELEN for k in range(LINES_PER_FIELD)]
+    return _Record(first=first, code=[code], lines=lines)
+
+
+def test_a_code_repeated_past_the_lookahead_keeps_its_first_pairing():
+    """A secondary field is paired once 16 later fields of its capture are
+    known; a repeat of its code further on is seen too late to undo a
+    primary field already laid down, as in the reference's live pairing."""
+    count = PAIR_LOOKAHEAD + 4
+    primary = [_field(k, FRAME_CODE + k, k % 2 == 0) for k in range(count)]
+    secondary = [_field(k, FRAME_CODE + k, k % 2 == 0) for k in range(count)]
+    # The secondary skips back to its first frame, past the lookahead.
+    secondary.append(_field(count, FRAME_CODE, True))
+    timeline = build_timeline([primary, secondary], LINELEN, 10**9)
+    # The primary's first field (anchors 1 to 4) is paired all the same.
+    assert np.isfinite(timeline.pos[1][1 : 1 + LINES_PER_FIELD]).all()
+
+
+def test_the_timeline_is_served_before_pass_0_has_ended():
+    """The live timeline lays down a primary field as soon as every input
+    is located for it: a read waits for its anchors, not for the scans."""
+    live = stack.LiveTimeline(1, LINELEN, CAPTURE_LENGTH)
+    for rec in _records(0.0):
+        live.push(0, rec)
+    assert live.wait_cover(FIRST_LINE + LINELEN) is None
+    part = live.slice(FIRST_LINE, int(LINELEN))
+    assert part.t.shape[0] >= 2
+    live.finish(0)
+    assert live.wait_cover(0.0) == pytest.approx(CAPTURE_LENGTH, abs=2.0)
+
+
+def test_a_scan_failing_after_the_stop_is_not_an_error():
+    """Pass 0 is stopped where the decode stops; a scan ending with an
+    error then is that stop, not a failure."""
+    live = stack.LiveTimeline(1, LINELEN, CAPTURE_LENGTH)
+    for rec in _records(0.0):
+        live.push(0, rec)
+    live.stop()
+    assert live.stopped()
+    live.finish(0, RuntimeError("stopped"))
+    assert live.wait_done().t.shape[0] >= 2
+
+
+def test_the_stream_is_read_while_pass_0_still_runs(monkeypatch):
+    """The source reads the stream while the scans still run, and close()
+    stops them: pass 0 ends where the decode ends."""
+    rng = np.random.default_rng(21)
+    capture = _capture(0.0, rng, 5.0)
+    released = threading.Event()
+    stopped = threading.Event()
+
+    # Enough fields for the stream's first chunk (a chunk waits for the
+    # anchors to its end); past the capture they read as silence.
+    fields = (stack.CHUNK + 4 * stack.LOCK_MARGIN) // int(LINES_PER_FIELD * LINELEN) + 2
+
+    def locate(read_fn, fs, ntsc, stop=None, length=None):
+        for k in range(fields):
+            yield _field(k, FRAME_CODE, k % 2 == 0)
+        # The scan has more to read: it waits, polling its stop.
+        while not stop():
+            released.wait(0.01)
+        stopped.set()
+
+    monkeypatch.setattr(stack, "locate_fields", locate)
+    source = StackedSource(
+        [capture], FS, ntsc=True, cancel_xtalk=False, cancel_xtal=False, cancel_leak=False
+    )
+    try:
+        got = source.read(0, 1000)
+        assert got.shape == (1000,)
+        assert not stopped.is_set()
+    finally:
+        source.close()
+    assert stopped.wait(5.0)
+
+
+def test_the_rf_out_scale_takes_an_unsigned_captures_offset_out():
+    """--rf-out is s16: an unsigned capture lands centred on zero, not
+    clipped above 32767, as the reference writes it."""
+    assert stack.rf_out_scale("uint16") == (1.0, -32768.0)
+    assert stack.rf_out_scale("uint8") == (256.0, -32768.0)
+    assert stack.rf_out_scale("int16") == (1.0, 0.0)
+    assert stack.rf_out_scale("float32") == (1.0, 0.0)
+
+
+def test_the_rf_out_rounds_half_away_from_zero(monkeypatch):
+    """The reference rounds the f32 value half away from zero (Rust's
+    round); numpy's rint would round an exact half to even."""
+    written = {}
+
+    class _File:
+        def seek(self, offset):
+            written["offset"] = offset
+
+        def write(self, data):
+            written["data"] = np.frombuffer(data, dtype="<i2").copy()
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("builtins.open", lambda path, mode: _File())
+    out = stack._RfOut("rf.s16", *stack.rf_out_scale("uint16"))
+    out.write(3, np.array([32768.5, 32769.5, 32767.5, 70000.0, 0.0], dtype=np.float32))
+    assert written["offset"] == 6
+    np.testing.assert_array_equal(written["data"], [1, 2, -1, 32767, -32768])
+
+
+# --------------------------------------------------------------------------
+# The compiled kernels against their vectorised references
+# --------------------------------------------------------------------------
+
+
+def _synthetic_reads(rng, count, length):
+    """Reads of ``count`` inputs: a common carrier, per-input noise and
+    rotation, coverage holes and a dropout, over ``length`` samples."""
+    t = np.arange(length, dtype=np.float64)
+    carrier = np.exp(2j * np.pi * 0.11 * t) * 1000.0
+    reads = []
+    for i in range(count):
+        noise = rng.standard_normal(length) + 1j * rng.standard_normal(length)
+        band = carrier * np.exp(0.05j * i) + 30.0 * noise
+        band[500 + 300 * i : 700 + 300 * i] = 30.0 * noise[500 + 300 * i : 700 + 300 * i]
+        full = band.real + rng.standard_normal(length) * 5.0
+        covered = np.ones(length, dtype=bool)
+        covered[100 * (i + 1) : 100 * (i + 1) + 37] = False
+        full[~covered] = 0.0
+        band[~covered] = 0.0
+        reads.append((full, band, covered))
+    return reads
+
+
+@pytest.mark.parametrize("mode", ["adaptive", "fixed"])
+def test_the_combine_kernels_match_the_reference(mode):
+    """The compiled combination gives the vectorised reference's samples."""
+    rng = np.random.default_rng(31)
+    # Past three blocks of the kernels, so their edges are crossed.
+    reads = _synthetic_reads(rng, 3, 3 * 8192 + 1000)
+    args = ([1.0, 0.7, 1.3], [0.05, 0.04, 0.06], mode, 5, 128)
+    got = stack._combine(reads, *args)
+    want = stack._combine_reference(reads, *args)
+    for g, w in zip(got, want):
+        np.testing.assert_allclose(g, w, rtol=1e-12, atol=1e-9)
+
+
+def test_the_read_kernel_matches_the_reference():
+    """The compiled read gives the vectorised reference's samples, the
+    uncovered positions and the edges of the span included."""
+    rng = np.random.default_rng(32)
+    raw = rng.standard_normal(6000) * 1000.0
+    positions = 3.0 + np.cumsum(rng.uniform(0.9, 1.1, 5000))
+    positions[[0, 17, 400]] = np.nan
+    positions[-1] = 5999.9
+    span = stack._InputSpan(raw=raw, start=10, positions=positions + 10.0)
+    sinc = sinc_lut()
+    hi = video_band_lut(FS, (2.5e6, 3.5e6))
+    parts = (np.ascontiguousarray(hi.real), np.ascontiguousarray(hi.imag))
+    got = stack._read_input(span, sinc, parts)
+    want = stack._read_input_reference(span, sinc, hi)
+    np.testing.assert_array_equal(got[2], want[2])
+    np.testing.assert_allclose(got[0], want[0], rtol=1e-12, atol=1e-9)
+    np.testing.assert_allclose(got[1], want[1], rtol=1e-12, atol=1e-9)

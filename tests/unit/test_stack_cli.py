@@ -72,16 +72,24 @@ def test_missing_output_name_is_refused():
         resolve_io(args)
 
 
-def test_stdin_is_refused():
-    """Read-time TBC reads its input at random positions, which stdin cannot do."""
-    args = _parse("-", "out")
+def test_stdin_still_decodes_the_reference_way():
+    """The reference's stdin input is untouched by the stacking options."""
+    inputs, outname = resolve_io(_parse("-", "out"))
+    assert inputs == ["-"]
+
+
+def test_stdin_is_refused_by_the_read_time_path():
+    """The read-time TBC reads its input at random positions, which stdin
+    cannot do."""
     with pytest.raises(ValueError, match="stdin"):
-        resolve_io(args)
+        build_stacked_source(["-"], _args(), "NTSC")
 
 
-def test_time_base_mode_defaults_to_read():
-    """The read-time TBC is the default; resample is the reference's way."""
-    assert _parse("capture.rf", "out").tbc_mode is None
+def test_time_base_mode_defaults_to_resample():
+    """The reference's way is the default whatever the input; the read-time
+    TBC is only what was asked for."""
+    assert _parse("capture.rf", "out").tbc_mode == "resample"
+    assert _parse("-i", "a.rf", "-i", "b.rf", "-o", "out").tbc_mode == "resample"
     assert _parse("capture.rf", "out", "--tbc-mode", "read").tbc_mode == "read"
     assert _parse("capture.rf", "out", "--tbc-mode", "resample").tbc_mode == "resample"
 
@@ -125,6 +133,8 @@ def _args(**kwargs):
         keep_crystal_lines=False,
         keep_chroma_leak=False,
         rf_out=None,
+        device="cpu",
+        device_precision="double",
     )
     base.update(kwargs)
     return types.SimpleNamespace(**base)
@@ -216,3 +226,72 @@ def test_the_reference_path_demodulates_at_40_mhz(monkeypatch):
     )
 
     assert kwargs["inputfreq"] == 40
+
+
+def test_a_stack_without_the_read_time_tbc_is_refused():
+    """Several captures are only stacked when the read-time TBC is asked
+    for: the mode never changes with the input."""
+    with pytest.raises(SystemExit):
+        main.main(["-i", "a.s16", "-i", "b.s16", "-o", "out"])
+
+
+def test_the_default_decode_never_builds_the_stacked_source(monkeypatch):
+    """--write-test-ldf copies the capture at the positions the decode read,
+    which only the reference's path reads the capture at; that path is the
+    default, and the stub source is never built."""
+    built_source = []
+    monkeypatch.setattr(main, "write_input_ldf_file", lambda *args, **kwargs: True)
+
+    def no_stack(*args, **kwargs):
+        built_source.append(True)
+        raise AssertionError("the stacked source must not be built")
+
+    monkeypatch.setattr(main, "LDdecode", _FakeDecoder)
+    monkeypatch.setattr(main, "init_logging", lambda name: logging.getLogger("lddecode-test"))
+    monkeypatch.setattr(main, "make_loader", lambda *args, **kwargs: None)
+    monkeypatch.setattr(main, "build_stacked_source", no_stack)
+    main.main(["capture.s16", "out", "--write-test-ldf", "bug.ldf"])
+    assert not built_source
+
+
+def test_write_test_ldf_with_an_explicit_read_is_refused(monkeypatch):
+    """Asked for both, the copy would not be what the decoder read."""
+    with pytest.raises(SystemExit):
+        main.main(["capture.s16", "out", "--tbc-mode", "read", "--write-test-ldf", "bug.ldf"])
+
+
+def test_the_stacked_loader_closes_the_source_and_the_captures():
+    """The decoder closes its reader through _close: the read-ahead stops,
+    the --rf-out file and the captures are closed."""
+    source = types.SimpleNamespace(read=lambda sample, readlen: np.zeros(readlen), closed=[])
+    source.close = lambda: source.closed.append("source")
+    capture = types.SimpleNamespace(closed=False)
+    capture.close = lambda: setattr(capture, "closed", True)
+
+    loader = main.StackedLoader(source, [capture])
+    assert loader(None, 5, 7).shape == (7,)
+    loader._close()
+
+    assert source.closed == ["source"]
+    assert capture.closed
+
+
+def test_a_capture_without_a_sidecar_is_taken_at_40_mhz(monkeypatch):
+    """Without -f and without a sidecar the rate is the decoder's own
+    default, as for any other decode."""
+    from lddecode import fileio
+
+    monkeypatch.setattr(fileio.os.path, "isfile", lambda path: False)
+    assert fileio.capture_sample_rate("capture.s16") == 40.0e6
+    assert fileio.capture_sample_rate("capture.s16", 28.636) == pytest.approx(28.636e6)
+
+
+def test_the_device_needs_the_read_time_tbc():
+    """--device runs the read-time TBC: with the reference's way it is refused."""
+    with pytest.raises(SystemExit):
+        main.main(["capture.s16", "out", "--device", "opencl"])
+
+
+def test_the_device_defaults_to_the_cpu_in_double_precision():
+    args = _parse("capture.rf", "out")
+    assert (args.device, args.device_precision) == ("cpu", "double")

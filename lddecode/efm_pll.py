@@ -107,7 +107,11 @@ EFM_PLL_spec = [
 
 @jitclass(EFM_PLL_spec)
 class EFM_PLL:
-    def __init__(self):
+    def __init__(self, sample_rate_hz=40000000.0):
+        # sample_rate_hz is the rate of the samples fed to process() (the
+        # decode's input rate, Hz).  At the default 40 MHz every period below
+        # is the original constant, bit for bit.
+
         # ZC detector state
         self.zcPreviousInput = 0
         self.delta = 0.0
@@ -120,7 +124,10 @@ class EFM_PLL:
         self.pllResultCount = 0
 
         # PLL state
-        self.basePeriod = 40000000.0 / 4321800.0  # T1 clock period 40MSPS / bit-rate
+        # T1 clock period: input rate / EFM channel bit rate.  It held 40 MSPS
+        # whatever the input, so the PLL never locked at another rate (9.26
+        # samples a bit where 75 MHz has 17.35, far outside its +-10 %).
+        self.basePeriod = sample_rate_hz / 4321800.0
 
         self.minimumPeriod = self.basePeriod * 0.90  # -10% minimum
         self.maximumPeriod = self.basePeriod * 1.10  # +10% maximum

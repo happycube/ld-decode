@@ -36,6 +36,13 @@ from typing import Callable, Optional, Sequence
 import numpy as np
 import scipy.fft
 
+from .stack_kernels import (
+    crosstalk_correction_kernel,
+    line_phasors_kernel,
+    narrow_band_kernel,
+    subtract_lines_kernel,
+)
+
 __all__ = [
     "cancel_crosstalk",
     "cancel_chroma_leak",
@@ -301,6 +308,34 @@ def _carrier_interp(narrow: np.ndarray, dec: int, t: np.ndarray) -> np.ndarray:
     return np.where(k + 1 < narrow.shape[0], narrow[k] * (1.0 - a) + narrow[k1] * a, narrow[k])
 
 
+def _crosstalk_correction_reference(
+    t: np.ndarray,
+    narrow: Sequence[np.ndarray],
+    ws: Sequence[float],
+    gains: np.ndarray,
+    carriers: Sequence[float],
+    dec: int,
+    n: int,
+    taper: int,
+    band: np.ndarray,
+) -> np.ndarray:
+    """The crosstalk correction at the positions ``t``: the vectorised
+    reference the compiled kernel is checked against."""
+    theta = np.zeros(t.shape, dtype=np.float64)
+    for c in range(2):
+        car = 2.0 * _carrier_interp(narrow[c], dec, t) * np.exp(-1j * ws[c] * t)
+        theta += np.real(gains[c] * car / (1j * carriers[c]))
+    theta *= _edge_taper(t, n, taper)
+    small = np.abs(theta) < 0.05
+    th2 = theta * theta
+    # The turn is a few hundredths of a radian: its series, to the last bit
+    # that matters.
+    sn = np.where(small, theta * (1.0 - th2 / 6.0), np.sin(theta))
+    cm1 = np.where(small, th2 * (th2 / 24.0 - 0.5), np.cos(theta) - 1.0)
+    v = band[t]
+    return v.real * cm1 + v.imag * sn
+
+
 def cancel_crosstalk(
     out: np.ndarray,
     video_band: np.ndarray,
@@ -349,10 +384,13 @@ def cancel_crosstalk(
     box_d = max(int(round(boxl / dec)), 1)
     ws = [-TAU * f / fs for f in carriers]
 
-    # Each carrier mixed down to 0 Hz and through the three cascaded boxcars.
+    # Each carrier mixed down to 0 Hz and through the three cascaded boxcars
+    # (the first in the compiled kernel, as _carrier_narrow_band takes it).
     narrow = []
+    rf64 = np.ascontiguousarray(rf, dtype=np.float64)
     for w in ws:
-        first = _carrier_narrow_band(rf, w, dec, boxl, XTALK_BOX_SPAN)
+        first = np.empty(-(-n // dec), dtype=np.complex128)
+        narrow_band_kernel(rf64, w, dec, boxl, XTALK_BOX_SPAN, first)
         narrow.append(_boxcar(_boxcar(first, box_d), box_d))
 
     # The carrier at its own frequency again: the narrow band mixed back up,
@@ -368,7 +406,8 @@ def cancel_crosstalk(
         car = carrier_at(c, idx)
         cols[:, 2 * c] = car.real
         cols[:, 2 * c + 1] = car.imag
-    y = _instant_frequency(band, fs)[idx]
+    # Only at the fit's samples (idx starts past the taper, so idx - 1 >= 0).
+    y = np.angle(band[idx] * np.conj(band[idx - 1])) * fs / TAU
     centred = cols - cols.mean(axis=0)
     ata = centred.T @ centred
     aty = centred.T @ (y - y.mean())
@@ -377,21 +416,20 @@ def cancel_crosstalk(
         return result
     gains = np.array([complex(k[0], -k[1]), complex(k[2], -k[3])])
 
-    # The correction at the positions t, from the carriers' phasors there.
-    def correction(t: np.ndarray) -> np.ndarray:
-        theta = np.zeros(t.shape, dtype=np.float64)
-        for c in range(2):
-            car = carrier_at(c, t)
-            theta += np.real(gains[c] * car / (1j * carriers[c]))
-        theta *= _edge_taper(t, n, taper)
-        small = np.abs(theta) < 0.05
-        th2 = theta * theta
-        # The turn is a few hundredths of a radian: its series, to the last
-        # bit that matters.
-        sn = np.where(small, theta * (1.0 - th2 / 6.0), np.sin(theta))
-        cm1 = np.where(small, th2 * (th2 / 24.0 - 0.5), np.cos(theta) - 1.0)
-        v = band[t]
-        return v.real * cm1 + v.imag * sn
+    # The correction at every sample, in the compiled kernel (the same as
+    # _crosstalk_correction_reference).
+    corr = np.empty(n, dtype=np.float64)
+    crosstalk_correction_kernel(
+        narrow[0],
+        narrow[1],
+        np.asarray(ws, dtype=np.float64),
+        gains,
+        np.asarray(carriers, dtype=np.float64),
+        dec,
+        taper,
+        np.ascontiguousarray(band[:n], dtype=np.complex128),
+        corr,
+    )
 
     # Only the part of the correction in the video band (`keep_band`, a
     # raised-cosine edge) is kept: below, turning the video band also moves
@@ -411,7 +449,7 @@ def cancel_crosstalk(
             lo = max(0, start)
             hi = min(n, start + size)
             if hi > lo:
-                block[lo - start : hi - start] = correction(np.arange(lo, hi))
+                block[lo - start : hi - start] = corr[lo:hi]
             spec = scipy.fft.rfft(block) * gain
             filtered = scipy.fft.irfft(spec, size)
             out_lo = 2 * pair * step + which * step
@@ -900,8 +938,9 @@ class CrystalLines:
         """Every line's phasor on every block of a super-block.
 
         The blocks are the rows of the super-block's samples, and the lines'
-        tables of exponentials are applied to all of them at once: one pass
-        over the samples for all the lines, instead of one pass per line.
+        tables of exponentials are applied to all of them at once, in a
+        compiled kernel: one pass over the samples for all the lines, the
+        blocks in parallel.
 
         Parameters
         ----------
@@ -915,6 +954,23 @@ class CrystalLines:
         list of numpy.ndarray
             One complex128 array per line, one phasor per block.
         """
+        block = XTAL_BLOCK
+        nb = XTAL_SUPER // block
+        freqs = list(freqs)
+        if not freqs:
+            return []
+        w = TAU * np.asarray(freqs, dtype=np.float64) / self.fs
+        tables = np.exp(-1j * w[:, None] * np.arange(block)[None, :])
+        turns = np.exp(-1j * w[:, None] * (np.arange(nb, dtype=np.float64) * block)[None, :])
+        out = np.empty((len(freqs), nb), dtype=np.complex128)
+        line_phasors_kernel(
+            np.ascontiguousarray(raw[: nb * block], dtype=np.float64), block, tables, turns, out
+        )
+        return list(out)
+
+    def _ats_reference(self, raw: np.ndarray, freqs: Sequence[float]) -> list[np.ndarray]:
+        """`_ats` as matrix products: the reference the kernel is checked
+        against."""
         block = XTAL_BLOCK
         nb = XTAL_SUPER // block
         blocks = raw[: nb * block].reshape(nb, block)
@@ -969,6 +1025,57 @@ class CrystalLines:
     # -- subtraction ------------------------------------------------------
 
     def clean(self, samples: np.ndarray, start: int) -> np.ndarray:
+        """Subtract the clock lines from `samples`, which start at absolute
+        sample `start`, on every core.
+
+        The same subtraction as `clean_reference` (the vectorised reference
+        it is checked against), piece by piece in a compiled kernel.
+
+        Returns:
+            A NEW float64 array with the lines subtracted.  The input is not
+            modified.
+        """
+        result = np.array(samples, dtype=np.float64, copy=True)
+        n = result.shape[0]
+        if n == 0 or not self.has_lines:
+            return result
+        sb = XTAL_SUPER
+        block = XTAL_BLOCK
+        t = max(start, 0)
+        end = min(start + n, self.length)
+        while t < end:
+            k = t // sb
+            b0 = k * sb
+            b1 = min((k + 1) * sb, end)
+            blk = self._block(k)
+            w = np.array(
+                [TAU * m * blk.f0 / self.fs for m in self.ks]
+                + [TAU * f / self.fs for f in self.others],
+                dtype=np.float64,
+            )
+            tables = np.exp(1j * w[:, None] * np.arange(XTAL_SEED)[None, :])
+            first = t - b0
+            count = b1 - t
+            head = min((XTAL_SEED - first % XTAL_SEED) % XTAL_SEED, count)
+            starts = np.arange(first + head, first + count, XTAL_SEED, dtype=np.int64)
+            counts = np.minimum(XTAL_SEED, first + count - starts)
+            if head > 0:
+                starts = np.concatenate((np.array([first], dtype=np.int64), starts))
+                counts = np.concatenate((np.array([head], dtype=np.int64), counts))
+            subtract_lines_kernel(
+                result[t - start : b1 - start],
+                first,
+                starts,
+                counts.astype(np.int64),
+                block,
+                np.ascontiguousarray(np.array(blk.amps, dtype=np.complex128)),
+                w,
+                tables,
+            )
+            t = b1
+        return result
+
+    def clean_reference(self, samples: np.ndarray, start: int) -> np.ndarray:
         """Subtract the clock lines from `samples`, which start at absolute
         sample `start`.
 

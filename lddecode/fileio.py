@@ -218,19 +218,25 @@ class RawCapture:
             self._file = None
 
 
+#: The rate a capture is taken to be at when nothing says otherwise (Hz):
+#: the decoder's own default, and the Domesday Duplicator's rate.
+DEFAULT_CAPTURE_RATE_HZ = 40.0e6
+
+
 def capture_sample_rate(filename, inputfreq=None):
     """The capture's own sample rate in Hz.
 
     inputfreq is the rate the user gave (in MHz); when it is None the rate
     is read from the Domesday Duplicator sidecar that sits next to the
-    capture (a .yaml file with a "sample_rate_hz" key).  Returns None when
-    neither is available.
+    capture (a .yaml file with a "sample_rate_hz" key), and failing that it
+    is DEFAULT_CAPTURE_RATE_HZ, as for any other decode.  Returns None only
+    when the sidecar exists but its rate cannot be read.
     """
     if inputfreq is not None:
         return float(inputfreq) * 1e6
     sidecar = os.path.splitext(filename)[0] + ".yaml"
     if not os.path.isfile(sidecar):
-        return None
+        return DEFAULT_CAPTURE_RATE_HZ
     try:
         with open(sidecar, "r", encoding="utf-8", errors="replace") as f:
             for line in f:

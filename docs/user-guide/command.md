@@ -98,18 +98,21 @@ corrected in the RF domain, before demodulation.
 
 #### `-i file`, `--input file`
 A source capture. Repeat it to stack several captures of the same disc; the
-first is the primary. The positional `infile` and `-i` are exclusive.
+first is the primary; stacking needs `--tbc-mode read`. The positional
+`infile` and `-i` are exclusive.
 - **Type:** String (path)
 - **Note:** The stacked captures must be fixed-width raw captures (`.s16`,
   `.raw`, `.r16`, `.u16`, `.r8`, `.u8`, `.s8`, `.rf`) and must share one
   sample rate. A compressed capture (`.ldf`, `.flac`) cannot be read at the
   arbitrary positions this path needs.
 - **Note:** The sample rate comes from `-f`, or from the Domesday Duplicator
-  sidecar (a `.yaml` file with a `sample_rate_hz` key) next to the capture.
+  sidecar (a `.yaml` file with a `sample_rate_hz` key) next to the capture,
+  and is 40 MHz when neither gives it. The decoder then demodulates at that
+  rate: the virtual stream is not resampled to 40 MHz.
 
 **Example:**
 ```bash
-ld-decode -i capture1.rf -i capture2.rf -i capture3.rf -o output
+ld-decode --tbc-mode read -i capture1.rf -i capture2.rf -i capture3.rf -o output
 ```
 
 #### `-o base`, `--output base`
@@ -119,19 +122,20 @@ The base name for the destination files. Needs `-i`.
 #### `--tbc-mode read|resample`
 The time-base correction.
 - **Type:** `read` or `resample`
-- **Default:** `read`
+- **Default:** `resample`, whatever the input
+- **Note:** `resample` is the reference decoder's way and keeps its bytes.
 - **Note:** `read` locates every line straight from the RF and reads the RF
   at the corrected positions before demodulating, instead of resampling the
-  demodulated video. It cannot run on stdin or on a compressed capture, and
-  it needs lines to be found; where it cannot run, and where it was not
-  asked for explicitly, the decode falls back to `resample` with a warning.
-- **Note:** `resample` is the reference decoder's way and keeps its bytes.
-  `read` is a better decode than the reference's and is therefore not the
-  reference's bytes. Several captures always use `read`.
+  demodulated video. Stacking several `-i` captures needs it. It cannot run
+  on stdin or on a compressed capture, and it needs lines to be found; where
+  it cannot run it is an error, never a silent change of mode.
+- **Note:** `--write-test-ldf` copies the capture at the positions the
+  decoder read, which only `resample` reads it at: it is refused with
+  `read`.
 
 **Example:**
 ```bash
-ld-decode --tbc-mode resample input.rf output
+ld-decode --tbc-mode read input.s16 output
 ```
 
 #### `--stack-weight adaptive|fixed`
@@ -156,15 +160,39 @@ Leave the composite chroma that leaks into the RF baseband (NTSC; it makes
 the fine wavering vertical stripes of saturated areas). It is cancelled by
 default.
 
+#### `--device cpu|opencl`
+Where the read-time TBC reads and combines the captures.
+- **Default:** `cpu` (every core)
+- **Note:** `opencl` runs the read and the combination on a GPU, as the
+  reference implementation's `--device opencl`. It needs pyopencl
+  (`pip install 'ld-decode[opencl]'`) and an OpenCL driver; the GPU with the
+  most compute units is used, or the one `PYOPENCL_CTX` names. Needs
+  `--tbc-mode read`.
+
+#### `--device-precision double|single`
+The precision of `--device opencl`.
+- **Default:** `double`
+- **Note:** `single` is the faster one on a consumer GPU, whose double
+  precision is a small fraction of its single; its stream differs from the
+  host's by about 140 dB below the signal.
+
+**Example:**
+```bash
+ld-decode --tbc-mode read --device opencl --device-precision single -i a.s16 -i b.s16 -o output
+```
+
 #### `--rf-out file`
 Also write the RF the decoder reads: the stacked or time-base corrected
 stream, as signed 16-bit at the input rate.
 - **Type:** String (path)
 - **Note:** Needs `--tbc-mode read`.
+- **Note:** The file is rounded and limited to the signed 16-bit range (the
+  decoder itself reads the stream unrounded). An unsigned capture's offset is
+  taken out, so a `.u16` or `.u8` stream lands centred on zero.
 
 **Example:**
 ```bash
-ld-decode -i capture1.rf -i capture2.rf -o output --rf-out stacked.s16
+ld-decode --tbc-mode read -i capture1.rf -i capture2.rf -o output --rf-out stacked.s16
 ```
 
 ### Video Standard Options
@@ -609,7 +637,7 @@ about 288,000 symbols (bytes) per second of decoded video.
 RF sampling frequency of the source file.
 - **Type:** FREQ (see Frequency Format section)
 - **Default:** 40MHz
-- **Note:** If the source file has a different sample rate, specify it here; the decoder will resample to 40MHz internally
+- **Note:** If the source file has a different sample rate, specify it here; the decoder will resample to 40MHz internally (`--tbc-mode resample`), or demodulate at that rate (`--tbc-mode read`)
 
 **Example:**
 ```bash
@@ -856,7 +884,7 @@ ERROR: bug.ldf was not written: ffmpeg exited with status 1
 
 - **Default Video Standard**: If neither `--PAL` nor `--NTSC` is specified, NTSC is assumed.
 - **Thread Count**: The default (`-t 0`) picks the machine's physical cores minus 2, capped at 10; `-t 1` decodes serially.
-- **Sample Rate**: The decoder internally works at 40MHz; all other sample rates are resampled.
+- **Sample Rate**: With `--tbc-mode resample` the decoder works at 40MHz and all other sample rates are resampled; with `--tbc-mode read` it works at the capture's own rate.
 - **Frame Counting**: Frames are counted as complete video frames; internally, the decoder processes fields (2 fields = 1 frame).
 - **Lead-out**: The lead-out section marks the end of valid disc content; decoding typically stops here unless `--ignoreleadout` is used.
 

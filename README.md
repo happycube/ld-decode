@@ -111,7 +111,7 @@ table of the `.tbc.db` (and as DEBUG lines in the decode log).
 
 ## Multi-capture stacking and read-time TBC
 
-`ld-decode -i capture1.rf -i capture2.rf -o output` decodes several
+`ld-decode --tbc-mode read -i capture1.rf -i capture2.rf -o output` decodes several
 captures of the same disc at once: the captures are combined in the RF
 domain, before demodulation, so a pass that drops out gives way to the
 others. The fields are paired by their VBI frame code, every capture is
@@ -133,9 +133,9 @@ the disc or in the player and are the same in every copy:
   wobble" of the saturated areas.
 
 Each can be switched off again (`--keep-audio-crosstalk`,
-`--keep-crystal-lines`, `--keep-chroma-leak`), and `--tbc-mode resample`
-goes back to the reference decoder's way of correcting the time base, which
-keeps its bytes. The path needs fixed-width raw captures, all at the same
+`--keep-crystal-lines`, `--keep-chroma-leak`). All of this runs only with
+`--tbc-mode read`: the default stays `--tbc-mode resample`, the reference
+decoder's way of correcting the time base, whatever the input. The path needs fixed-width raw captures, all at the same
 sample rate; see [the command reference](docs/user-guide/command.md) and
 [the technical page](docs/technical/stacked-rf-tbc.md).
 
