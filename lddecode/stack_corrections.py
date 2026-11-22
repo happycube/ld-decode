@@ -860,19 +860,57 @@ class CrystalLines:
 
     # -- measurement ------------------------------------------------------
 
-    def _at(self, raw: np.ndarray, f: float, a: int) -> complex:
+    def _at(self, raw: np.ndarray, f: float, a: int, table: Optional[np.ndarray] = None) -> complex:
         """The phasor of a line's frequency over a block of the capture.
 
         The block starts at `a` (within `raw`, the super-block's samples).
         The phasor is referenced to the super-block's first sample.
+
+        `table` is the block's table of exponentials for that frequency; it
+        is the same for every block of the super-block, and is computed
+        here when it is not given.
         """
         w = TAU * f / self.fs
         seg = raw[a : a + XTAL_BLOCK]
         m = seg.shape[0]
         if m == 0:
             return 0j
-        acc = np.dot(seg, np.exp(-1j * w * np.arange(m)))
+        if table is None:
+            table = np.exp(-1j * w * np.arange(XTAL_BLOCK))
+        acc = np.dot(seg, table[:m])
         return complex((2.0 / m) * acc * np.exp(-1j * w * a))
+
+    def _ats(self, raw: np.ndarray, freqs: Sequence[float]) -> list[np.ndarray]:
+        """Every line's phasor on every block of a super-block.
+
+        The blocks are the rows of the super-block's samples, and the lines'
+        tables of exponentials are applied to all of them at once: one pass
+        over the samples for all the lines, instead of one pass per line.
+
+        Parameters
+        ----------
+        raw : numpy.ndarray
+            The super-block's samples (float64).
+        freqs : sequence of float
+            The lines' frequencies, in Hz.
+
+        Returns
+        -------
+        list of numpy.ndarray
+            One complex128 array per line, one phasor per block.
+        """
+        block = XTAL_BLOCK
+        nb = XTAL_SUPER // block
+        blocks = raw[: nb * block].reshape(nb, block)
+        out = []
+        for f in freqs:
+            w = TAU * f / self.fs
+            table = np.exp(-1j * w * np.arange(block))
+            # The block's own turn, and the phasor's scale.
+            turn = np.exp(-1j * w * (np.arange(nb, dtype=np.float64) * block))
+            acc = blocks @ table.real + 1j * (blocks @ table.imag)
+            out.append((2.0 / block) * acc * turn)
+        return out
 
     def _measure(self, raw: np.ndarray) -> _CrystalBlock:
         """The lines over one super-block: the crystal's drift there from
@@ -883,9 +921,7 @@ class CrystalLines:
         f0 = self.f0
         if self.ks and nb > 1:
             fr = self.reference * self.f0
-            phasors = np.array(
-                [self._at(raw, fr, b * block) for b in range(nb)], dtype=np.complex128
-            )
+            phasors = np.array(self._ats(raw, [fr])[0], dtype=np.complex128)
             phases = np.angle(phasors)
             d = np.diff(phases)
             d -= TAU * np.round(d / TAU)
@@ -893,10 +929,7 @@ class CrystalLines:
             df = adv / (nb - 1) / (TAU * block / self.fs)
             f0 = self.f0 * (1.0 + df / fr)
         freqs = [m * f0 for m in self.ks] + list(self.others)
-        amps = [
-            np.array([self._at(raw, f, b * block) for b in range(nb)], dtype=np.complex128)
-            for f in freqs
-        ]
+        amps = list(np.array(a, dtype=np.complex128) for a in self._ats(raw, freqs))
         return _CrystalBlock(f0, amps)
 
     def _block(self, k: int) -> _CrystalBlock:
@@ -953,6 +986,10 @@ class CrystalLines:
             blk = self._block(k)
             w = [TAU * m * blk.f0 / self.fs for m in self.ks]
             w += [TAU * f / self.fs for f in self.others]
+            # The phasor of a line over a seed: the same table for every
+            # piece of the super-block, each piece turning it by its own
+            # position.
+            tables = [np.exp(1j * wl * np.arange(XTAL_SEED)) for wl in w]
             lo = t - start
             hi = b1 - start
             span = result[lo:hi]
@@ -988,7 +1025,7 @@ class CrystalLines:
                     else:
                         g0 = amp[j]
                         dg = 0j
-                    phasor = np.exp(1j * wl * pos)
+                    phasor = np.exp(1j * wl * a) * tables[idx][:cnt]
                     piece -= np.real((g0 + dg * s) * phasor)
                 span[a - first : a - first + cnt] = piece.astype(result.dtype, copy=False)
             t = b1

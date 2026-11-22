@@ -420,3 +420,52 @@ def test_a_capture_without_lines_is_left_alone(small_xtal):
     assert not lines.has_lines
     cleaned = lines.clean(capture[: 1 << 16], 0)
     np.testing.assert_array_equal(cleaned, capture[: 1 << 16])
+
+
+def test_the_batched_phasors_are_the_ones_of_each_block(small_xtal):
+    """The lines' phasors are measured over all the blocks of a super-block
+    at once: the result is the one of each block taken on its own."""
+    rng = np.random.default_rng(208)
+    raw = rng.normal(size=stack_corrections.XTAL_SUPER)
+    lines = stack_corrections.CrystalLines(
+        read_fn=_reader(raw),
+        fs=XFS,
+        f0=stack_corrections.EFM_XTAL_HZ / stack_corrections.XTAL_DIV,
+        ks=[1, 2, 3],
+        reference=2,
+        others=[3.1e6],
+        length=stack_corrections.XTAL_SUPER,
+    )
+    nb = stack_corrections.XTAL_SUPER // stack_corrections.XTAL_BLOCK
+
+    for f in [m * lines.f0 for m in lines.ks] + list(lines.others):
+        one_by_one = np.array(
+            [lines._at(raw, f, b * stack_corrections.XTAL_BLOCK) for b in range(nb)]
+        )
+        batched = lines._ats(raw, [f])[0]
+
+        assert batched.shape == (nb,)
+        np.testing.assert_allclose(batched, one_by_one, rtol=1e-12, atol=1e-12)
+
+    # The measurement of a whole super-block follows: the crystal's drift
+    # comes from the reference line's phase advance from block to block.
+    phasors = np.array(
+        [
+            lines._at(raw, lines.reference * lines.f0, b * stack_corrections.XTAL_BLOCK)
+            for b in range(nb)
+        ]
+    )
+    advance = np.diff(np.angle(phasors))
+    advance -= TAU * np.round(advance / TAU)
+    drift = (
+        float(advance.sum())
+        / (nb - 1)
+        / (TAU * stack_corrections.XTAL_BLOCK / XFS)
+        / (lines.reference * lines.f0)
+    )
+
+    measured = lines._measure(raw)
+    assert measured.f0 == pytest.approx(lines.f0 * (1.0 + drift), rel=1e-12)
+    assert len(measured.amps) == len(lines.ks) + len(lines.others)
+    for amps in measured.amps:
+        assert np.isfinite(amps).all()
