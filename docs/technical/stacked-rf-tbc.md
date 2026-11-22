@@ -213,13 +213,19 @@ The stacking itself was then run on three captures of the same segment
 (809 M samples each at 75 MHz), with the three corrections on:
 
 - **The build.** The pass 0 over the three captures, the clock lines'
-  detection and the pairing of the fields took **64.9 s**, that is 37 M
+  detection and the pairing of the fields took **57 s**, that is 43 M
   samples a second over the 2.4 G samples of the three captures.
 - **The read.** The virtual stream runs at **0.54 M samples/s** on one core
-  (111 s for 60 M samples of the stream, 180 M samples read out of the
-  three captures). The synthetic captures used for the figures below are
-  close to four times quicker: they carry no clock line, and the subtraction
-  of the clock lines is a fifth of the time.
+  (1488 s for the whole 809 M samples of the stream). The synthetic captures
+  used for the figures below are close to four times quicker: they carry no
+  clock line, and the subtraction of the clock lines is a fifth of the time.
+- **The result.** The stacked stream comes out at 4798 rms over its whole
+  length. On the primary capture, the band the disc carries nothing in
+  (16-19.5 MHz) holds 50 rms equivalent against 4417 rms for the whole
+  signal: nothing stands in an empty band.
+- **The lines, once removed.** Measured on the primary capture, the fifteen
+  lines the reference subtracts are dropped by **31 to 59 dB** (43 dB in
+  the middle): what is left of them is the numerical floor.
 
 ## What it costs
 
