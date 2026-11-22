@@ -376,6 +376,109 @@ the stack of eighteen captures.
   `--recompute-tbc`, the `--device opencl` path and the `--preset` choice
   are not ported.
 
+## What the branch adds, and what rev 8 adds
+
+The reference implementation this port follows is not rev 8. Its decoder crate
+(`crates/ld-decode/src/`) is byte for byte the upstream 7.4.0 decoder: its
+first commit says "bit-exact vs python 7.3.0", and its PAL work targets
+"ld-decode 7.4". `git diff upstream/main vrunk11_main -- crates/ld-decode/src`
+is empty. Everything the branch adds lives in the CLI crate, next to the
+decoder.
+
+So the two bodies of work are disjoint, and the question "what is mine, and what
+is rev 8's" has a clean answer.
+
+### The branch's own commits
+
+79 commits sit outside `upstream/main`: 10 merges, 9 exploratory spikes (Claude,
+design notes and a NumPy prototype), and 60 substantive ones. They fall into:
+
+| group | commits | what it does |
+| --- | --- | --- |
+| the stack and its command line | 30 | the RF pass 0, the virtual source, the timeline, the read-time TBC, the weights, the three cancellations |
+| the containers | 9 | the LDX container, the `.rfx` archive |
+| the decoder | 7 | PAL, the pass 0's shortcuts, the GPU demodulator |
+| the fixes and the tests | 5 | the input rate in the EFM PLL and in the `.efm` band-pass |
+| the docs and the CI | 5 | the branch's own documentation |
+| the GPU and the performance | 3 | the OpenCL stack, the double precision demodulator |
+
+Two of the fixes (`e923c39`, `58f28bc`, the input rate in the EFM PLL and in the
+`.efm` band-pass) are already in the branch's `main`. The PAL parity work
+(`13610d5`, `d1a7555`, `a24df84`) and the OpenCL demodulator (`e09bbf3`) sit in
+the branch's other branches, and are not in `upstream/main`. This port keeps
+them out of scope: the Python decoder already has the PAL path, and OpenCL is
+out.
+
+### What rev 8 has that the reference port does not
+
+Rev 8 is not a revision of the same idea, it is a different set of servos.
+The ones that matter for interference and for the picture:
+
+| feature | option | in the reference port |
+| --- | --- | --- |
+| the timing-based EFM demodulator (the default since rev 8) | `--efm_demod timing` | no, it only has the 7.4 PLL |
+| the 2T MTF servo | `--no_mtf_servo` | no, it has the 7.4 b/w ratio |
+| the auto chroma (the inverse MTF, calibrated on the burst) | `--no_auto_chroma` | no |
+| the multiburst video EQ servo | always on | no |
+| the chroma DG servo | `--no_chroma_dg` | no |
+| the VITS white level servo | `--vits_white_level` | no |
+| the RF echo cancellation (the multipath ghost) | `--rf_echo_cancel`, `--rf_echo` | no |
+| the coherent subtraction of the V4300D clock | `--V4300D_coherent_subtract` | no |
+| the audio carrier cancellation | `--audio_carrier_cancel` | replaced, in a better place (below) |
+| the dropout record (metadata, no masking) | `--noDOD` | yes |
+| the AGC | `--noAGC` | yes |
+| the group delay equaliser, the audio carrier notches, the zero phase RF | always on | yes |
+| the CVBS output and its sidecars | `--cvbs` | no |
+
+All of them are in this repository, because this repository is rev 8. None of
+them has to be ported: they are the decoder's own work, and it runs on the
+virtual stream like it runs on a plain capture.
+
+### The interference cancellations, and who owns what
+
+The three cancellations this branch ports are not in rev 8, and rev 8's own
+ones are not in the reference port. They do not overlap, except in one place.
+
+| cancellation | rev 8 | this branch | the reference port |
+| --- | --- | --- | --- |
+| the audio carriers' crosstalk | after demodulation, on the demodulated spectrum, NTSC only | before demodulation, on the RF's instantaneous frequency, NTSC and PAL | yes, the same as this branch |
+| the clock lines | no | yes | yes |
+| the chroma leak | no | yes | yes |
+| the audio carrier intermodulation lines | yes (`--audio_carrier_cancel`) | no | no |
+| the RF echo (the ghost) | yes (`--rf_echo_cancel`) | no | no |
+| the V4300D clock | yes (PAL) | no | no |
+| the audio excursion blanking | yes | inherited | yes |
+| the demodulator clipping | yes | inherited | yes |
+| the dropout record | yes | inherited | yes |
+
+The crosstalk is the one that meets. Rev 8's `--audio_carrier_cancel` fits a
+complex gain per audio carrier on the demodulated spectrum, NTSC only. The
+branch's cancellation fits the same gains on the RF's instantaneous frequency
+over the video band, before the demodulator, in NTSC and PAL. It removes the
+phase of the leak as well as its amplitude, and it is what the stacked stream
+needs: the leak is the same on every copy, so stacking averages it out
+instead of removing it.
+
+### What the stacking cannot fix
+
+Most interference is either per capture (the noise, the dropouts, the level) or
+is removed by the pass 0 (the timing, the drift, the wow). The stacking
+handles those on its own. Three are not covered, because they are identical on
+every copy of the same disc:
+
+- the **RF echo**: the ghost is deterministic per capture, and stacking makes
+  it worse, since ghosts of different delays average into a blur. Rev 8's
+  cancellation is the answer, and it belongs in the pass 0, before the
+  stacking.
+- the **V4300D clock**: the reader's 8.4672 MHz clock is on every copy. The
+  clock lines detection does not take it, because it looks for the lines of
+  the capture, and it leaves that band out.
+- the **disk's own colour errors**: the chroma DG and the video EQ are
+  properties of the disc, and they are in rev 8 already.
+
+The first two are the only rev 8 cancellations worth bringing into the
+stacking path.
+
 ## What it costs
 
 The pass 0 reads the capture once more (it runs alongside the decode), and
