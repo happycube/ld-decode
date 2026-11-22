@@ -494,9 +494,6 @@ def phase_lock(
         # The measured rotation counts only where both carriers are clearly
         # healthy: a window part noise gives a rotation part noise.
         qr = np.maximum(0.0, (q - Q_ROT) / (1.0 - Q_ROT))
-        # The ceiling keeps the weight of the prior finite when the two
-        # carriers are as clean as they can read (q == 1).
-        qr = np.minimum(qr, 1.0 - 1e-9)
         wm = nj * qr / (1.0 - qr)
         safe_a = np.where(a > 0.0, a, 1.0)
         vx = (r.real / safe_a) * wm + LOCK_PRIOR
