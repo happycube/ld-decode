@@ -311,3 +311,8 @@ it is a measurement of the RF, and it is over long before the decode is.
   a better decode than the reference's, so they do not produce the
   reference's output. Use `--tbc-mode resample` when byte parity with the
   reference matters.
+- **The field's position.** A field decoded from the virtual stream is
+  reported at its position in that stream (`diskLoc`, `fileLoc` in the
+  `.tbc.db`), where the reference reports the position in the primary
+  capture. The virtual stream starts at the capture's first located line, so
+  the two differ by the length of the lead-in.
