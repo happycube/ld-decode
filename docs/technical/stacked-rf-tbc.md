@@ -240,12 +240,13 @@ same eighteen captures, the same 75 MHz, the same `--tbc read`.
   out identical on all eighteen (2.4954e4 and 4.0073e-5 for the capture with
   the least noise, 3.6393e4 and 2.7478e-5 for the one with the most).
 - **The RF the decoder reads.** The two streams are aligned to the sample:
-  **54 %** of the samples are bit for bit the same, the difference has an rms
-  of **1.0** over a signal of 4822 (**73.7 dB** down), and the correlation is
-  0.99999998.
+  **93 %** of the samples are bit for bit the same, the difference has an rms
+  of **0.64** over a signal of 4471 (**77 dB** down), and the correlation is
+  0.999999990. (Before the step-by-step comparison below, it was 54 % and an
+  rms of 1.0 on the stack of eighteen captures.)
 - **The picture.** The same fields, in the same order, with the same VBI
   codes (the VBI rows are identical, one for one), the same CLV timecode
-  and the same sync confidence: **42.5 dB** of PSNR and a correlation of
+  and the same sync confidence: **42.4 dB** of PSNR and a correlation of
   0.9984.
 - **Where the last half of a decibel goes.** The same difference appears on
   the reference's own path (`--tbc resample`), which this port does not
@@ -270,6 +271,99 @@ It found none, and decoded nothing at all.
 The reference decodes the eighteen captures in 880 s (645 fields); this port
 takes about 19 s a frame for the same result, the demodulator being the
 reference implementation's own.
+
+## Step by step with the reference implementation
+
+The reference implementation (the Rust rewrite) is the source of truth for
+every one of these features: this port follows it step by step, and the steps
+were compared one by one against it.
+
+What follows is that comparison, and what it changed.
+
+### The steps, and where each one lives
+
+| step | the reference | this port |
+| --- | --- | --- |
+| the line location (pass 0) | `rfsync.rs` | `lddecode/rf_sync.py` |
+| the field pairing and the timeline | `stack.rs` (`Live::advance`) | `lddecode/stack.py` (`build_timeline`) |
+| the plan of the reads | `stack.rs` (`Inner::plan`) | `lddecode/stack.py` (`_plan`) |
+| the filters (the sinc and the video band) | `stack.rs` (`sinc_lut`, `video_band_lut`) | `lddecode/stack.py` (`sinc_lut`, `video_band_lut`) |
+| the carrier's measure and the phase lock | `stack.rs` (`carrier`, `lock`) | `lddecode/stack.py` (`carrier_measure`, `phase_lock`) |
+| the combination of the inputs | `stack.rs` (`combine_fixed`, `compute_task`) | `lddecode/stack.py` (`_combine`) |
+| the clock lines' detection and subtraction | `stack.rs` (`CrystalLines`) | `lddecode/stack_corrections.py` (`CrystalLines`) |
+| the audio carriers' crosstalk | `stack.rs` (`cancel_crosstalk`) | `lddecode/stack_corrections.py` (`cancel_crosstalk`) |
+| the chroma leak | `stack.rs` (`cancel_chroma_leak`) | `lddecode/stack_corrections.py` (`cancel_chroma_leak`) |
+
+The order of the operations is the reference's: the clock lines are subtracted
+from each capture as it is read, before the filters; the inputs are combined
+after; the crosstalk is cancelled, then the chroma leak, on the combined
+stream. The decoder is told the rate of the virtual stream, and demodulates it
+after all of it.
+
+### What the comparison found
+
+The comparison of each step against the reference's source, and the
+translation of the reference's formulas into Python to compare them output
+against output, found these differences. All of them are fixed.
+
+- **The line's length.** The reference uses the line's own length
+  (227.5e6 / fsc, 63.5555 us); this port used a rounded 63.5 us. The line
+  grid was therefore off by 4 samples a line at 75 MHz, and the pass 0's
+  tracker started from the wrong grid.
+- **The windows of the pass 0.** The reference reads its windows with the
+  low bound included (a horizontal sync is 3.6 to 6.2 us wide, the low bound
+  included; the VBI candidates are the lines 6 to 14 lines after the broad
+  pulse, 14 excluded). This port had them the other way round on the low
+  bounds, and included the high bound of the VBI window.
+- **The broad pulse of the vertical sync.** The reference resets it at every
+  chunk of the scan, so the VBI candidate lines are the ones that follow a
+  broad pulse of the same chunk. This port kept it across the chunks.
+- **The damaged lines.** The reference decides the whole set of them at once,
+  on the positions as measured: a line dropped out of the way does not change
+  its neighbours' verdict. This port dropped them one by one, so a dropped
+  line did change the verdict of the next.
+- **The rounding.** The reference rounds half away from zero everywhere (the
+  carrier's lag, the filter's fractional phase, the half-line step of the
+  timeline, the peak's bin, the pivot of a solve). This port rounded half to
+  even in those places. On an exact half, the two choose different sides.
+- **The leak's subtraction.** The reference subtracts the leak in double
+  precision and rounds once; this port rounded the leak first and subtracted
+  it in single precision, rounding twice.
+
+### What it cost
+
+On one capture, the RF the two decoders read, compared sample by sample:
+
+| | before | after |
+| --- | --- | --- |
+| bit-for-bit identical samples | 38.5 % | **92.7 %** |
+| rms of the difference | 4.451 | **0.635** |
+| correlation | 0.999999504 | **0.999999990** |
+
+The picture itself did not move: it is still 42.4 dB of PSNR against the
+reference, because what is left of the difference is the difference between
+the two demodulators (the reference is on revision 7 of the reference
+decoder, this one on revision 8), not between the two stacking
+implementations. The RF the decoder reads, on the other hand, is now the
+reference's to within 0.6 rms on a signal of 4471.
+
+### What is still not the same
+
+- **The precision.** The reference's stack works in single precision, this
+  one in double. The filters and the phase lock are the reference's
+  `exact` path (the one `--preset slow` takes), but the reference's default
+  path is not, and its demodulator is a different one.
+- **The order of the summations.** The reference's sums over a task of 65536
+  samples, this port's over a chunk of 2^21: the same sums, rounded
+  differently, to about 1e-13.
+- **The pass 0 runs before the decode.** The reference runs the pass 0
+  alongside the decode, and the virtual stream waits for the lines it needs.
+  This port runs the pass 0 over the whole capture first. The timeline is the
+  same, but the reference stops the pass 0 when the decode stops, and this
+  port does not.
+- **The features the reference does not have.** The `.rfx` container and
+  `--recompute-tbc`, the `--device opencl` path and the `--preset` choice
+  are not ported.
 
 ## What it costs
 

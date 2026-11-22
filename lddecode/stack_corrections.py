@@ -217,7 +217,9 @@ def _solve_linear(a: np.ndarray, b: np.ndarray) -> Optional[np.ndarray]:
     b = np.array(b, dtype=np.float64, copy=True)
     n = b.shape[0]
     for c in range(n):
-        p = c + int(np.argmax(np.abs(a[c:, c])))
+        # The reference keeps the last of the equal maxima.
+        column = np.abs(a[c:, c])
+        p = c + int(len(column) - 1 - np.argmax(column[::-1]))
         if not np.isfinite(a[p, c]) or abs(a[p, c]) < 1e-300:
             return None
         if p != c:
@@ -361,8 +363,6 @@ def cancel_crosstalk(
     # Least squares of the video band's instantaneous frequency on the
     # carriers' real and imaginary parts, means removed.
     idx = np.arange(taper, n - taper, XTALK_FIT_STRIDE)
-    if idx.size < 8:
-        return result
     cols = np.empty((idx.size, 4), dtype=np.float64)
     for c in range(2):
         car = carrier_at(c, idx)
@@ -470,6 +470,15 @@ def _leak_bands(
     return oc, orr
 
 
+def _subtract_leak(out: np.ndarray, leak: np.ndarray) -> None:
+    """The leak is taken out of the RF in place, in double precision.
+
+    The difference is computed in double precision and rounded once, as the
+    reference does: rounding the leak first would round it twice.
+    """
+    out[...] = (out.astype(np.float64) - leak).astype(out.dtype)
+
+
 def cancel_chroma_leak(
     out: np.ndarray,
     video_band: np.ndarray,
@@ -517,7 +526,9 @@ def cancel_chroma_leak(
     lags = np.arange(LEAK_TAPS) * LEAK_STEP - half
 
     # The normal equations, summed over fixed spans and the spans added in
-    # order: the same sums whatever the thread count.
+    # order: the same sums whatever the thread count.  Only the upper
+    # triangle is accumulated, and the matrix is symmetrised afterwards, as
+    # the reference does.
     fit = np.arange(taper + half, n - taper - half, LEAK_FIT_STRIDE)
     if fit.size < LEAK_TAPS:
         return result
@@ -526,11 +537,13 @@ def cancel_chroma_leak(
     yy = 0.0
     for a in range(0, fit.size, LEAK_FIT_SPAN):
         ts = fit[a : a + LEAK_FIT_SPAN]
-        rows = c[ts[:, None] + lags[None, :]]
+        rows = c[ts[:, None] + lags[None, :]].astype(np.float64)
         target = r[ts].astype(np.float64)
-        ata += rows.T @ rows
+        upper = np.triu(rows.T @ rows)
+        ata += upper
         aty += rows.T @ target
         yy += float(target @ target)
+    ata = ata + np.triu(ata, 1).T
 
     h = _solve_linear(ata, aty)
     if h is None:
@@ -543,13 +556,15 @@ def cancel_chroma_leak(
         return result
 
     # The predicted leak, taken out of the RF, faded in and out at the edges.
+    # The subtraction is done in double precision and rounded once, as the
+    # reference does.
     span = 1 << 14
     for a in range(half, n - half, span):
         b = min(a + span, n - half)
         t = np.arange(a, b)
-        leak = c[t[:, None] + lags[None, :]] @ h
+        leak = c[t[:, None] + lags[None, :]].astype(np.float64) @ h
         leak *= _edge_taper(t, n, taper)
-        result[a:b] -= leak.astype(result.dtype, copy=False)
+        _subtract_leak(result[a:b], leak)
     return result
 
 
@@ -634,10 +649,12 @@ def _floor_lookup(floor_sum: np.ndarray, m: int, step: int) -> np.ndarray:
 
 def _parabolic_offset(p: np.ndarray, k: int) -> float:
     """The offset of a spectral peak's bin from its parabolic vertex."""
-    if k < 1 or k + 1 >= p.shape[0]:
+    if k + 1 >= p.shape[0]:
         return 0.0
     with np.errstate(divide="ignore", invalid="ignore"):
-        lg = np.log(p[k - 1 : k + 2])
+        # The reference reads the bin before the peak, or the peak itself
+        # when it is the first one.
+        lg = np.log(p[[max(k - 1, 0), k, k + 1]])
         d = lg[0] - 2.0 * lg[1] + lg[2]
         off = 0.5 * (lg[0] - lg[2]) / d
     if not np.isfinite(d) or d >= 0.0:
@@ -651,7 +668,9 @@ def _peak(p: np.ndarray, b: int, w: int) -> tuple[int, float]:
     hi = min(b + w, p.shape[0] - 2)
     if hi < lo:
         return b, 0.0
-    k = lo + int(np.argmax(p[lo : hi + 1]))
+    # The reference keeps the last of the equal maxima.
+    window = p[lo : hi + 1]
+    k = lo + int(len(window) - 1 - np.argmax(window[::-1]))
     return k, _parabolic_offset(p, k)
 
 
@@ -921,7 +940,10 @@ class CrystalLines:
             phasors = np.array(self._ats(raw, [fr])[0], dtype=np.complex128)
             phases = np.angle(phasors)
             d = np.diff(phases)
-            d -= TAU * np.round(d / TAU)
+            # The phase advance is folded into (-pi, pi], rounded half away
+            # from zero, as the reference does.
+            ratio = d / TAU
+            d -= TAU * np.where(ratio >= 0.0, np.floor(ratio + 0.5), np.ceil(ratio - 0.5))
             adv = float(d.sum())
             df = adv / (nb - 1) / (TAU * block / self.fs)
             f0 = self.f0 * (1.0 + df / fr)

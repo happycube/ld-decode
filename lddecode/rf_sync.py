@@ -209,6 +209,27 @@ class _Extra:
     vbi_after_v: tuple[float, float]
 
 
+#: The width of a horizontal sync pulse (us), as the reference reads it: the
+#: low bound is part of the range.
+H_WIDTH_US = (3.6, 6.2)
+#: The width of an equalizing pulse (us), as the reference reads it.
+E_WIDTH_US = (1.6, 3.2)
+#: The width of the broad pulse of the vertical sync (us).
+V_WIDTH_US = (15.0, 40.0)
+#: The spacing of the Philips code's mid-bit transitions (us), as the
+#: reference reads it: the low bound is part of the range.
+PHILIPS_STEP_US = (1.75, 2.25)
+
+
+def _in_range(value: float, bounds: tuple[float, float]) -> bool:
+    """Whether `value` is in the reference's range: the low bound included.
+
+    The reference reads its windows as half-open ranges (the low bound
+    included, the high bound not), and this is how it reads them.
+    """
+    return bounds[0] <= value < bounds[1]
+
+
 # NTSC: the subcarrier is 315/88 MHz (SMPTE 170M-2004 Section 4.2) and one
 # IRE is 1.7 MHz over 140 IRE (the sync tip sits at -40 IRE).
 _NTSC_EXTRA = _Extra(
@@ -256,7 +277,9 @@ def system_for(ntsc: bool) -> SyncSystem:
             vbi_lines=(12, 20),
             field_lines=(263, 262),
             line_hz=15734.264,
-            line_us=63.5,
+            # 227.5e6 / fsc, as the reference does: the line's own length,
+            # not the rounded 63.5 us.
+            line_us=227.5e6 * 88.0 / 315.0e6,
         )
     # ITU-R BT.470-6: 625 lines, 25 Hz, the 3.75 MHz pilot on the sync tip.
     return SyncSystem(
@@ -548,11 +571,11 @@ def _find_pulses(freq: np.ndarray, t0: float, step: int, thr: float, fs: float) 
     for r, f in zip(rising[paired], falling[idx_c[paired]]):
         start = float(t[f])
         width = (float(t[r]) - start) / us
-        if 3.6 < width < 6.2:
+        if _in_range(width, H_WIDTH_US):
             kind = _Kind.H
-        elif 1.6 < width < 3.2:
+        elif _in_range(width, E_WIDTH_US):
             kind = _Kind.E
-        elif 15.0 <= width < 40.0:
+        elif _in_range(width, V_WIDTH_US):
             kind = _Kind.V
         else:
             continue
@@ -630,7 +653,7 @@ def _philips(
     if len(zc) != 24:
         return None
     gaps = [(zc[i + 1][0] - zc[i][0]) / us for i in range(len(zc) - 1)]
-    if not all(1.75 < g < 2.25 for g in gaps):
+    if not all(_in_range(g, PHILIPS_STEP_US) for g in gaps):
         return None
     value = 0
     for _, bit in zc:
@@ -1080,14 +1103,21 @@ class _Tracker:
         # samples is a damaged one (the time base moves far less than that
         # from one line to the next): interpolated instead. Of two adjacent
         # suspects, the worse goes.
+        #
+        # The whole set is decided first, on the positions as measured: a
+        # line dropped out of the way does not change the verdict of its
+        # neighbours, as the reference does it.
         max_dev = _at_rate(MAX_LINE_DEV, self.fs)
+        bad = []
         for i in range(len(pos)):
             d = dev(i)
             if d <= max_dev:
                 continue
             nb = neighbours(i)
             if nb is not None and dev(nb[0]) <= d and dev(nb[1]) <= d:
-                pos[i] = math.nan
+                bad.append(i)
+        for i in bad:
+            pos[i] = math.nan
 
         ia, ib = a - self.base, b - self.base
         out: list[float] = []
@@ -1313,11 +1343,9 @@ def locate(
     tracker = _Tracker(fs, system)
     own0 = 0
     total: Optional[int] = None if length is None else max(0, int(length))
-    # The last broad pulse seen, kept across the chunks: the VBI candidate
-    # lines are the ones a few lines after it, and the broad pulse can be in
-    # the previous chunk.  (The Rust resets this per chunk, which loses the
-    # Philips codes of the lines that follow a chunk boundary.)
-    last_v = -math.inf
+    # The last broad pulse seen.  The reference resets it at every chunk
+    # boundary, so the VBI candidate lines are the ones a few lines after a
+    # broad pulse of the same chunk only.
     while total is None or own0 < total:
         b0 = own0 - MARGIN
         buf, eof = _read_window(read_fn, b0, CHUNK + 2 * MARGIN)
@@ -1346,15 +1374,14 @@ def locate(
             freq = np.angle(prods[:-1] + prods[1:]) * (fs / (2.0 * math.pi))
             t0 = g0 + step / 2.0
             pulses = _find_pulses(freq, t0, step, thr, fs)
-            own1 = own0 + CHUNK
+            own1 = own0 + CHUNK if total is None else min(own0 + CHUNK, total)
+            last_v = -math.inf
             for p in pulses:
                 if p.kind is _Kind.V:
                     last_v = p.start
                 if not (own0 <= p.start < own1):
                     continue
-                vbi = p.kind is _Kind.H and (
-                    extra.vbi_after_v[0] <= (p.start - last_v) / hlen <= extra.vbi_after_v[1]
-                )
+                vbi = p.kind is _Kind.H and _in_range((p.start - last_v) / hlen, extra.vbi_after_v)
                 if p.kind is _Kind.H:
                     fr = _refine(buf, p.start - b0, fine, fs, vbi, system)
                     if fr.edge is not None:

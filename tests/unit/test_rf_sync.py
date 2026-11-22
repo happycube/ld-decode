@@ -12,6 +12,7 @@ file, no network, no clock).
 import numpy as np
 import pytest
 
+from lddecode import rf_sync
 from lddecode.rf_sync import (
     FieldRecord,
     SyncSystem,
@@ -321,7 +322,8 @@ def test_system_for_ntsc_constants():
     assert system.fine_band == (3.8e6, 13.0e6)
     assert system.vbi_lines == (12, 20)
     assert system.field_lines == (263, 262)
-    np.testing.assert_allclose(system.line_us, 63.5, rtol=0, atol=1e-9)
+    # The line's own length, 227.5e6 / fsc, as the reference has it.
+    np.testing.assert_allclose(system.line_us, 227.5e6 * 88.0 / 315.0e6, rtol=0, atol=1e-9)
     np.testing.assert_allclose(system.line_hz, 15734.264, rtol=0, atol=1e-6)
     assert porch_window(system) == (8.0, 9.0)
     assert system.porch_us == 8.0
@@ -350,6 +352,42 @@ def test_system_is_frozen():
     system = system_for(True)
     with pytest.raises(Exception):
         system.ntsc = False  # type: ignore[misc]
+
+
+def test_the_pulse_widths_take_the_reference_bounds():
+    """The pulse's width bounds are the reference's, the low end included.
+
+    A horizontal sync is 3.6 to 6.2 us wide, an equalizing pulse 1.6 to 3.2:
+    the low bound is part of the range, as in the reference.
+    """
+    # The bounds themselves are the reference's.
+    assert rf_sync.H_WIDTH_US == (3.6, 6.2)
+    assert rf_sync.E_WIDTH_US == (1.6, 3.2)
+    assert rf_sync.V_WIDTH_US == (15.0, 40.0)
+    assert rf_sync.PHILIPS_STEP_US == (1.75, 2.25)
+    # A width right on the low bound is taken, one just under is not.
+    assert rf_sync._in_range(3.6, rf_sync.H_WIDTH_US)
+    assert not rf_sync._in_range(3.59, rf_sync.H_WIDTH_US)
+    assert rf_sync._in_range(1.6, rf_sync.E_WIDTH_US)
+    assert not rf_sync._in_range(1.59, rf_sync.E_WIDTH_US)
+    # The high bound is not part of the range.
+    assert not rf_sync._in_range(6.2, rf_sync.H_WIDTH_US)
+    assert rf_sync._in_range(6.19, rf_sync.H_WIDTH_US)
+
+
+def test_the_vbi_window_takes_the_reference_bounds():
+    """The VBI candidate window is the reference's, the low bound included.
+
+    The lines carrying the Philips codes are the ones 6 to 14 lines after
+    the broad pulse: 6 is part of the range, 14 is not.
+    """
+    window = rf_sync.system_for(True)
+    extra = rf_sync._extra(window)
+    assert extra.vbi_after_v == (6.0, 14.0)
+    assert rf_sync._in_range(6.0, extra.vbi_after_v)
+    assert rf_sync._in_range(13.999, extra.vbi_after_v)
+    assert not rf_sync._in_range(14.0, extra.vbi_after_v)
+    assert not rf_sync._in_range(5.999, extra.vbi_after_v)
 
 
 # --------------------------------------------------------------------------
@@ -400,7 +438,7 @@ def test_locate_ntsc_field_line_counts(ntsc_records):
 
 def test_locate_ntsc_line_positions_are_stable(ntsc_records):
     """The lines sit on an even grid, to well under a sample."""
-    nominal = FS * 63.5e-6
+    nominal = FS * 227.5e6 * 88.0 / 315.0e6 / 1e6
     for rec in ntsc_records:
         spacing = np.diff(rec.lines)
         # The line length is tracked from the pulses themselves.

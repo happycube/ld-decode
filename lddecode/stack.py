@@ -45,6 +45,7 @@ The sibling modules are imported lazily, so this module stands alone:
 from __future__ import annotations
 
 import logging
+import math
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -54,7 +55,7 @@ import numpy as np
 from numba import njit
 from scipy.special import i0 as _bessel_i0
 
-from .rf_sync import frame_code
+from .rf_sync import _round_half_away, frame_code
 
 __all__ = [
     "StackInput",
@@ -390,9 +391,10 @@ def carrier_lag(fs: float) -> int:
     """The carrier lag, in samples, at a sample rate ``fs`` (Hz).
 
     The video band's noise decorrelates after about ``fs / CARRIER_BW``
-    samples; the lag is at least one sample.
+    samples; the lag is at least one sample.  The rounding is the
+    reference's (half away from zero).
     """
-    return max(1, int(round(fs / CARRIER_BW)))
+    return max(1, int(math.floor(fs / CARRIER_BW + 0.5)))
 
 
 def carrier_measure(rl: complex, e: float, n: float, qn: float) -> tuple[np.floating, np.floating]:
@@ -694,7 +696,12 @@ def build_timeline(
                 tk = float(a)
             else:
                 # Half-line resolution: the ideal time of an anchor.
-                lines = max(0.5, round(2.0 * (a - last) / linelen) / 2.0)
+                # The rounding is the reference's (half away from zero), so
+                # an exact half lands on the same side as in the Rust.
+                lines = max(
+                    0.5,
+                    _round_half_away(2.0 * (a - last) / linelen) / 2.0,
+                )
                 tk = times[-1] + lines * linelen
             times.append(tk)
             positions[0].append(float(a))
@@ -883,7 +890,8 @@ def _read_input(
         return full, band, covered
     pos = positions[index]
     k0 = np.floor(pos)
-    phase = np.rint((pos - k0) * SINC_PHASES).astype(np.int64)
+    # The phase is rounded half away from zero, as the reference does.
+    phase = np.floor((pos - k0) * SINC_PHASES + 0.5).astype(np.int64)
     np.clip(phase, 0, SINC_PHASES, out=phase)
     base = k0.astype(np.int64) - span.start
     raw = span.raw

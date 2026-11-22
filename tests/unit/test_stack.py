@@ -272,6 +272,26 @@ def test_the_timeline_advances_in_half_line_steps():
     np.testing.assert_allclose(steps, LINELEN * np.array([0.5, 1.0]), rtol=1e-9, atol=1e-6)
 
 
+def test_the_timeline_rounds_the_half_line_away_from_zero():
+    """The reference rounds the half-line count half away from zero.
+
+    A line and a quarter between two anchors is 2.5 half-lines: the
+    reference rounds it to 3 (a line and a half), the rounding to even would
+    give 2 (a line).
+    """
+    primary = [
+        _Record(
+            first=True,
+            code=[FRAME_CODE],
+            lines=[FIRST_LINE, FIRST_LINE + LINELEN * 1.25],
+        )
+    ]
+    timeline = build_timeline([primary], LINELEN, CAPTURE_LENGTH)
+    # The two line anchors and the tail anchor.
+    step = timeline.t[2] - timeline.t[1]
+    np.testing.assert_allclose(step, LINELEN * 1.5, rtol=1e-9, atol=1e-6)
+
+
 def test_a_repeated_frame_code_leaves_the_input_unpaired():
     """A frame code that repeats in a capture is ambiguous: it is left out."""
     primary = [
@@ -388,6 +408,18 @@ def test_the_carrier_lag_follows_the_sample_rate():
     assert carrier_lag(1.0e6) == 1
 
 
+def test_the_carrier_lag_is_rounded_half_away_from_zero():
+    """The reference rounds the lag half away from zero, not to even.
+
+    At 37.5 MHz the rate over the band's width is 2.5 samples: the reference
+    takes 3, the rounding to even would take 2.
+    """
+    assert carrier_lag(37.5e6) == 3
+    assert carrier_lag(67.5e6) == 5
+    # A rate below the band's width still gives one sample.
+    assert carrier_lag(10.0e6) == 1
+
+
 @pytest.mark.dsp
 def test_the_phase_lock_recovers_a_known_rotation():
     """The lock's rotation is the phase difference between the two bands."""
@@ -445,6 +477,25 @@ def test_the_sinc_table_is_normalised():
     lut = sinc_lut()
     assert lut.shape == (1025, 32)
     np.testing.assert_allclose(lut.sum(axis=1), 1.0, rtol=0.0, atol=1e-12)
+
+
+def test_the_fractional_phase_is_rounded_half_away_from_zero():
+    """The reference rounds the sinc's phase half away from zero.
+
+    At half a phase (1/2048 of a sample), the reference takes the phase
+    above (1), the rounding to even would take the phase below (0).
+    """
+    # A ramp: the filter's output tells which phase it used.
+    raw = np.arange(4096, dtype=np.float64)
+    sinc = sinc_lut()
+    # Half a phase above the sample 100.
+    span = stack._InputSpan(raw=raw, start=0, positions=np.array([100.0 + 1.0 / 2048.0]))
+    full, _band, _covered = stack._read_input(span, sinc, video_band_lut(FS, (2.5e6, 3.6e6)))
+    above = np.dot(sinc[1, :], raw[100 - 15 : 100 - 15 + 32])
+    below = np.dot(sinc[0, :], raw[100 - 15 : 100 - 15 + 32])
+    np.testing.assert_allclose(full[0], above, rtol=1e-12, atol=1e-9)
+    # The two phases differ enough on a ramp for the choice to be visible.
+    assert abs(above - below) > 1e-4
 
 
 @pytest.mark.dsp

@@ -469,3 +469,81 @@ def test_the_batched_phasors_are_the_ones_of_each_block(small_xtal):
     assert len(measured.amps) == len(lines.ks) + len(lines.others)
     for amps in measured.amps:
         assert np.isfinite(amps).all()
+
+
+def test_the_peak_keeps_the_last_of_the_equal_maxima():
+    """The reference keeps the last of the equal maxima of the window.
+
+    The tie-break shows in which bin the peak is read: the reference scans
+    the window and keeps the last of the equal maxima.
+    """
+    p = np.array([1.0, 2.0, 5.0, 5.0, 5.0, 1.0, 1.0])
+    k, _off = stack_corrections._peak(p, 3, 3)
+    # The window is 0..=5 (the last bin of the spectrum is left out), and the
+    # three equal maxima are at 2, 3 and 4: the last one is kept.
+    assert k == 4
+    # With a single maximum, it is the one found.
+    q = np.array([1.0, 2.0, 9.0, 5.0, 5.0, 1.0, 1.0])
+    assert stack_corrections._peak(q, 3, 3)[0] == 2
+
+
+def test_the_parabolic_offset_of_the_first_bin():
+    """The reference reads the peak's own bin when it is the first one."""
+    p = np.array([4.0, 2.0, 1.0])
+    assert stack_corrections._parabolic_offset(p, 0) != 0.0
+    # At the last bin there is no bin after it: no offset.
+    assert stack_corrections._parabolic_offset(p, 2) == 0.0
+
+
+def test_the_solver_keeps_the_last_of_the_equal_pivots():
+    """The reference keeps the last of the equal maxima of the pivot column.
+
+    Two rows with the same pivot: the reference swaps in the second one.
+    """
+    a = np.array(
+        [
+            [2.0, 1.0, 0.0],
+            [2.0, 3.0, 1.0],
+            [1.0, 0.0, 2.0],
+        ]
+    )
+    b = np.array([4.0, 5.0, 2.0])
+    x = stack_corrections._solve_linear(a, b)
+    assert x is not None
+    np.testing.assert_allclose(a @ x, b, rtol=1e-12, atol=1e-12)
+
+
+def test_the_chroma_leak_is_taken_out_in_double_precision():
+    """The leak is subtracted in double precision and rounded once.
+
+    The reference rounds the result of the subtraction, not the leak itself:
+    rounding the leak first would round it twice, and the two differ by an
+    ulp on the samples where it shows.
+    """
+    rng = np.random.default_rng(317)
+    # Values whose leak is not representable in single precision, so that the
+    # two orders of the rounding differ.
+    rf = np.array(
+        [-0.001501439, -327.75882, -1.0866956, 424171.75, 0.8127859, 716.6634],
+        dtype=np.float32,
+    )
+    leak = np.array(
+        [
+            -1.575681409082927e-07,
+            -0.028335570730240244,
+            -0.00012999772692694572,
+            79.015626980576,
+            -6.935000589315558e-05,
+            0.10537719724930929,
+        ],
+        dtype=np.float64,
+    )
+    out = rf.copy()
+
+    stack_corrections._subtract_leak(out, leak)
+
+    expected = (rf.astype(np.float64) - leak).astype(np.float32)
+    np.testing.assert_array_equal(out, expected)
+    # The other order (the leak rounded first) is not the same.
+    other = (rf.astype(np.float32) - leak.astype(np.float32)).astype(np.float32)
+    assert not np.array_equal(out, other)
