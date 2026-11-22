@@ -520,7 +520,6 @@ def test_the_chroma_leak_is_taken_out_in_double_precision():
     rounding the leak first would round it twice, and the two differ by an
     ulp on the samples where it shows.
     """
-    rng = np.random.default_rng(317)
     # Values whose leak is not representable in single precision, so that the
     # two orders of the rounding differ.
     rf = np.array(
