@@ -216,4 +216,3 @@ def test_the_reference_path_demodulates_at_40_mhz(monkeypatch):
     )
 
     assert kwargs["inputfreq"] == 40
-
