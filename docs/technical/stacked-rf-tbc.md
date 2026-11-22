@@ -240,9 +240,9 @@ same eighteen captures, the same 75 MHz, the same `--tbc read`.
   out identical on all eighteen (2.4954e4 and 4.0073e-5 for the capture with
   the least noise, 3.6393e4 and 2.7478e-5 for the one with the most).
 - **The RF the decoder reads.** The two streams are aligned to the sample:
-  **45 %** of the samples are bit for bit the same, the difference has an rms
-  of **1.5** over a signal of 4881 (70 dB down), and the correlation is
-  0.99999995.
+  **54 %** of the samples are bit for bit the same, the difference has an rms
+  of **1.0** over a signal of 4822 (**73.7 dB** down), and the correlation is
+  0.99999998.
 - **The picture.** The same fields, in the same order, with the same VBI
   codes and the same CLV timecode: **42.5 dB** of PSNR and a correlation of
   0.9984.
