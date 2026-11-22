@@ -41,7 +41,7 @@ these streams and the quality oracle that scores them.
 
 ## The written RF stream
 
-With `--rf-out`, the decoder also writes the RF it read: the stacked stream
+With `--rf_out`, the decoder also writes the RF it read: the stacked stream
 when several captures are combined, the time-base corrected stream otherwise.
 It is signed 16-bit at the capture's own sample rate, the same layout a
 `.s16` capture has, so it can be read back as one. An unsigned capture's

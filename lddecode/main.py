@@ -59,7 +59,10 @@ def build_parser():
         metavar="base",
         help="base name for destination files (with -i)",
     )
+    # The stacking's options are spelt with underscores, as rev 8's are; the
+    # spelling with dashes is accepted as well (as --efm_demod/--efm-demod).
     parser.add_argument(
+        "--tbc_mode",
         "--tbc-mode",
         dest="tbc_mode",
         choices=("read", "resample"),
@@ -70,6 +73,7 @@ def build_parser():
              "positions before demodulating (needed to stack several -i)",
     )
     parser.add_argument(
+        "--stack_weight",
         "--stack-weight",
         dest="stack_weight",
         choices=("adaptive", "fixed"),
@@ -79,43 +83,43 @@ def build_parser():
              "weight per input)",
     )
     parser.add_argument(
-        "--keep-audio-crosstalk",
-        dest="keep_audio_crosstalk",
+        "--no_crystal_lines",
+        "--no-crystal-lines",
+        dest="no_crystal_lines",
         action="store_true",
-        help="leave the analog audio carriers' crosstalk in the video "
-             "(--tbc read takes it out by default)",
+        help="leave the clock lines in the RF: the EFM decoder crystal's "
+             "multiples (the LD-V4300D's clock and its satellites among "
+             "them), the 4fsc video clock, the capture board's clocks "
+             "(--tbc_mode read subtracts them by default)",
     )
     parser.add_argument(
-        "--keep-crystal-lines",
-        dest="keep_crystal_lines",
+        "--no_chroma_leak",
+        "--no-chroma-leak",
+        dest="no_chroma_leak",
         action="store_true",
-        help="leave the clock lines in the RF (--tbc read subtracts them by "
-             "default)",
-    )
-    parser.add_argument(
-        "--keep-chroma-leak",
-        dest="keep_chroma_leak",
-        action="store_true",
-        help="leave the chroma that leaks into the RF baseband (NTSC; --tbc "
-             "read cancels it by default)",
+        help="leave the chroma that leaks into the RF baseband (NTSC; "
+             "--tbc_mode read cancels it by default)",
     )
     parser.add_argument(
         "--device",
         dest="device",
         choices=("cpu", "opencl"),
         default="cpu",
-        help="where --tbc-mode read reads and combines the captures: 'cpu' "
+        help="where --tbc_mode read reads and combines the captures: 'cpu' "
              "(every core, the default) or 'opencl' (a GPU; needs pyopencl)",
     )
     parser.add_argument(
+        "--device_precision",
         "--device-precision",
         dest="device_precision",
-        choices=("double", "single"),
-        default="double",
-        help="the precision of --device opencl: 'double' (the default) or "
-             "'single' (faster on a consumer GPU)",
+        choices=("single", "double"),
+        default="single",
+        help="the precision of --device opencl: 'single' (the default; a "
+             "consumer GPU's double precision is a small fraction of its "
+             "single) or 'double' (the host's precision)",
     )
     parser.add_argument(
+        "--rf_out",
         "--rf-out",
         dest="rf_out",
         metavar="file",
@@ -437,15 +441,18 @@ def build_parser():
         default=False,
         help="Mitigate interference from analog audio in reds in NTSC captures",
     )
+    # The LD-V4300D's clock: with --tbc_mode read the clock lines take it
+    # out by default, its satellites included, on NTSC as well as PAL, so
+    # these are left out of the help; they still act with --tbc_mode
+    # resample (PAL), and with read they warn and leave it to the clock
+    # lines (see build_options).
     parser.add_argument(
         "--V4300D_notch_filter",
         "-V",
         dest="V4300D_notch_filter",
         action="store_true",
         default=False,
-        help="LD-V4300D PAL/digital audio captures: remove the spurious "
-        "~8.5mhz digital-audio clock signal (legacy alias for "
-        "--V4300D_coherent_subtract)",
+        help=argparse.SUPPRESS,
     )
 
     parser.add_argument(
@@ -453,19 +460,28 @@ def build_parser():
         dest="V4300D_coherent_subtract",
         action="store_true",
         default=False,
-        help="Coherently estimate and subtract the LD-V4300D's 8.4672mhz "
-        "digital-audio clock spur and its +-88.2khz satellites. "
-        "Self-disabling on captures without the spur. PAL only.",
+        help=argparse.SUPPRESS,
     )
 
+    parser.add_argument(
+        "--no_audio_carrier_cancel",
+        "--no-audio-carrier-cancel",
+        dest="no_audio_carrier_cancel",
+        action="store_true",
+        default=False,
+        help="leave the analog audio carriers' crosstalk in the video.  It "
+        "is taken out by default, once, where the time base is corrected: "
+        "with --tbc_mode read in the RF before demodulation, with resample "
+        "on the demodulated spectrum (NTSC 2.30 and 2.81 MHz, PAL 0.68 and "
+        "1.07 MHz)",
+    )
+    # The former opt-in, now the default: accepted, and it changes nothing.
     parser.add_argument(
         "--audio_carrier_cancel",
         dest="audio_carrier_cancel",
         action="store_true",
         default=False,
-        help="Prototype: subtract the analog audio carriers' intermodulation "
-        "lines (2.30 and 2.81 MHz) from NTSC video, fitted per block to the "
-        "carriers' own phase.  NTSC only.",
+        help=argparse.SUPPRESS,
     )
 
     parser.add_argument(
@@ -494,9 +510,10 @@ def build_parser():
         dest="V4300D_no_defer",
         action="store_true",
         default=False,
-        help="Obsolete; accepted for compatibility and ignored.  The spur "
-        "filter no longer defers (its no-video guard makes it safe from the "
-        "first block) and parallel demod is always available.",
+        # Obsolete; accepted for compatibility and ignored.  The spur filter
+        # no longer defers (its no-video guard makes it safe from the first
+        # block) and parallel demod is always available.
+        help=argparse.SUPPRESS,
     )
 
     parser.add_argument(
@@ -719,7 +736,11 @@ def build_options(args, core_count=None):
     elif args.rf_echo_cancel:
         extra_options["rf_echo_cancel"] = True
 
-    if vid_standard == "PAL" and (args.V4300D_notch_filter or args.V4300D_coherent_subtract):
+    # With --tbc_mode read the clock lines take the V4300D's clock out of
+    # the RF (main() says so), unless they are left in.
+    v4300d_to_clock_lines = args.tbc_mode == "read" and not args.no_crystal_lines
+    if (vid_standard == "PAL" and (args.V4300D_notch_filter or args.V4300D_coherent_subtract)
+            and not v4300d_to_clock_lines):
         # --V4300D_notch_filter is a legacy alias: the coherent subtract
         # supersedes the FFT-bin notch (it also removes the leakage skirts
         # and the clock's satellites), and its no-video guard makes lead-in
@@ -727,7 +748,12 @@ def build_options(args, core_count=None):
         # parallel demod stays available.
         extra_options["PAL_V4300D_CoherentSubtract"] = True
 
-    if vid_standard == "NTSC" and args.audio_carrier_cancel:
+    # The audio carriers' crosstalk is cancelled by default, once, where the
+    # time base is corrected: with --tbc_mode read in the RF, before
+    # demodulation (the stacked source); with resample on the demodulated
+    # spectrum.  The demodulated one never runs on the read-time path, so
+    # the two cannot both apply; --no_audio_carrier_cancel leaves it in both.
+    if not args.no_audio_carrier_cancel and args.tbc_mode != "read":
         extra_options["AudioCarrierCancel"] = True
 
     if vid_standard == "PAL" and args.AC3:
@@ -851,7 +877,7 @@ def build_stacked_source(inputs, args, vid_standard):
                              "which stdin cannot do")
         if raw_layout(path) is None:
             raise ValueError(
-                "--tbc read needs a fixed-width raw input (s16, raw, r16, u16, "
+                "--tbc_mode read needs a fixed-width raw input (s16, raw, r16, u16, "
                 f"r8, u8, s8, rf); {path} is not one"
             )
         rate = capture_sample_rate(path, args.inputfreq)
@@ -886,9 +912,9 @@ def build_stacked_source(inputs, args, vid_standard):
             fs,
             ntsc=(vid_standard != "PAL"),
             stack_weight=args.stack_weight,
-            cancel_xtalk=not args.keep_audio_crosstalk,
-            cancel_xtal=not args.keep_crystal_lines,
-            cancel_leak=not args.keep_chroma_leak,
+            cancel_xtalk=not args.no_audio_carrier_cancel,
+            cancel_xtal=not args.no_crystal_lines,
+            cancel_leak=not args.no_chroma_leak,
             rf_out=args.rf_out,
             rf_out_dtype=raw_layout(inputs[0])[0],
             device=args.device,
@@ -907,7 +933,7 @@ class StackedLoader:
     Called as ``loader(infile, sample, readlen)`` like every capture loader
     (``infile`` is ignored: the source reads its own captures).  The decoder
     closes its reader through ``_close``, which stops the source's
-    read-ahead, closes the ``--rf-out`` file and the captures.
+    read-ahead, closes the ``--rf_out`` file and the captures.
 
     Thread-safety: the decoder serialises its raw reads under one reader
     lock, and the source serves one reader at a time.
@@ -963,19 +989,26 @@ def main(args=None):
         # --write-test-ldf re-reads the capture at the positions the decode
         # read; those of the virtual stream are not the capture's.
         print("ERROR: --write-test-ldf copies the capture the decoder read; it needs "
-              "--tbc-mode resample", file=sys.stderr)
+              "--tbc_mode resample", file=sys.stderr)
         sys.exit(1)
     if tbc_mode == "resample" and len(inputs) > 1:
         print("ERROR: several inputs are stacked with the read-time TBC; "
-              "pass --tbc-mode read", file=sys.stderr)
+              "pass --tbc_mode read", file=sys.stderr)
         sys.exit(1)
     if args.device != "cpu" and tbc_mode != "read":
-        print("ERROR: --device runs the read-time TBC; it needs --tbc-mode read",
+        print("ERROR: --device runs the read-time TBC; it needs --tbc_mode read",
               file=sys.stderr)
         sys.exit(1)
+    if (tbc_mode == "read" and not args.no_crystal_lines
+            and (args.V4300D_notch_filter or args.V4300D_coherent_subtract)):
+        # build_options leaves the V4300D subtraction out on this path.
+        print("WARNING: --V4300D_coherent_subtract/-V is not needed with "
+              "--tbc_mode read: the clock lines take the LD-V4300D's clock and "
+              "its satellites out of the RF by default; it is left to them",
+              file=sys.stderr)
     if args.rf_out is not None and tbc_mode != "read":
-        print("ERROR: --rf-out writes the read-time corrected RF; it needs "
-              "--tbc-mode read", file=sys.stderr)
+        print("ERROR: --rf_out writes the read-time corrected RF; it needs "
+              "--tbc_mode read", file=sys.stderr)
         sys.exit(1)
 
     # Safety check: ensure --write-test-ldf doesn't overwrite the input file
@@ -1020,7 +1053,7 @@ def main(args=None):
         try:
             loader, fs = build_stacked_source(inputs, args, vid_standard)
         except Exception as e:
-            print(f"ERROR: --tbc-mode read: {e}", file=sys.stderr)
+            print(f"ERROR: --tbc_mode read: {e}", file=sys.stderr)
             sys.exit(1)
         # The virtual stream is at the captures' own rate: the decoder
         # demodulates it there, as the reference implementation does.  Told

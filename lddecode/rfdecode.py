@@ -1965,7 +1965,10 @@ class RFDecode:
 
     #: Half-width of the RF band taken around each audio carrier for its
     #: phase reference: NTSC's +-100 kHz deviation with room for the
-    #: sidebands of the loudest programme.
+    #: sidebands of the loudest programme.  Never more than half the two
+    #: carriers' spacing, so the two bands do not overlap: that leaves NTSC's
+    #: (511 kHz apart) at this value and takes PAL's (383 kHz apart) to
+    #: 191.4 kHz.
     AUDIO_CANCEL_HALFBAND_HZ = 250e3
     #: A carrier is used only when its band holds this many times the power
     #: of the band beside it on the side away from the other carrier.
@@ -2022,7 +2025,8 @@ class RFDecode:
         bl = self.blocklen
         n = 2 * (len(spectrum) - 1)
         fpb = self.freq_hz / bl
-        hw = self.AUDIO_CANCEL_HALFBAND_HZ
+        hw = min(self.AUDIO_CANCEL_HALFBAND_HZ,
+                 abs(SP["audio_rfreq"] - SP["audio_lfreq"]) / 2)
 
         def bandpower(f0, width):
             lo, hi = int((f0 - width) / fpb), int((f0 + width) / fpb) + 1
@@ -2042,10 +2046,12 @@ class RFDecode:
         if not carriers:
             return
 
-        # One slice holds both carriers, centred between them.  Its lattice:
-        # sample j is RF sample j*bl/m.
+        # One slice holds both carriers, centred between them, or from 0 Hz
+        # where that would start below it (PAL's carriers, at 0.68 and 1.07
+        # MHz, sit lower than half the slice).  Its lattice: sample j is RF
+        # sample j*bl/m.
         m = self.AUDIO_CANCEL_SLICE
-        lo = int(round(mid / fpb)) - m // 2
+        lo = max(0, int(round(mid / fpb)) - m // 2)
         fit = slice(-(-self.blockcut * m // bl), (bl - self.blockcut_end) * m // bl)
         fs = self.freq_hz * m / bl
 

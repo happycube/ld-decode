@@ -1615,7 +1615,7 @@ class _ChunkCache:
 
 
 def rf_out_scale(dtype: str) -> tuple[float, float]:
-    """How the stream's values map to the ``--rf-out`` file's s16 values.
+    """How the stream's values map to the ``--rf_out`` file's s16 values.
 
     Returns ``(scale, shift)``, s16 = value * scale + shift: the inverse of
     how the primary capture's sample type was widened, so an unsigned
@@ -1632,7 +1632,7 @@ def rf_out_scale(dtype: str) -> tuple[float, float]:
 
 
 class _RfOut:
-    """The ``--rf-out`` file: the RF the decoder reads, as s16.
+    """The ``--rf_out`` file: the RF the decoder reads, as s16.
 
     The samples are written at their place in the stream, so a chunk that is
     computed late leaves the span it skipped at zero.  Each value is
@@ -1705,14 +1705,14 @@ class StackedSource:
         "cpu" (every core) or "opencl": the read and the combination on an
         OpenCL device, as the reference's ``--device opencl``.
     device_precision : str
-        The device's precision, "double" (the default) or "single".
+        The device's precision, "single" (the default) or "double".
     opencl_factory : callable, optional
         Builds the device backend (default
         :class:`lddecode.stack_opencl.StackOpenCL`); the seam the tests
         substitute.
     rf_out_dtype : str
         The primary capture's sample type (as ``fileio.RAW_LAYOUTS`` names
-        it): an unsigned capture's offset is taken out of the ``--rf-out``
+        it): an unsigned capture's offset is taken out of the ``--rf_out``
         file.
 
     One reader at a time: the decoder serialises its raw reads under its
@@ -1732,7 +1732,7 @@ class StackedSource:
         rf_out: str | None = None,
         rf_out_dtype: str = "int16",
         device: str = "cpu",
-        device_precision: str = "double",
+        device_precision: str = "single",
         opencl_factory: Callable[..., object] | None = None,
     ) -> None:
         if device not in ("cpu", "opencl"):
@@ -2102,7 +2102,7 @@ class StackedSource:
         return out[:pos]
 
     def close(self) -> None:
-        """Stop pass 0 and the read-ahead, and close the ``--rf-out`` file.
+        """Stop pass 0 and the read-ahead, and close the ``--rf_out`` file.
 
         Pass 0 stops at its next chunk: it is not joined (its threads are
         daemons, and a scan mid-chunk would hold the close up).

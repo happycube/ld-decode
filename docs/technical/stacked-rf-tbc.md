@@ -231,7 +231,7 @@ The stacking itself was then run on three captures of the same segment
 
 The reference implementation (the Rust rewrite) was built on this machine and
 run on the same captures, so the two could be compared on the same data: the
-same eighteen captures, the same 75 MHz, the same `--tbc read`.
+same eighteen captures, the same 75 MHz, the same `--tbc_mode read`.
 
 - **The clock lines.** The same eight multiples of the EFM decoder's crystal
   and the same seven other steady lines, to the kilohertz, on all eighteen
@@ -249,7 +249,7 @@ same eighteen captures, the same 75 MHz, the same `--tbc read`.
   and the same sync confidence: **42.4 dB** of PSNR and a correlation of
   0.9984.
 - **Where the last half of a decibel goes.** The same difference appears on
-  the reference's own path (`--tbc resample`), which this port does not
+  the reference's own path (`--tbc_mode resample`), which this port does not
   touch: it is the difference between the two demodulators, not between the
   two stacking implementations. The reference is bit reproducible run to run
   (two runs of the same command differ by nothing), but its own output moved
@@ -369,7 +369,7 @@ the stack of eighteen captures.
   differently, to about 1e-13.
 - **The features the reference does not have.** The `.rfx` container and
   `--recompute-tbc` are not ported, nor the `--preset` choice (the GPU's
-  precision is `--device-precision` instead).
+  precision is `--device_precision` instead).
 
 ## What the branch adds, and what rev 8 adds
 
@@ -432,47 +432,72 @@ virtual stream like it runs on a plain capture.
 ### The interference cancellations, and who owns what
 
 The three cancellations this branch ports are not in rev 8, and rev 8's own
-ones are not in the reference port. They do not overlap, except in one place.
+ones are not in the reference port. Two of them meet: the audio carriers'
+crosstalk, and the V4300D's clock.
 
 | cancellation | rev 8 | this branch | the reference port |
 | --- | --- | --- | --- |
-| the audio carriers' crosstalk | after demodulation, on the demodulated spectrum, NTSC only | before demodulation, on the RF's instantaneous frequency, NTSC and PAL | yes, the same as this branch |
+| the audio carriers' crosstalk | on the demodulated spectrum (`--tbc_mode resample`; NTSC and, here, PAL; now on by default) | on the RF's instantaneous frequency, before demodulation (`--tbc_mode read`; NTSC and PAL) | yes, the same as this branch |
 | the clock lines | no | yes | yes |
 | the chroma leak | no | yes | yes |
-| the audio carrier intermodulation lines | yes (`--audio_carrier_cancel`) | no | no |
 | the RF echo (the ghost) | yes (`--rf_echo_cancel`) | no | no |
-| the V4300D clock | yes (PAL) | no | no |
+| the V4300D clock | `--V4300D_coherent_subtract` (PAL; out of the help) | the clock lines (NTSC and PAL), its satellites included | the master clock alone |
 | the audio excursion blanking | yes | inherited | yes |
 | the demodulator clipping | yes | inherited | yes |
 | the dropout record | yes | inherited | yes |
 
-The crosstalk is the one that meets. Rev 8's `--audio_carrier_cancel` fits a
-complex gain per audio carrier on the demodulated spectrum, NTSC only. The
-branch's cancellation fits the same gains on the RF's instantaneous frequency
-over the video band, before the demodulator, in NTSC and PAL. It removes the
-phase of the leak as well as its amplitude, and it is what the stacked stream
-needs: the leak is the same on every copy, so stacking averages it out
-instead of removing it.
+**The crosstalk** is cancelled by default, once, where the time base is
+corrected (taking it out is not destructive). Rev 8's canceller fits a
+complex gain per audio carrier on the demodulated spectrum, and runs with
+`--tbc_mode resample`; the branch's cancellation fits the same gains on the
+RF's instantaneous frequency, before the demodulator, and runs with
+`--tbc_mode read`. The demodulated one never runs on the read-time path, so
+the two never both apply, and the one option `--no_audio_carrier_cancel`
+leaves the crosstalk in either mode. Rev 8's was an opt-in prototype
+(`--audio_carrier_cancel`, still accepted); a resample decode now differs
+from earlier rev 8 ones by the lines it takes out.
+
+Rev 8's ran on NTSC alone. It now runs on PAL too: its phase bands are kept
+within half the carriers' spacing (191 kHz for PAL's carriers, 383 kHz apart;
+NTSC's stay at 250 kHz), and its slice starts at 0 Hz where, centred between
+PAL's low carriers, it would start below. NTSC is unchanged, sample for
+sample. On the PAL capture of the test data (`ggv-mb-1khz`) it takes out a
+coherent part 25 to 26 dB below what the carriers' bands hold, where it takes
+out 19 to 21 dB on an NTSC one: the lines are as faint against the picture in
+both. PAL's carriers lie under the EFM, which blurs their phase reference, so
+less of their lines can be fitted than of NTSC's (on synthetic lines, 90 %
+under an EFM band against 98 % without).
+
+**The V4300D's clock** is the EFM crystal's 96th multiple (192 x 44.1 kHz =
+8.4672 MHz), and the clock lines take it with the crystal's other multiples,
+on NTSC as well as on PAL; rev 8's subtraction is PAL only. Its satellites,
+88.2 and 176.4 kHz either side, stand only a few times over the floor: on the
+GGV1069 capture read on a V4300D (NTSC) the 94th and 95th multiples are 9.6
+and 5.3 times over it, against 2.1 and 2.6 on another player. Where the
+master clock is found, the satellites are kept from 3 times the floor (rev
+8's threshold), unless a still picture's comb explains them; the reference
+kept none of them. So the clock lines cover what `--V4300D_coherent_subtract`
+does, on any player and either system. That option is left out of the help:
+with `--tbc_mode read` it warns and is left to the clock lines (unless
+`--no_crystal_lines` leaves them in), and with resample it still acts on PAL.
 
 ### What the stacking cannot fix
 
 Most interference is either per capture (the noise, the dropouts, the level) or
 is removed by the pass 0 (the timing, the drift, the wow). The stacking
-handles those on its own. Three are not covered, because they are identical on
+handles those on its own. Two are not covered, because they are identical on
 every copy of the same disc:
 
 - the **RF echo**: the ghost is deterministic per capture, and stacking makes
   it worse, since ghosts of different delays average into a blur. Rev 8's
   cancellation is the answer, and it belongs in the pass 0, before the
   stacking.
-- the **V4300D clock**: the reader's 8.4672 MHz clock is on every copy. The
-  clock lines detection does not take it, because it looks for the lines of
-  the capture, and it leaves that band out.
 - the **disk's own colour errors**: the chroma DG and the video EQ are
   properties of the disc, and they are in rev 8 already.
 
-The first two are the only rev 8 cancellations worth bringing into the
-stacking path.
+The V4300D's clock is on every copy too, but the clock lines take it out of
+each capture as it is read (above). The RF echo is the only rev 8
+cancellation worth bringing into the stacking path.
 
 ## The decoder at the capture's rate
 
@@ -605,7 +630,7 @@ the reference's kernels less the 16-bit code input of its `.rfx` archives).
 The clock lines are subtracted on the host before the samples are sent, and
 the cancellations run on the host after. The positions are computed on the
 device in double precision from each segment's law; the dot products and the
-combination run in `--device-precision double` (the default) or `single`.
+combination run in `--device_precision single` (the default) or `double`.
 
 Measured on the synthetic captures above, against the host's compiled path:
 the double precision stream differs by 9e-5 rms over a signal of 2206 (147 dB
@@ -648,9 +673,9 @@ it is a measurement of the RF, and it is over long before the decode is.
 - **Fixed-width raw captures only.** The path reads a capture at arbitrary
   positions, which a compressed capture cannot serve.
 - **One sample rate.** Every capture must be at the same rate.
-- **Only when asked for.** `--tbc-mode resample`, the reference's way, is
+- **Only when asked for.** `--tbc_mode resample`, the reference's way, is
   the default whatever the input; the read-time TBC runs only with
-  `--tbc-mode read`, which stacking several captures needs. Where it cannot
+  `--tbc_mode read`, which stacking several captures needs. Where it cannot
   run - stdin, a compressed capture, no lines found - it is an error: the
   decode never changes mode on its own.
 - **Not the reference's bytes.** The read-time TBC and the corrections make

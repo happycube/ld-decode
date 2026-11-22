@@ -614,3 +614,51 @@ def test_the_line_phasor_kernel_matches_the_matrix_products(small_xtal):
     want = lines._ats_reference(raw, freqs)
     for g, w in zip(got, want):
         np.testing.assert_allclose(g, w, rtol=1e-9, atol=1e-9 * np.abs(w).max())
+
+
+#: Amplitudes that put each multiple near 6 x the floor at 40 MHz (past the
+#: satellites' threshold, short of the ordinary one): a multiple off a bin
+#: of the detection FFT loses up to 1.4 dB to its window, so each has its own.
+_WEAK_AMPLITUDES = {93: 1.86e-4, 94: 2.6e-4, 95: 1.92e-4, 97: 2.36e-4, 98: 2.94e-4}
+
+
+def _crystal_capture(rng, strong, weak):
+    """The EFM crystal with its multiples ``strong`` well over the floor and
+    ``weak`` about 6 times over it."""
+    fs = 40e6
+    n = 1 << 18
+    bin_hz = fs / stack_corrections.XTAL_FFT
+    crystal_hz = round(16.9344e6 / bin_hz) * bin_hz
+    f0 = crystal_hz / stack_corrections.XTAL_DIV
+    t = np.arange(n) / fs
+    capture = 0.01 * rng.normal(size=n) + 0.2 * np.cos(TAU * crystal_hz * t)
+    for m in strong:
+        capture += 0.2 * np.cos(TAU * m * f0 * t)
+    for m in weak:
+        capture += _WEAK_AMPLITUDES[m] * np.cos(TAU * m * f0 * t)
+    return _reader(capture), fs
+
+
+def test_the_v4300d_clocks_satellites_are_kept_with_it(small_xtal, monkeypatch):
+    """The LD-V4300D's master clock is the crystal's 96th multiple; its
+    satellites, 88.2 and 176.4 kHz either side, stand only a few times over
+    the floor and are kept where the master clock is found."""
+    monkeypatch.setattr(stack_corrections, "XTAL_TOP_HZ", 14.5e6)
+    read_fn, fs = _crystal_capture(np.random.default_rng(209), [96], [93, 94, 95, 97, 98])
+    lines = stack_corrections.CrystalLines.detect(
+        read_fn, fs, ntsc=True, line_hz=stack_corrections.NTSC_LINE_HZ
+    )
+    near = [m for m in lines.ks if 90 <= m <= 100]
+    assert near == [94, 95, 96, 97, 98]
+
+
+def test_without_the_master_clock_weak_multiples_are_left(small_xtal, monkeypatch):
+    """The relaxed threshold is the V4300D's alone: without its master
+    clock, multiples a few times over the floor are not lines."""
+    monkeypatch.setattr(stack_corrections, "XTAL_TOP_HZ", 14.5e6)
+    # The same noise and the same weak multiples as with the master clock.
+    read_fn, fs = _crystal_capture(np.random.default_rng(209), [72], [93, 94, 95, 97, 98])
+    lines = stack_corrections.CrystalLines.detect(
+        read_fn, fs, ntsc=True, line_hz=stack_corrections.NTSC_LINE_HZ
+    )
+    assert not [m for m in lines.ks if 90 <= m <= 100]

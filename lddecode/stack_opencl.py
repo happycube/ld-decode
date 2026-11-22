@@ -15,9 +15,10 @@ are sent, and the cancellations run on the host after, as in the reference.
 The kernels evaluate the plan the host evaluates: the same positions,
 recomputed on the device in double precision from each segment's law, the
 same sinc phase (rounded half away from zero), the same tables.  The dot
-products and the combination run in the precision chosen (``double``, the
-default, or ``single``, faster on a consumer GPU whose double precision is a
-small fraction of its single precision).
+products and the combination run in the precision chosen (``single``, the
+default: a consumer GPU's double precision is a small fraction of its
+single, and the stream is then the host's to about 140 dB below the
+signal; or ``double``).
 
 pyopencl is an optional dependency, imported when a device is opened; this
 module has no intra-package import (the tuning constants are passed in).
@@ -279,7 +280,7 @@ __kernel void combine(
     }
 }
 #else
-// --stack-weight fixed: phase-lock every input's video band onto the
+// --stack_weight fixed: phase-lock every input's video band onto the
 // primary's over LOCK_WIN samples and sum with the fixed weights (the rest of
 // each input as read; `afloor` unused).
 __kernel void combine(
@@ -426,13 +427,13 @@ class StackOpenCL:
     lag : int
         The carrier measure's lag, in samples.
     adaptive : bool
-        The adaptive weights and lock (``--stack-weight adaptive``), or the
+        The adaptive weights and lock (``--stack_weight adaptive``), or the
         fixed ones.
     want_band : bool
         Whether the combined video band is read back (the cancellations need
         it).
     double : bool
-        Double precision on the device (the default), or single.
+        Double precision on the device, or single (the default).
     device : tuple, optional
         ``(context, queue, name)`` as :func:`open_device` returns; opened
         here when not given (the seam the tests substitute).
@@ -449,7 +450,7 @@ class StackOpenCL:
         lag: int,
         adaptive: bool,
         want_band: bool,
-        double: bool = True,
+        double: bool = False,
         device: tuple | None = None,
         cl=None,
     ) -> None:

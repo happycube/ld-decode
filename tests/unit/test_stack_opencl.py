@@ -71,7 +71,7 @@ def test_the_device_gets_the_tables_the_weights_and_the_constants(monkeypatch):
         assert backend.constants["PHASES"] == stack.SINC_PHASES
         assert backend.constants["LOCK_WIN"] == stack.LOCK_WIN
         assert backend.constants["Q_ROT"] == stack.Q_ROT
-        assert backend.kwargs == dict(lag=source.lag, adaptive=True, want_band=False, double=True)
+        assert backend.kwargs == dict(lag=source.lag, adaptive=True, want_band=False, double=False)
     finally:
         source.close()
 
@@ -91,11 +91,11 @@ def test_the_stream_is_the_devices_combination(monkeypatch):
         source.close()
 
 
-def test_single_precision_and_the_fixed_weights_reach_the_device(monkeypatch):
-    source = _gpu_source(monkeypatch, stack_weight="fixed", device_precision="single")
+def test_double_precision_and_the_fixed_weights_reach_the_device(monkeypatch):
+    source = _gpu_source(monkeypatch, stack_weight="fixed", device_precision="double")
     try:
         assert _Backend.instances[-1].kwargs["adaptive"] is False
-        assert _Backend.instances[-1].kwargs["double"] is False
+        assert _Backend.instances[-1].kwargs["double"] is True
     finally:
         source.close()
 

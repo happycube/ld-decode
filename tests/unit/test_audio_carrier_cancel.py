@@ -223,6 +223,48 @@ def test_a_carriers_line_is_removed_from_the_demod():
     assert np.sqrt(np.mean((demod - clean)[512:] ** 2)) < 0.1 * line_rms
 
 
+PAL_FL, PAL_FR = 0.68359375e6, 1.06640625e6
+
+
+def _pal_stub():
+    """The canceller's stub with PAL's audio carriers."""
+    cancel = _rf_stub()
+    stub = cancel.__closure__[0].cell_contents
+    stub.SysParams = dict(stub.SysParams, audio_lfreq=PAL_FL, audio_rfreq=PAL_FR)
+    return cancel
+
+
+def _pal_line_residual(efm_rms):
+    """The share of PAL's lines left after the canceller, with the EFM's
+    band (20 kHz to 1.75 MHz) under the carriers at ``efm_rms``."""
+    rng = np.random.default_rng(17)
+    X, ph = _rf_block(rng, [PAL_FL, PAL_FR])
+    if efm_rms:
+        efm = np.fft.rfft(rng.normal(0, efm_rms, BL))
+        f = np.arange(efm.shape[0]) * RF_FS / BL
+        X = X + efm * ((f > 20e3) & (f < 1.75e6))
+    clean = _demod(rng)
+    demod = (clean + np.real(5000 * np.exp(0.4j) * np.exp(1j * ph[PAL_FL]))
+             + np.real(6000 * np.exp(2.2j) * np.exp(1j * ph[PAL_FR])))
+    line_rms = np.sqrt(np.mean((demod - clean)[512:] ** 2))
+    _pal_stub()(X, demod)
+    return np.sqrt(np.mean((demod - clean)[512:] ** 2)) / line_rms
+
+
+def test_pal_carriers_lines_are_removed_from_the_demod():
+    """PAL's carriers sit 383 kHz apart, below half the slice: their phase
+    bands are narrowed so as not to overlap and the slice starts at 0 Hz,
+    and the lines go as NTSC's do."""
+    assert _pal_line_residual(0.0) < 0.05
+
+
+def test_pal_carriers_lines_are_removed_under_the_efm():
+    """Under PAL's carriers lies the EFM's band, which NTSC's do not have:
+    it blurs their phase reference, and less of the lines can be fitted.
+    Most of them still go."""
+    assert _pal_line_residual(20.0) < 0.2
+
+
 def test_ac3s_right_channel_is_never_a_phase_reference():
     """With AC3 the right channel is QPSK, not an FM carrier: a line locked
     to whatever sits there is left in place."""

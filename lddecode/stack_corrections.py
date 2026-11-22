@@ -149,6 +149,18 @@ XTAL_KEEP = 10.0
 #: Lines above this are left: nothing the decoder reads reaches that high
 #: (its video band ends at 13.8 MHz); nor below `XTAL_LOW_HZ`.
 XTAL_TOP_HZ = 14.5e6
+#: The LD-V4300D's digital-audio master clock is the crystal's 96th multiple
+#: (192 x 44.1 kHz = 8.4672 MHz), modulated: its satellites sit 88.2 and
+#: 176.4 kHz either side, the 94th to the 98th multiples but the 96th (rev 8
+#: observed the 95th, 97th and 98th on PAL; the GGV1069 capture read on a
+#: V4300D, NTSC, carries the 94th and 95th at 9.6 and 5.3 times the floor,
+#: against 2.1 and 2.6 on another player).  They stand below XTAL_KEEP.
+#: Where the master clock is found, they are kept from XTAL_SATELLITE_KEEP
+#: (rev 8's V4300D_SAT_MIN_MED), unless they are a still picture's comb.
+#: The reference keeps none of them.
+V4300D_MASTER_MULTIPLE = 96
+V4300D_SATELLITE_MULTIPLES = (94, 95, 97, 98)
+XTAL_SATELLITE_KEEP = 3.0
 XTAL_LOW_HZ = 0.3e6
 
 #: Where the disc's own signal makes steady lines, left out of the other
@@ -867,6 +879,18 @@ class CrystalLines:
                         ks.append(m)
                         if ratio > best[0]:
                             best = (float(ratio), m)
+                if V4300D_MASTER_MULTIPLE in ks:
+                    for m in V4300D_SATELLITE_MULTIPLES:
+                        if m in ks or m * f0 >= top:
+                            continue
+                        kk, off = _peak(power, int(round(m * f0 / bin_hz)), _XTAL_PEAK_HALFWIDTH)
+                        with np.errstate(divide="ignore", invalid="ignore"):
+                            ratio = power[kk] / floor[kk]
+                        if ratio >= XTAL_SATELLITE_KEEP and not _is_comb(
+                            power, floor, bin_hz, (kk + off) * bin_hz, line_hz
+                        ):
+                            ks.append(m)
+                    ks.sort()
 
         # Every other line that stands out in each stretch, at one frequency.
         others: list[float] = []

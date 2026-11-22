@@ -100,22 +100,63 @@ def test_stack_weight_defaults_to_adaptive():
     assert _parse("capture.rf", "out", "--stack-weight", "fixed").stack_weight == "fixed"
 
 
-def test_the_keep_flags_default_to_off():
-    """The corrections run by default; each keep flag switches one off."""
+def test_the_corrections_run_unless_switched_off():
+    """The corrections run by default; each --no_ flag switches one off,
+    as rev 8's --no_mtf_servo and --no_auto_chroma do."""
     args = _parse("capture.rf", "out")
-    assert not args.keep_audio_crosstalk
-    assert not args.keep_crystal_lines
-    assert not args.keep_chroma_leak
-    kept = _parse(
+    assert not args.no_audio_carrier_cancel
+    assert not args.no_crystal_lines
+    assert not args.no_chroma_leak
+    off = _parse(
         "capture.rf",
         "out",
-        "--keep-audio-crosstalk",
-        "--keep-crystal-lines",
-        "--keep-chroma-leak",
+        "--no_audio_carrier_cancel",
+        "--no_crystal_lines",
+        "--no_chroma_leak",
     )
-    assert kept.keep_audio_crosstalk
-    assert kept.keep_crystal_lines
-    assert kept.keep_chroma_leak
+    assert off.no_audio_carrier_cancel
+    assert off.no_crystal_lines
+    assert off.no_chroma_leak
+
+
+def test_the_stacking_options_take_underscores_and_dashes_alike():
+    """The options are spelt with underscores, as rev 8's are; the spelling
+    with dashes is accepted as well."""
+    for spelling in (
+        ("--tbc_mode", "read", "--stack_weight", "fixed", "--rf_out", "a.s16",
+         "--device_precision", "double", "--no_crystal_lines", "--no_chroma_leak",
+         "--no_audio_carrier_cancel"),
+        ("--tbc-mode", "read", "--stack-weight", "fixed", "--rf-out", "a.s16",
+         "--device-precision", "double", "--no-crystal-lines", "--no-chroma-leak",
+         "--no-audio-carrier-cancel"),
+    ):
+        args = _parse("capture.rf", "out", *spelling)
+        assert (args.tbc_mode, args.stack_weight, args.rf_out, args.device_precision) == (
+            "read", "fixed", "a.s16", "double")
+        assert args.no_crystal_lines and args.no_chroma_leak and args.no_audio_carrier_cancel
+
+
+def test_the_v4300d_options_are_left_out_of_the_help():
+    """The clock lines take the LD-V4300D's clock out by default with the
+    read-time TBC: its own options no longer show in the help."""
+    text = build_parser().format_help()
+    assert "--V4300D" not in text and "-V," not in text
+    # The clock lines' own help says where the V4300D's clock went.
+    assert "LD-V4300D" in text
+    assert "--audio_carrier_cancel " not in text
+    assert "--no_audio_carrier_cancel" in text
+
+
+def test_a_v4300d_option_with_the_read_time_tbc_warns(monkeypatch, capsys):
+    """With --tbc_mode read, --V4300D_coherent_subtract is left to the clock
+    lines, and the command line says so."""
+    _run_main(
+        monkeypatch,
+        ["-i", "capture.s16", "-o", "out", "--tbc_mode", "read", "-p",
+         "--V4300D_coherent_subtract"],
+        40e6,
+    )
+    assert "clock lines" in capsys.readouterr().err
 
 
 def test_rf_out_defaults_to_off():
@@ -129,12 +170,12 @@ def _args(**kwargs):
     base = dict(
         inputfreq=None,
         stack_weight="adaptive",
-        keep_audio_crosstalk=False,
-        keep_crystal_lines=False,
-        keep_chroma_leak=False,
+        no_audio_carrier_cancel=False,
+        no_crystal_lines=False,
+        no_chroma_leak=False,
         rf_out=None,
         device="cpu",
-        device_precision="double",
+        device_precision="single",
     )
     base.update(kwargs)
     return types.SimpleNamespace(**base)
@@ -292,9 +333,9 @@ def test_the_device_needs_the_read_time_tbc():
         main.main(["capture.s16", "out", "--device", "opencl"])
 
 
-def test_the_device_defaults_to_the_cpu_in_double_precision():
+def test_the_device_defaults_to_the_cpu_and_the_gpu_to_single_precision():
     args = _parse("capture.rf", "out")
-    assert (args.device, args.device_precision) == ("cpu", "double")
+    assert (args.device, args.device_precision) == ("cpu", "single")
 
 
 def test_the_domesday_duplicator_sidecar_gives_the_rate_in_hertz():
