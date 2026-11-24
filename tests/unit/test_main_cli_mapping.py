@@ -340,24 +340,27 @@ def test_the_colour_notch_filter_applies_to_ntsc_only():
     assert "NTSC_ColorNotchFilter" not in extra("-p", "-N")
 
 
-def test_the_audio_carrier_canceller_runs_by_default_in_ntsc_and_pal():
-    """The crosstalk is not destructive to take out: it is, by default."""
+def test_the_crosstalk_is_cancelled_by_default_in_ntsc_and_pal():
     assert extra()["AudioCarrierCancel"] is True
     assert extra("-p")["AudioCarrierCancel"] is True
-    # The former opt-in still parses, and changes nothing.
-    assert extra("--audio_carrier_cancel")["AudioCarrierCancel"] is True
 
 
-def test_the_read_time_tbc_cancels_the_crosstalk_in_the_rf_instead():
-    """With --tbc_mode read the crosstalk is taken out of the RF, so the
-    canceller on the demodulated spectrum never runs: the two never both
-    apply."""
+def test_the_former_opt_in_is_gone():
+    """Rev 8's --audio_carrier_cancel is the default now: the option is
+    removed, so no one takes it for a switch that still does something."""
+    with pytest.raises(SystemExit):
+        extra("--audio_carrier_cancel")
+
+
+def test_the_read_time_tbc_cancels_the_crosstalk_in_the_stacked_source():
+    """With --tbc_mode read the stacked source cancels it, so the decoder
+    does not do it a second time."""
     assert "AudioCarrierCancel" not in extra("--tbc_mode", "read")
 
 
 def test_one_option_leaves_the_crosstalk_whatever_the_mode():
     assert "AudioCarrierCancel" not in extra("--no_audio_carrier_cancel")
-    assert "AudioCarrierCancel" not in extra("--tbc_mode", "read", "--no_audio_carrier_cancel")
+    assert "AudioCarrierCancel" not in extra("-p", "--no_audio_carrier_cancel")
 
 
 def test_the_read_time_tbc_leaves_the_v4300d_clock_to_the_clock_lines():

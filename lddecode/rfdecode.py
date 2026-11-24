@@ -45,10 +45,6 @@ from .filters import (
     unwrap_hilbert,
 )
 from .dsp import (
-    band_baseband,
-    band_subtract,
-    coherent_line_estimate,
-    unit_phasor,
     compute_mtf,
     genwave,
     readout_compensation,
@@ -1963,115 +1959,77 @@ class RFDecode:
         whole = self.v4300d_coherent_subtract(self.mirror_spectrum(indata_fft))
         return whole[: indata_fft.shape[0]]
 
-    #: Half-width of the RF band taken around each audio carrier for its
-    #: phase reference: NTSC's +-100 kHz deviation with room for the
-    #: sidebands of the loudest programme.  Never more than half the two
-    #: carriers' spacing, so the two bands do not overlap: that leaves NTSC's
-    #: (511 kHz apart) at this value and takes PAL's (383 kHz apart) to
-    #: 191.4 kHz.
-    AUDIO_CANCEL_HALFBAND_HZ = 250e3
-    #: A carrier is used only when its band holds this many times the power
-    #: of the band beside it on the side away from the other carrier.
-    AUDIO_CANCEL_MIN_SNR = 5.0
-    #: Bins in the slice of the spectra the canceller works on, centred
-    #: between the carriers (+-1.25 MHz at NTSC's block length): room for
-    #: each carrier's phase band and the level's band on either side of
-    #: it, so that their product does not wrap.
-    AUDIO_CANCEL_SLICE = 2048
-    #: The level the coupling follows is the demod low-passed to here
-    #: (cos^2 taper, -6 dB at half this).
-    AUDIO_CANCEL_LEVEL_HZ = 500e3
+    #: Blocks the crosstalk's coupling is measured over (crosstalk_coupling):
+    #: one block's own fit is mostly the picture's chance correlation with
+    #: the carriers; the median of 256 (a fifth of a second at 40 MHz) is
+    #: the coupling to within a tenth of itself on the test captures.
+    XTALK_COUPLING_BLOCKS = 256
 
-    def audio_carrier_cancel(self, indata_fft, spectrum, centre):
-        """Subtract the analog audio carriers' intermodulation lines from the
-        demodulated video's spectrum, in place.  Prototype, opt-in
-        (--audio_carrier_cancel).
+    def rf_crosstalk_cancel(self, data, indata_fft, hilbert):
+        """Take the analog audio carriers' crosstalk out of the video
+        carrier's phase, before the discriminator: the stacked source's
+        cancellation (stack_corrections.cancel_crosstalk), on this block.
 
-        The disc's pits carry the sum of the video and audio FM carriers,
-        hard-limited, so the video carrier picks up sidebands at fv +- fa
-        (and the readout's tilt turns any AM in them to PM).  Demodulated,
-        those land as lines at the audio carriers' own frequencies, with
-        the audio carriers' own phase: in NTSC at 2.30 and 2.81 MHz, inside
-        the luminance band.  Whatever mix of upper and lower sideband and of
-        AM and PM produces them, the line is Re(c * exp(j phi_a(t))) for one
-        complex c, phi_a being the carrier's phase in the RF; c moves with
-        the video level (the tilt the sidebands see depends on where the
-        carrier sits), so the model lets it follow the level linearly.  The
-        carrier is cut out of this block's RF and reduced to a unit phasor,
-        and the model is fitted over the block's kept span with a gain that
-        backs off for lines too weak to fit (see coherent_line_estimate).
+        The carriers leak into the video carrier's phase on the disc.  The
+        coupling (one complex gain per carrier: the video carrier's
+        frequency error per unit of carrier) is measured once over a
+        stretch of the capture (measure_crosstalk, kept in DecoderParams
+        so that the worker processes have it too); here each carrier's own
+        waveform, audio and all, is cut out of this block's RF, and the
+        band is turned back by the phase error that coupling makes of it.
+        Nothing is subtracted from the demodulated picture, and nothing the
+        picture does in this block moves the correction: its detail at the
+        carriers' frequencies (NTSC's 2.30 and 2.81 MHz sit in the luminance
+        band) is left as it is.
 
-        All of it happens on slices of the spectra: spectrum is the rfft of
-        the demod less centre, indata_fft the RF block's.  The phase, the
-        demod around the carrier and the level are each a few thousand
-        bins, taken down to 0 Hz on a lattice every n/m samples
-        (band_baseband), and the fitted line goes back into spectrum's bins
-        the same way - no transform or product over the whole block.  So
-        the fit sees the demod as the video filters do, clipped to the
-        discriminator's range rather than to the video's, and demod_raw
-        (the dropout detector's) keeps its lines.
-
-        Only the phase reference is taken from the RF.  The RF below the
-        video band also carries a copy of the picture (the pits' duty
-        cycle), so regressing the video on the band's own signal, its
-        envelope included, would remove picture; the audio's phase is
-        independent of the picture.
-
-        Stateless per block, like v4300d_coherent_subtract.  A carrier the
-        disc does not carry (digital-only discs; AC3's QPSK right channel is
-        never used) is skipped, so the fit cannot chase noise.
+        While measure_crosstalk runs, the block's own fit is collected
+        instead, and the band is left alone.
         """
+        from .stack_corrections import crosstalk_block_gains, crosstalk_phase
+
+        collect = getattr(self, "_xtalk_collect", None)
+        gains = self.DecoderParams.get("audio_xtalk_gains")
+        if collect is None and gains is None:
+            return hilbert
         SP = self.SysParams
         bl = self.blocklen
-        n = 2 * (len(spectrum) - 1)
-        fpb = self.freq_hz / bl
-        hw = min(self.AUDIO_CANCEL_HALFBAND_HZ,
-                 abs(SP["audio_rfreq"] - SP["audio_lfreq"]) / 2)
+        if data is not None:
+            rf = np.asarray(data[:bl], dtype=np.float64)
+        else:
+            rf = npfft.irfft(indata_fft, n=bl)
+        step = 1 if self.full_rate_demod else 2
+        carriers = (SP["audio_lfreq"], SP["audio_rfreq"])
+        if collect is not None:
+            collect.append(crosstalk_block_gains(
+                rf, hilbert, step, self.freq_hz, carriers,
+                (self.blockcut, bl - self.blockcut_end)))
+            return hilbert
+        theta = crosstalk_phase(
+            rf, hilbert.shape[0], step, self.freq_hz, carriers,
+            [complex(re, im) for re, im in gains])
+        return hilbert * np.exp(-1j * theta)
 
-        def bandpower(f0, width):
-            lo, hi = int((f0 - width) / fpb), int((f0 + width) / fpb) + 1
-            return np.mean(sqsum(indata_fft[lo:hi]) ** 2)
+    def measure_crosstalk(self, blocks):
+        """Measure the audio carriers' coupling over `blocks` (raw RF
+        blocks, each blocklen long) and keep it in DecoderParams, where
+        rf_crosstalk_cancel reads it.  Returns the gains, or None (the
+        crosstalk is then left in)."""
+        from .stack_corrections import crosstalk_coupling
 
-        carriers = [SP["audio_lfreq"]]
-        if not SP["AC3"]:
-            carriers.append(SP["audio_rfreq"])
-        mid = (SP["audio_lfreq"] + SP["audio_rfreq"]) / 2
-        # Against the flank away from the other carrier: a loud programme
-        # spreads each carrier +-150 kHz, into the gap between the two.
-        carriers = [
-            fa for fa in carriers
-            if bandpower(fa, hw) >= self.AUDIO_CANCEL_MIN_SNR * bandpower(
-                fa + (-1 if fa < mid else 1) * (hw + 150e3), 75e3)
-        ]
-        if not carriers:
-            return
-
-        # One slice holds both carriers, centred between them, or from 0 Hz
-        # where that would start below it (PAL's carriers, at 0.68 and 1.07
-        # MHz, sit lower than half the slice).  Its lattice: sample j is RF
-        # sample j*bl/m.
-        m = self.AUDIO_CANCEL_SLICE
-        lo = max(0, int(round(mid / fpb)) - m // 2)
-        fit = slice(-(-self.blockcut * m // bl), (bl - self.blockcut_end) * m // bl)
-        fs = self.freq_hz * m / bl
-
-        # The level the coupling follows, 100 IRE = 1.
-        kl = int(self.AUDIO_CANCEL_LEVEL_HZ / fpb)
-        low = np.zeros(m // 2 + 1, dtype=np.complex128)
-        low[:kl] = spectrum[:kl] * np.cos(0.5 * np.pi * np.arange(kl) / kl) ** 2
-        level = ((npfft.irfft(low, m) * (m / n) + centre - SP["ire0"])
-                 / (100 * SP["hz_ire"]))
-
-        video = band_baseband(spectrum, lo, m, n)
-        lines = np.zeros(m, dtype=np.complex128)
-        for fa in carriers:
-            k, hwb = int(round(fa / fpb)) - lo, int(hw / fpb)
-            phasor = unit_phasor(
-                band_baseband(indata_fft, lo, m, bl, slice(k - hwb, k + hwb + 1)))
-            line, _ = coherent_line_estimate(video, phasor, level, fit, fs)
-            video -= line
-            lines += line
-        band_subtract(spectrum, lines, lo, n)
+        if not (self.AudioCarrierCancel and self.SysParams["analog_audio"]):
+            return None
+        self.DecoderParams.pop("audio_xtalk_gains", None)
+        self._xtalk_collect = []
+        try:
+            for block in blocks:
+                self.demodblock(data=block, echo_cancel=False)
+            gains = crosstalk_coupling(self._xtalk_collect)
+        finally:
+            self._xtalk_collect = None
+        if gains is not None:
+            self.DecoderParams["audio_xtalk_gains"] = [
+                (float(g.real), float(g.imag)) for g in gains]
+        return gains
 
     def demodblock_sync(self, data=None, fftdata=None, cut=False):
         """Demodulate only the 0.5 MHz path used for vertical-sync detection.
@@ -2217,6 +2175,8 @@ class RFDecode:
             hilbert = npfft.ifft(block)
         else:
             hilbert = npfft.ifft(indata_fft_filt[: self.blocklen // 2])
+        if self.AudioCarrierCancel and self.SysParams["analog_audio"]:
+            hilbert = self.rf_crosstalk_cancel(data, indata_fft, hilbert)
         demod = unwrap_hilbert(hilbert, self.freq_hz_demod)
 
         # use a clipped demod for video output processing to reduce speckling impact.
@@ -2285,8 +2245,6 @@ class RFDecode:
         np.clip(demod, 1500000, self.freq_hz_demod * 0.75, out=demod)
         np.subtract(demod, centre, out=centred)
         spectrum = npfft.rfft(centred)
-        if self.AudioCarrierCancel and self.SysParams["analog_audio"]:
-            self.audio_carrier_cancel(indata_fft, spectrum, centre)
         video_results = npfft.irfft(
             np.multiply(
                 spectrum,

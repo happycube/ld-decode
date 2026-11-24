@@ -149,8 +149,8 @@ How a stack weighs its captures.
 The stacking's options are spelt with underscores, as rev 8's are
 (`--tbc_mode`, `--stack_weight`, `--rf_out`, `--device_precision`,
 `--no_crystal_lines`, ...); the spelling with dashes (`--tbc-mode`, ...) is
-accepted as well. The audio carriers' crosstalk is cancelled in both modes:
-see `--no_audio_carrier_cancel`.
+accepted as well. The audio carriers' crosstalk is taken out by default in
+either mode: see `--no_audio_carrier_cancel`.
 
 #### `--no_crystal_lines`
 Leave the clock lines in the RF: the player's EFM decoder crystal and its
@@ -351,30 +351,30 @@ ld-decode --NTSC --NTSC_color_notch_filter input.ldf output
 ```
 
 #### `--no_audio_carrier_cancel`
-Leave the analog audio carriers' crosstalk in the video. It is taken out by
-default, once, where the time base is corrected: with `--tbc_mode read` from
-the RF before demodulation (the stacked source), with `--tbc_mode resample`
-by subtracting the carriers' intermodulation lines from the demodulated
-video, as described below. This one option leaves it in either mode.
+Leave the analog audio carriers' crosstalk in the video. The audio FM
+carriers leak into the video carrier's phase on the disc, and the
+demodulated video carries faint lines at the carriers' own frequencies
+(NTSC 2.30 and 2.81 MHz, in the luminance band; PAL 0.68 and 1.07 MHz). By
+default they are taken out, in either `--tbc_mode`, the same way: each
+carrier's own waveform is cut out of the RF, the coupling of the video
+carrier's frequency to it is measured, and the video band is turned back by
+the phase error that coupling makes, before the demodulator. With
+`--tbc_mode read` the stacked source does it on the RF it hands the decoder;
+with `--tbc_mode resample` the decoder does it on each block's analytic
+video band. This one option leaves it in either mode.
 - **Default:** Disabled (the crosstalk is cancelled)
-- **Note:** The former opt-in, `--audio_carrier_cancel`, is still accepted
-  and changes nothing.
-
-With `--tbc_mode resample`, the cancellation subtracts the analog audio
-carriers' intermodulation lines from the demodulated video. The audio FM carriers mix with the video carrier on the
-disc, and the demodulated video carries faint lines at the carriers' own
-frequencies (NTSC 2.30 and 2.81 MHz, PAL 0.68 and 1.07 MHz), in the luminance
-band. Each block's line is fitted to the carrier's own phase, taken from the
-RF, and subtracted; a carrier that is not on the disc (and AC3's right
-channel) is left alone.
-- **Note:** It was a prototype, off by default; it is now on by default,
-  so a `--tbc_mode resample` decode differs from earlier rev 8 ones by the
-  lines it takes out.
-- **Note:** The NTSC lines are strongest towards the outer radius of some
-  discs, where removing them lowers the weighted luminance noise by up to
-  about 1.3 dB; on most captures the gain is 0.1-0.5 dB. PAL's carriers lie
-  under the EFM, which blurs their phase reference: less of their lines can
-  be fitted than of NTSC's.
+- **Note:** With `--tbc_mode resample` the coupling is measured once, on the
+  first 256 blocks the decode reads (a fifth of a second at 40 MHz), and the
+  same gains correct every block. One block's own fit would not do: over 13
+  lines the picture's detail near the carriers correlates with them by
+  chance several times more than the coupling itself. A coupling that does
+  not stand three standard errors clear of that spread is shrunk away, so a
+  disc without crosstalk, or one whose picture fills the carriers'
+  frequencies (a test pattern), is left as it is.
+- **Note:** The former rev 8 prototype, `--audio_carrier_cancel` (which
+  subtracted the lines from the demodulated spectrum, block by block, and
+  moved the VITS readings), is replaced by this, and the option is
+  removed.
 
 **Example:**
 ```bash

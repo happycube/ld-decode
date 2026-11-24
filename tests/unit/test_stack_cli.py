@@ -143,7 +143,8 @@ def test_the_v4300d_options_are_left_out_of_the_help():
     assert "--V4300D" not in text and "-V," not in text
     # The clock lines' own help says where the V4300D's clock went.
     assert "LD-V4300D" in text
-    assert "--audio_carrier_cancel " not in text
+    # One option for the audio crosstalk: rev 8's prototype is out of it.
+    assert "--audio_carrier_cancel " not in text and "--audio_carrier_cancel\n" not in text
     assert "--no_audio_carrier_cancel" in text
 
 

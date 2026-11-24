@@ -133,11 +133,11 @@ the disc or in the player and are the same in every copy:
   wobble" of the saturated areas.
 
 Each can be switched off again (`--no_audio_carrier_cancel`,
-`--no_crystal_lines`, `--no_chroma_leak`). The stacking and the clock lines
-and chroma leak run only with `--tbc_mode read`: the default stays
+`--no_crystal_lines`, `--no_chroma_leak`). The stacking, the clock lines and
+the chroma leak run only with `--tbc_mode read`: the default stays
 `--tbc_mode resample`, the reference decoder's way of correcting the time
-base, whatever the input. The audio crosstalk is cancelled in both modes (on
-the demodulated spectrum with resample). The path needs fixed-width raw captures, all at the same
+base, whatever the input. The audio crosstalk is taken out in both modes, by
+the same model (in resample, on the decoder's own video band). The path needs fixed-width raw captures, all at the same
 sample rate; see [the command reference](docs/user-guide/command.md) and
 [the technical page](docs/technical/stacked-rf-tbc.md).
 

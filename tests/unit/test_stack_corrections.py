@@ -102,6 +102,66 @@ def test_crosstalk_cancellation_reduces_the_phase_error():
     assert after < before / 3.0
 
 
+@pytest.mark.parametrize("step", [1, 2])
+def test_the_crosstalk_phase_is_the_one_the_carrier_put_on_the_video(step):
+    """The decoder's resample path measures the coupling on its own analytic
+    band and turns the band back by crosstalk_phase: the phase found is the
+    crosstalk's, on the full-rate band and on the half-rate one alike."""
+    gamma = 0.02
+    rf, clean, video_band = _crosstalk_chunk(gamma)
+    t = np.arange(0, N, step) / FS
+    true = gamma * np.sin(TAU * CARRIERS[0] * t + 0.7)
+    band = video_band[::step]
+
+    gains = stack_corrections.crosstalk_block_gains(
+        rf, band, step, FS, CARRIERS, (1024, N - 1024))
+    theta = stack_corrections.crosstalk_phase(rf, band.shape[0], step, FS, CARRIERS, gains)
+
+    kept = slice(1024 // step, (N - 1024) // step)
+    assert theta.shape == true.shape
+    assert np.std(theta[kept] - true[kept]) < 0.05 * np.std(true[kept])
+    # Turned back, the band's phase is the picture's alone.
+    psi = 0.05 * np.sin(TAU * 50e3 * t)
+    turned = band * np.exp(-1j * theta)
+    residual = np.angle(turned * np.exp(-1j * (TAU * F_VIDEO * t + psi)))
+    assert np.std(residual[kept]) < 0.05 * gamma
+
+
+def test_a_clean_block_measures_no_coupling():
+    def gains(gamma):
+        rf, clean, video_band = _crosstalk_chunk(gamma)
+        return stack_corrections.crosstalk_block_gains(
+            rf, video_band[::2], 2, FS, CARRIERS, (1024, N - 1024))
+
+    assert np.max(np.abs(gains(0.0))) < 1e-3 * np.max(np.abs(gains(0.02)))
+
+
+def test_the_coupling_is_the_median_of_the_blocks():
+    """A block whose picture happens to follow a carrier is left out of the
+    coupling, where a mean would take it in; a block with no fit is
+    skipped."""
+    rng = np.random.default_rng(1)
+    noise = 0.1 * (rng.normal(size=(64, 2)) + 1j * rng.normal(size=(64, 2)))
+    blocks = list(np.array([5 - 7j, 8 + 1j]) + noise)
+    blocks += [np.array([500 + 900j, -300j]), None]
+    np.testing.assert_allclose(
+        stack_corrections.crosstalk_coupling(blocks), [5 - 7j, 8 + 1j], atol=0.1)
+    assert stack_corrections.crosstalk_coupling([None]) is None
+
+
+def test_a_coupling_lost_in_the_blocks_spread_is_left_alone():
+    """Blocks whose gains point every way (the picture's own detail near
+    the carriers) measure no coupling: applying their median would add a
+    line rather than take one out.  A real one, well above its standard
+    error, is kept nearly whole."""
+    rng = np.random.default_rng(2)
+    spread = 70 * (rng.normal(size=(256, 2)) + 1j * rng.normal(size=(256, 2)))
+    lost = stack_corrections.crosstalk_coupling(list(np.array([10 + 5j, -8j]) + spread))
+    np.testing.assert_array_equal(lost, [0, 0])
+    kept = stack_corrections.crosstalk_coupling(list(np.array([7 + 0j, 9j]) + spread / 70))
+    assert np.all(np.abs(kept - [7, 9j]) < 0.5)
+
+
 def test_crosstalk_cancellation_leaves_a_clean_chunk_alone():
     """Without crosstalk there is nothing to take out: the picture's own
     frequency does not follow the carriers, so no gain is fitted."""

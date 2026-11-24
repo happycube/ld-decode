@@ -419,7 +419,7 @@ The ones that matter for interference and for the picture:
 | the VITS white level servo | `--vits_white_level` | no |
 | the RF echo cancellation (the multipath ghost) | `--rf_echo_cancel`, `--rf_echo` | no |
 | the coherent subtraction of the V4300D clock | `--V4300D_coherent_subtract` | no |
-| the audio carrier cancellation | `--audio_carrier_cancel` | replaced, in a better place (below) |
+| the audio carrier cancellation | `--audio_carrier_cancel` | removed: replaced by the branch's model, on by default in both modes (below) |
 | the dropout record (metadata, no masking) | `--noDOD` | yes |
 | the AGC | `--noAGC` | yes |
 | the group delay equaliser, the audio carrier notches, the zero phase RF | always on | yes |
@@ -437,7 +437,7 @@ crosstalk, and the V4300D's clock.
 
 | cancellation | rev 8 | this branch | the reference port |
 | --- | --- | --- | --- |
-| the audio carriers' crosstalk | on the demodulated spectrum (`--tbc_mode resample`; NTSC and, here, PAL; now on by default) | on the RF's instantaneous frequency, before demodulation (`--tbc_mode read`; NTSC and PAL) | yes, the same as this branch |
+| the audio carriers' crosstalk | `--audio_carrier_cancel`, on the demodulated spectrum (opt-in prototype; replaced) | on the video carrier's phase, before demodulation, in both modes (NTSC and PAL; by default) | yes, with `--tbc_mode read` |
 | the clock lines | no | yes | yes |
 | the chroma leak | no | yes | yes |
 | the RF echo (the ghost) | yes (`--rf_echo_cancel`) | no | no |
@@ -446,27 +446,60 @@ crosstalk, and the V4300D's clock.
 | the demodulator clipping | yes | inherited | yes |
 | the dropout record | yes | inherited | yes |
 
-**The crosstalk** is cancelled by default, once, where the time base is
-corrected (taking it out is not destructive). Rev 8's canceller fits a
-complex gain per audio carrier on the demodulated spectrum, and runs with
-`--tbc_mode resample`; the branch's cancellation fits the same gains on the
-RF's instantaneous frequency, before the demodulator, and runs with
-`--tbc_mode read`. The demodulated one never runs on the read-time path, so
-the two never both apply, and the one option `--no_audio_carrier_cancel`
-leaves the crosstalk in either mode. Rev 8's was an opt-in prototype
-(`--audio_carrier_cancel`, still accepted); a resample decode now differs
-from earlier rev 8 ones by the lines it takes out.
+**The crosstalk** is cancelled by default in both modes, by one model, and
+`--no_audio_carrier_cancel` leaves it in either. Each audio carrier's own
+waveform is cut out of the RF, the video carrier's instantaneous frequency
+is fitted on them (one complex gain per carrier), and the video band is
+turned back by the phase error that coupling makes, before the
+demodulator. With `--tbc_mode read` the stacked source does it on the RF it
+hands over, as the reference implementation does; with `--tbc_mode resample`
+the decoder does it on each block's own analytic video band
+(`RFDecode.rf_crosstalk_cancel`, through
+`stack_corrections.crosstalk_phase`), so the RF is not filtered twice. It
+runs once: the decoder's never runs on the read-time path.
 
-Rev 8's ran on NTSC alone. It now runs on PAL too: its phase bands are kept
-within half the carriers' spacing (191 kHz for PAL's carriers, 383 kHz apart;
-NTSC's stay at 250 kHz), and its slice starts at 0 Hz where, centred between
-PAL's low carriers, it would start below. NTSC is unchanged, sample for
-sample. On the PAL capture of the test data (`ggv-mb-1khz`) it takes out a
-coherent part 25 to 26 dB below what the carriers' bands hold, where it takes
-out 19 to 21 dB on an NTSC one: the lines are as faint against the picture in
-both. PAL's carriers lie under the EFM, which blurs their phase reference, so
-less of their lines can be fitted than of NTSC's (on synthetic lines, 90 %
-under an EFM band against 98 % without).
+Rev 8's canceller, an opt-in prototype (`--audio_carrier_cancel`), fitted
+the lines on the demodulated spectrum, block by block, and subtracted them.
+On by default it failed the conformance lane: the 2T pulse of
+`ggv1069-side1-outer` read 103.0 IRE, the PAL white bar of
+`ggv1011-side1-outer` left its band. The branch's model, fitted block by
+block on the resample path, moved the same readings (102.7 IRE; and the
+`domesday-ds2-community-north-outer` PAL 2T by 7 IRE). The cause is the
+fit's length, not the model: a 32768-sample block is 13 lines, and over 13
+lines the picture's own detail near the carriers correlates with them by
+chance. Per block, the gains measured on these cuts are white from one
+block to the next (correlation 0.01 between neighbours), spread 15 to 140
+around a coupling of 0 to 12, so a block's own fit is mostly picture.
+
+So on the resample path the coupling is measured once, before the decode's
+first block is demodulated, on the first 256 blocks it reads
+(`Decoder._measure_crosstalk`, `RFDecode.measure_crosstalk`): the median of
+their gains, shrunk away unless it stands three standard errors clear of
+their spread (`stack_corrections.crosstalk_coupling`). It is kept in
+DecoderParams, so the worker processes correct their blocks with the same
+gains; only the carriers' waveform comes from each block, and nothing the
+picture does there moves the correction. On the test cuts:
+
+| cut | coupling, in standard errors | kept | the carriers' lines in the demodulated video |
+| --- | --- | --- | --- |
+| `ggv1069-side1-outer` (NTSC) | 12 and 24 | 0.94, 0.98 | 2171 and 2409 Hz down to 1235 and 1422 (the rest is picture) |
+| `domesday-ds2-community-north-outer` (PAL) | 3.2 and 3.2 | 0.11, 0.12 | next to unchanged |
+| `ggv1011-side1-outer` (PAL) | 1.1 and 0.9 | none | unchanged |
+| `ve-monitor` (NTSC) | 1.7 and 0.7 | none | unchanged |
+
+On `ve-monitor` the line the demodulated video holds at 2.30 MHz is the test
+pattern's, not crosstalk: its blocks' gains point every way (the resultant
+of their phases is 0.04 to 0.11), and the unshrunk median applied to it
+raised the line by 3.3 dB. NTSC's first carrier is 146.25 times the line
+frequency, among the picture's own harmonics.
+
+The fit's half-sample lag is taken out of the gains: the instantaneous
+frequency is a phase difference over the sample before, so it is the
+frequency half a sample earlier, and left in, the phase the gains give
+leads the crosstalk's by `pi f / fs` per sample of lag (0.18 rad at 2.3 MHz
+and 40 MHz, 0.36 on the decoder's half-rate band), which leaves a fifth to a
+third of the crosstalk behind. The stacked source's `cancel_crosstalk` takes
+it out as well.
 
 **The V4300D's clock** is the EFM crystal's 96th multiple (192 x 44.1 kHz =
 8.4672 MHz), and the clock lines take it with the crystal's other multiples,

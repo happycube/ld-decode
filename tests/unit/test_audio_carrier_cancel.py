@@ -10,19 +10,18 @@ spectra: dsp.band_baseband takes a band down to 0 Hz on a sparse lattice
 and dsp.band_subtract puts a signal back; dsp.unit_phasor reduces the
 carrier to its phase; dsp.coherent_line_estimate fits a line locked to it,
 with an amplitude that may follow the video level, and backs off for lines
-too weak to fit.  RFDecode.audio_carrier_cancel wires them into demodblock.
+too weak to fit.  (Rev 8's canceller on the demodulated spectrum was built
+on them; the decoder now takes the crosstalk out of the video carrier's
+phase instead, RFDecode.rf_crosstalk_cancel.)
 
 All signals are synthetic.
 """
-
-import types
 
 import numpy as np
 import pytest
 
 from lddecode.dsp import (band_baseband, band_subtract, coherent_line_estimate,
                           unit_phasor)
-from lddecode.rfdecode import RFDecode
 
 pytestmark = [pytest.mark.unit, pytest.mark.dsp]
 
@@ -151,126 +150,3 @@ def test_picture_detail_off_the_carrier_is_left_alone():
     probe = np.exp(-2j * np.pi * 2.0e6 * tf[512:])
 
     np.testing.assert_allclose(2 * np.abs(np.mean(left * probe)), 20000, rtol=0.01)
-
-
-# --- RFDecode.audio_carrier_cancel wiring, on a stub `self` -------------
-
-RF_FS = 40e6
-BL = 32768
-FL, FR = 2.3011e6, 2.8125e6
-
-
-def _rf_stub(ac3=False):
-    stub = types.SimpleNamespace(
-        SysParams={"audio_lfreq": FL, "audio_rfreq": FR, "AC3": ac3,
-                   "ire0": 8.1e6, "hz_ire": 1.7e6 / 140, "vsync_ire": -40},
-        full_rate_demod=False, blocklen=BL, freq_hz=RF_FS,
-        freq_hz_demod=RF_FS / 2, blockcut=1024, blockcut_end=0,
-        AUDIO_CANCEL_HALFBAND_HZ=RFDecode.AUDIO_CANCEL_HALFBAND_HZ,
-        AUDIO_CANCEL_MIN_SNR=RFDecode.AUDIO_CANCEL_MIN_SNR,
-        AUDIO_CANCEL_SLICE=RFDecode.AUDIO_CANCEL_SLICE,
-        AUDIO_CANCEL_LEVEL_HZ=RFDecode.AUDIO_CANCEL_LEVEL_HZ,
-    )
-
-    def cancel(X, demod):
-        """The canceller on demod's spectrum, as demodblock runs it; demod
-        takes the result, and the spectrum before and after is returned."""
-        spectrum = np.fft.rfft(demod - 8.1e6)
-        before = spectrum.copy()
-        RFDecode.audio_carrier_cancel(stub, X, spectrum, 8.1e6)
-        demod[:] = np.fft.irfft(spectrum, len(demod)) + 8.1e6
-        return before, spectrum
-
-    return cancel
-
-
-def _rf_block(rng, carriers):
-    """Noise, plus an FM carrier at each frequency in carriers; returns the
-    rfft and each carrier's phase on the half-rate lattice."""
-    t = np.arange(BL) / RF_FS
-    x = rng.normal(0, 1.0, BL)
-    phases = {}
-    for f in carriers:
-        phi = 2 * np.pi * f * t + 8.0 * np.sin(2 * np.pi * 7e3 * t + rng.uniform(0, 6))
-        x += 30.0 * np.cos(phi)
-        phases[f] = phi[0::2]
-    return np.fft.rfft(x), phases
-
-
-def _demod(rng):
-    """Half-rate demod at blanking, with noise."""
-    return 8.1e6 + rng.normal(0, 3000, BL // 2)
-
-
-def test_without_audio_carriers_the_demod_is_untouched():
-    rng = np.random.default_rng(6)
-    X, _ = _rf_block(rng, [])
-    before, after = _rf_stub()(X, _demod(rng))
-
-    np.testing.assert_array_equal(after, before)
-
-
-def test_a_carriers_line_is_removed_from_the_demod():
-    rng = np.random.default_rng(7)
-    X, ph = _rf_block(rng, [FL, FR])
-    clean = _demod(rng)
-    demod = (clean + np.real(5000 * np.exp(1.1j) * np.exp(1j * ph[FL]))
-             + np.real(6000 * np.exp(-2.0j) * np.exp(1j * ph[FR])))
-    line_rms = np.sqrt(np.mean((demod - clean)[512:] ** 2))
-
-    _rf_stub()(X, demod)
-
-    assert np.sqrt(np.mean((demod - clean)[512:] ** 2)) < 0.1 * line_rms
-
-
-PAL_FL, PAL_FR = 0.68359375e6, 1.06640625e6
-
-
-def _pal_stub():
-    """The canceller's stub with PAL's audio carriers."""
-    cancel = _rf_stub()
-    stub = cancel.__closure__[0].cell_contents
-    stub.SysParams = dict(stub.SysParams, audio_lfreq=PAL_FL, audio_rfreq=PAL_FR)
-    return cancel
-
-
-def _pal_line_residual(efm_rms):
-    """The share of PAL's lines left after the canceller, with the EFM's
-    band (20 kHz to 1.75 MHz) under the carriers at ``efm_rms``."""
-    rng = np.random.default_rng(17)
-    X, ph = _rf_block(rng, [PAL_FL, PAL_FR])
-    if efm_rms:
-        efm = np.fft.rfft(rng.normal(0, efm_rms, BL))
-        f = np.arange(efm.shape[0]) * RF_FS / BL
-        X = X + efm * ((f > 20e3) & (f < 1.75e6))
-    clean = _demod(rng)
-    demod = (clean + np.real(5000 * np.exp(0.4j) * np.exp(1j * ph[PAL_FL]))
-             + np.real(6000 * np.exp(2.2j) * np.exp(1j * ph[PAL_FR])))
-    line_rms = np.sqrt(np.mean((demod - clean)[512:] ** 2))
-    _pal_stub()(X, demod)
-    return np.sqrt(np.mean((demod - clean)[512:] ** 2)) / line_rms
-
-
-def test_pal_carriers_lines_are_removed_from_the_demod():
-    """PAL's carriers sit 383 kHz apart, below half the slice: their phase
-    bands are narrowed so as not to overlap and the slice starts at 0 Hz,
-    and the lines go as NTSC's do."""
-    assert _pal_line_residual(0.0) < 0.05
-
-
-def test_pal_carriers_lines_are_removed_under_the_efm():
-    """Under PAL's carriers lies the EFM's band, which NTSC's do not have:
-    it blurs their phase reference, and less of the lines can be fitted.
-    Most of them still go."""
-    assert _pal_line_residual(20.0) < 0.2
-
-
-def test_ac3s_right_channel_is_never_a_phase_reference():
-    """With AC3 the right channel is QPSK, not an FM carrier: a line locked
-    to whatever sits there is left in place."""
-    rng = np.random.default_rng(8)
-    X, ph = _rf_block(rng, [FR])
-    clean = _demod(rng)
-    before, after = _rf_stub(ac3=True)(X, clean + np.real(6000 * np.exp(1j * ph[FR])))
-
-    np.testing.assert_array_equal(after, before)

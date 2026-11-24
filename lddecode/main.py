@@ -470,18 +470,8 @@ def build_parser():
         action="store_true",
         default=False,
         help="leave the analog audio carriers' crosstalk in the video.  It "
-        "is taken out by default, once, where the time base is corrected: "
-        "with --tbc_mode read in the RF before demodulation, with resample "
-        "on the demodulated spectrum (NTSC 2.30 and 2.81 MHz, PAL 0.68 and "
-        "1.07 MHz)",
-    )
-    # The former opt-in, now the default: accepted, and it changes nothing.
-    parser.add_argument(
-        "--audio_carrier_cancel",
-        dest="audio_carrier_cancel",
-        action="store_true",
-        default=False,
-        help=argparse.SUPPRESS,
+        "is taken out of the video carrier's phase by default, before "
+        "demodulation, in either --tbc_mode",
     )
 
     parser.add_argument(
@@ -748,11 +738,14 @@ def build_options(args, core_count=None):
         # parallel demod stays available.
         extra_options["PAL_V4300D_CoherentSubtract"] = True
 
-    # The audio carriers' crosstalk is cancelled by default, once, where the
-    # time base is corrected: with --tbc_mode read in the RF, before
-    # demodulation (the stacked source); with resample on the demodulated
-    # spectrum.  The demodulated one never runs on the read-time path, so
-    # the two cannot both apply; --no_audio_carrier_cancel leaves it in both.
+    # The audio carriers' crosstalk is cancelled by default, in either mode,
+    # by one model: each carrier's own waveform cut out of the RF, the video
+    # carrier's instantaneous frequency fitted on them, and the video band
+    # turned back by that phase before the discriminator.  With
+    # --tbc_mode read the stacked source does it on the RF it hands over;
+    # with resample the decoder does it on its own analytic band, per block
+    # (RFDecode.rf_crosstalk_cancel).  Once, never both; and
+    # --no_audio_carrier_cancel leaves it in either mode.
     if not args.no_audio_carrier_cancel and args.tbc_mode != "read":
         extra_options["AudioCarrierCancel"] = True
 

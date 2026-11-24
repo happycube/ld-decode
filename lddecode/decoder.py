@@ -303,6 +303,9 @@ class LDdecode:
         self.logger = _logger
         logs.logger = self.logger
         self.reader_ended = False
+        # The audio crosstalk's coupling is measured on the first read
+        # (_measure_crosstalk), before any block is demodulated.
+        self._xtalk_measured = False
 
         from lddecode import __version__
         self.version = __version__
@@ -3038,10 +3041,41 @@ class LDdecode:
             cut=True,
         )
 
+    def _measure_crosstalk(self, begin):
+        """Measure the audio carriers' coupling (RFDecode.measure_crosstalk)
+        over the blocks from `begin`, once, before any block is demodulated
+        for the decode: every block, in this process or a worker's, is then
+        corrected with the same gains."""
+        self._xtalk_measured = True
+        rf = self.rf
+        if not (rf.AudioCarrierCancel and rf.SysParams["analog_audio"]):
+            return
+        blocksize = self.demod_blocksize
+        start = (begin // blocksize) * blocksize
+        span_len = (rf.XTALK_COUPLING_BLOCKS - 1) * blocksize + rf.blocklen
+        if self.block_cache is not None:
+            with self.block_cache.read_lock:
+                span = self.freader(self.infile, start, span_len)
+        else:
+            span = self.freader(self.infile, start, span_len)
+        if span is None or len(span) < rf.blocklen:
+            return
+        count = (len(span) - rf.blocklen) // blocksize + 1
+        gains = rf.measure_crosstalk(
+            span[k * blocksize : k * blocksize + rf.blocklen] for k in range(count))
+        if gains is not None:
+            logs.logger.debug(
+                "audio crosstalk coupling over %d blocks: %s", count,
+                ", ".join("%.1f%+.1fj" % (g.real, g.imag) for g in gains))
+
     def demod_read(self, begin, length, MTF=0):
         """ Read each input block, demodulate it, and concatenate the per-block
             outputs into contiguous arrays for further processing.  Returns None
             at EOF. """
+        # (A decoder put together without __init__, as the tests do, has
+        # nothing to measure it with.)
+        if not getattr(self, "_xtalk_measured", True):
+            self._measure_crosstalk(begin)
         blocksize = self.demod_blocksize
         brange = range(begin // blocksize, ((begin + length) // blocksize) + 1)
 

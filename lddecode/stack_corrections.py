@@ -45,6 +45,9 @@ from .stack_kernels import (
 
 __all__ = [
     "cancel_crosstalk",
+    "crosstalk_block_gains",
+    "crosstalk_coupling",
+    "crosstalk_phase",
     "cancel_chroma_leak",
     "CrystalLines",
     "AUDIO_CARRIERS_HZ",
@@ -90,6 +93,10 @@ XTALK_DEC = 16
 
 #: The crosstalk gains are fitted on every this many samples of a chunk.
 XTALK_FIT_STRIDE = 20
+
+#: A coupling measured over a stretch of blocks (`crosstalk_coupling`) is
+#: shrunk away unless it stands this many standard errors above zero.
+XTALK_COUPLING_Z = 3.0
 
 #: FFT length of the correction's high-pass, and the context it takes on
 #: each side of each block (seconds).
@@ -348,6 +355,172 @@ def _crosstalk_correction_reference(
     return v.real * cm1 + v.imag * sn
 
 
+def _crosstalk_narrow(
+    rf: np.ndarray, fs: float, carriers: Sequence[float]
+) -> tuple[list, list]:
+    """Each carrier mixed down to 0 Hz and through the three cascaded
+    boxcars (the first in the compiled kernel, as _carrier_narrow_band takes
+    it), kept every `XTALK_DEC` samples; and the carriers' phase steps."""
+    n = rf.shape[0]
+    dec = XTALK_DEC
+    boxl = max(int(round(XTALK_BOX_S * fs)), 1)
+    box_d = max(int(round(boxl / dec)), 1)
+    ws = [-TAU * f / fs for f in carriers]
+    narrow = []
+    rf64 = np.ascontiguousarray(rf, dtype=np.float64)
+    for w in ws:
+        first = np.empty(-(-n // dec), dtype=np.complex128)
+        narrow_band_kernel(rf64, w, dec, boxl, XTALK_BOX_SPAN, first)
+        narrow.append(_boxcar(_boxcar(first, box_d), box_d))
+    return narrow, ws
+
+
+def _carrier_at(narrow: np.ndarray, w: float, t: np.ndarray) -> np.ndarray:
+    """The carrier at its own frequency again, at the positions `t`: the
+    narrow band mixed back up, with the factor two that makes it the
+    analytic signal."""
+    return 2.0 * _carrier_interp(narrow, XTALK_DEC, t) * np.exp(-1j * w * t)
+
+
+def _crosstalk_gains(
+    narrow: Sequence[np.ndarray],
+    ws: Sequence[float],
+    idx: np.ndarray,
+    y: np.ndarray,
+    lag: float,
+) -> Optional[np.ndarray]:
+    """The complex gain of each carrier on the video band's instantaneous
+    frequency `y` (Hz, at the samples `idx`): least squares on the carriers'
+    real and imaginary parts, means removed.  None when it is singular.
+
+    `y` is a phase difference over the `lag` samples before each `idx`, so
+    it is the frequency half of `lag` earlier: each gain is turned back by
+    that half, or the phase it gives would lead the crosstalk's by
+    `pi f lag / fs` (a tenth of a radian and more at 2.3 MHz, and a fifth
+    or a third of the crosstalk left behind).
+    """
+    cols = np.empty((idx.size, 2 * len(ws)), dtype=np.float64)
+    for c in range(len(ws)):
+        car = _carrier_at(narrow[c], ws[c], idx)
+        cols[:, 2 * c] = car.real
+        cols[:, 2 * c + 1] = car.imag
+    centred = cols - cols.mean(axis=0)
+    k = _solve_linear(centred.T @ centred, centred.T @ (y - y.mean()))
+    if k is None:
+        return None
+    return np.array([
+        complex(k[2 * c], -k[2 * c + 1]) * np.exp(-0.5j * ws[c] * lag)
+        for c in range(len(ws))
+    ])
+
+
+def crosstalk_block_gains(
+    rf: np.ndarray,
+    video_band: np.ndarray,
+    step: int,
+    fs: float,
+    carriers: Sequence[float],
+    fit: tuple[int, int],
+) -> Optional[np.ndarray]:
+    """The audio carriers' coupling into the video carrier's phase, as one
+    decoder block measures it: `cancel_crosstalk`'s fit, for a caller that
+    holds the analytic video band itself.
+
+    One block (13 lines at 40 MHz) is far too short for it on its own: the
+    picture's own detail at the carriers' frequencies correlates with them
+    by chance, block to block, several times more than the coupling itself
+    (white from one block to the next, around a coupling that holds over
+    the capture).  The decoder takes the median of a few hundred blocks'
+    (`crosstalk_coupling`) and applies that to every block.
+
+    Parameters:
+        rf: the RF block (real), length N, at `fs`.
+        video_band: the block's analytic video band at the RF samples
+            `0, step, 2 step, ...` (the decoder's half-rate band: step 2).
+        step: RF samples between two samples of `video_band`.
+        fs: the RF's sample rate in Hz.
+        carriers: the analog audio carriers in Hz.
+        fit: `(lo, hi)`, the RF samples the gains are fitted over (the
+            block's kept span, clear of the boxcars' edges).
+
+    Returns:
+        One complex gain per carrier, or None where nothing can be fitted.
+    """
+    n = rf.shape[0]
+    m = video_band.shape[0]
+    lo = max(fit[0], step)
+    lo = -(-lo // step) * step
+    hi = min(fit[1], (m - 1) * step + 1)
+    stride = max(XTALK_FIT_STRIDE // step, 1) * step
+    idx = np.arange(lo, hi, stride)
+    if n == 0 or idx.size < 8:
+        return None
+    narrow, ws = _crosstalk_narrow(rf, fs, carriers)
+    j = idx // step
+    y = np.angle(video_band[j] * np.conj(video_band[j - 1])) * fs / (TAU * step)
+    return _crosstalk_gains(narrow, ws, idx, y, step)
+
+
+def crosstalk_coupling(block_gains: Sequence[np.ndarray]) -> Optional[np.ndarray]:
+    """The coupling of a stretch of blocks, from each block's own fit.
+
+    The median of the blocks' gains, each carrier's real and imaginary
+    parts apart (a block whose picture happens to follow a carrier closely
+    is left out, where a mean would take it in), shrunk towards zero by how
+    far it stands above its own standard error: by
+    `max(0, 1 - (XTALK_COUPLING_Z * se / |g|) ** 2)`, per carrier.  A disc
+    whose crosstalk is real keeps nearly all of it (the GGV1069 cut: 12 and
+    24 standard errors, kept at 0.94 and 0.98); one where the blocks' gains
+    point every way (a test pattern's detail near the carriers, which a
+    carrier at 146.25 times the line frequency sits among) is left alone,
+    where applying that median would add a line instead of taking one out.
+    None without any block."""
+    g = [x for x in block_gains if x is not None and np.all(np.isfinite(x))]
+    if not g:
+        return None
+    g = np.asarray(g)
+    med = np.median(g.real, axis=0) + 1j * np.median(g.imag, axis=0)
+
+    def mad(v):
+        return 1.4826 * np.median(np.abs(v - np.median(v, axis=0)), axis=0)
+
+    # The median's standard error: sqrt(pi / 2) times the mean's.
+    se = math.sqrt(math.pi / 2.0) * np.hypot(mad(g.real), mad(g.imag)) / math.sqrt(g.shape[0])
+    mag2 = np.abs(med) ** 2
+    with np.errstate(divide="ignore", invalid="ignore"):
+        keep = np.where(mag2 > 0, 1.0 - (XTALK_COUPLING_Z * se) ** 2 / mag2, 0.0)
+    return med * np.clip(keep, 0.0, 1.0)
+
+
+def crosstalk_phase(
+    rf: np.ndarray,
+    m: int,
+    step: int,
+    fs: float,
+    carriers: Sequence[float],
+    gains: Sequence[complex],
+) -> np.ndarray:
+    """The audio carriers' crosstalk in the video carrier's phase, over a
+    decoder block, for the coupling `gains` (`crosstalk_coupling`).
+
+    The decoder's resample path demodulates its own analytic video band, so
+    rather than correcting the RF and filtering it again, it turns that band
+    back by the phase returned here, `band * exp(-1j * theta)`, before its
+    discriminator: `cancel_crosstalk`'s correction, applied where the band
+    is.  Only the carriers' own waveform comes from the block: nothing the
+    picture does there moves the correction.
+
+    Returns theta (radians, float64) at the RF samples `0, step, ...`, `m`
+    of them.
+    """
+    narrow, ws = _crosstalk_narrow(rf, fs, carriers)
+    t = np.arange(m) * step
+    theta = np.zeros(m, dtype=np.float64)
+    for c in range(len(ws)):
+        theta += np.real(gains[c] * _carrier_at(narrow[c], ws[c], t) / (1j * carriers[c]))
+    return theta
+
+
 def cancel_crosstalk(
     out: np.ndarray,
     video_band: np.ndarray,
@@ -388,45 +561,20 @@ def cancel_crosstalk(
         return result
 
     taper = int(round(XTALK_TAPER_S * fs))
-    boxl = max(int(round(XTALK_BOX_S * fs)), 1)
     if n < 4 * taper:
         return result
 
     dec = XTALK_DEC
-    box_d = max(int(round(boxl / dec)), 1)
-    ws = [-TAU * f / fs for f in carriers]
-
-    # Each carrier mixed down to 0 Hz and through the three cascaded boxcars
-    # (the first in the compiled kernel, as _carrier_narrow_band takes it).
-    narrow = []
-    rf64 = np.ascontiguousarray(rf, dtype=np.float64)
-    for w in ws:
-        first = np.empty(-(-n // dec), dtype=np.complex128)
-        narrow_band_kernel(rf64, w, dec, boxl, XTALK_BOX_SPAN, first)
-        narrow.append(_boxcar(_boxcar(first, box_d), box_d))
-
-    # The carrier at its own frequency again: the narrow band mixed back up,
-    # with the factor two that makes it the analytic signal.
-    def carrier_at(c: int, t: np.ndarray) -> np.ndarray:
-        return 2.0 * _carrier_interp(narrow[c], dec, t) * np.exp(-1j * ws[c] * t)
+    narrow, ws = _crosstalk_narrow(rf, fs, carriers)
 
     # Least squares of the video band's instantaneous frequency on the
     # carriers' real and imaginary parts, means removed.
     idx = np.arange(taper, n - taper, XTALK_FIT_STRIDE)
-    cols = np.empty((idx.size, 4), dtype=np.float64)
-    for c in range(2):
-        car = carrier_at(c, idx)
-        cols[:, 2 * c] = car.real
-        cols[:, 2 * c + 1] = car.imag
     # Only at the fit's samples (idx starts past the taper, so idx - 1 >= 0).
     y = np.angle(band[idx] * np.conj(band[idx - 1])) * fs / TAU
-    centred = cols - cols.mean(axis=0)
-    ata = centred.T @ centred
-    aty = centred.T @ (y - y.mean())
-    k = _solve_linear(ata, aty)
-    if k is None:
+    gains = _crosstalk_gains(narrow, ws, idx, y, 1)
+    if gains is None:
         return result
-    gains = np.array([complex(k[0], -k[1]), complex(k[2], -k[3])])
 
     # The correction at every sample, in the compiled kernel (the same as
     # _crosstalk_correction_reference).
