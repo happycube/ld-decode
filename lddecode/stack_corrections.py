@@ -457,7 +457,12 @@ def crosstalk_block_gains(
         return None
     narrow, ws = _crosstalk_narrow(rf, fs, carriers)
     j = idx // step
-    y = np.angle(video_band[j] * np.conj(video_band[j - 1])) * fs / (TAU * step)
+    # In [0, fs / step), as the decoder's discriminator (unwrap_hilbert)
+    # reads it: at half rate the band's Nyquist is 10 MHz at 40 MHz, and an
+    # NTSC white peak reaches it.  Read in (-fs / 2 step, fs / 2 step] those
+    # peaks would wrap to -10 MHz, steps of 20 MHz that the demodulated
+    # picture does not have and that the fit would follow.
+    y = np.mod(np.angle(video_band[j] * np.conj(video_band[j - 1])), TAU) * fs / (TAU * step)
     return _crosstalk_gains(narrow, ws, idx, y, step)
 
 

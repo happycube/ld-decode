@@ -127,6 +127,30 @@ def test_the_crosstalk_phase_is_the_one_the_carrier_put_on_the_video(step):
     assert np.std(residual[kept]) < 0.05 * gamma
 
 
+def test_a_picture_past_the_half_rate_bands_nyquist_does_not_move_the_coupling():
+    """At half rate the band's Nyquist is 10 MHz at 40 MHz, and an NTSC
+    white peak goes past it: the frequency is read as the discriminator
+    reads it, in [0, fs / step), not wrapped 20 MHz down.  (ggv1069's middle
+    cut measured a coupling four times too big, of the wrong sign.)"""
+    gamma = 0.02
+    t = np.arange(N) / FS
+    theta = gamma * np.sin(TAU * CARRIERS[0] * t + 0.7)
+    # 9 MHz, swinging 1.5 MHz either way: past 10 MHz a third of the time.
+    psi = (1.5e6 / 50e3) * np.sin(TAU * 50e3 * t)
+    video_band = np.exp(1j * (TAU * 9.0e6 * t + psi + theta))
+    carriers = sum(0.3 * np.cos(TAU * f * t + 0.3 * (i + 1)) for i, f in enumerate(CARRIERS))
+    rf = np.cos(TAU * 9.0e6 * t + psi + theta) + carriers
+    band = video_band[::2]
+
+    gains = stack_corrections.crosstalk_block_gains(
+        rf, band, 2, FS, CARRIERS, (1024, N - 1024))
+    phase = stack_corrections.crosstalk_phase(rf, band.shape[0], 2, FS, CARRIERS, gains)
+
+    kept = slice(512, (N - 1024) // 2)
+    true = theta[::2]
+    assert np.std(phase[kept] - true[kept]) < 0.05 * np.std(true[kept])
+
+
 def test_a_clean_block_measures_no_coupling():
     def gains(gamma):
         rf, clean, video_band = _crosstalk_chunk(gamma)

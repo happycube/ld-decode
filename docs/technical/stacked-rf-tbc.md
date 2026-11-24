@@ -482,16 +482,35 @@ picture does there moves the correction. On the test cuts:
 
 | cut | coupling, in standard errors | kept | the carriers' lines in the demodulated video |
 | --- | --- | --- | --- |
-| `ggv1069-side1-outer` (NTSC) | 12 and 24 | 0.94, 0.98 | 2171 and 2409 Hz down to 1235 and 1422 (the rest is picture) |
+| `ggv1069-side1-outer` (NTSC) | 12 and 24 | 0.94, 0.98 | 2171 and 2409 Hz down to 1231 and 1427 (the rest is picture) |
+| `ggv1069-side1-middle` (NTSC) | 23 and 14 | 0.98, 0.96 | 3112 and 3503 Hz down to 1779 and 3102 |
 | `domesday-ds2-community-north-outer` (PAL) | 3.2 and 3.2 | 0.11, 0.12 | next to unchanged |
 | `ggv1011-side1-outer` (PAL) | 1.1 and 0.9 | none | unchanged |
-| `ve-monitor` (NTSC) | 1.7 and 0.7 | none | unchanged |
+| `ve-monitor` (NTSC) | 3.8 and 2.7 | 0.38, none | 2212 Hz down to 2052 |
 
-On `ve-monitor` the line the demodulated video holds at 2.30 MHz is the test
-pattern's, not crosstalk: its blocks' gains point every way (the resultant
-of their phases is 0.04 to 0.11), and the unshrunk median applied to it
-raised the line by 3.3 dB. NTSC's first carrier is 146.25 times the line
-frequency, among the picture's own harmonics.
+On `ve-monitor` the line the demodulated video holds at 2.30 MHz is mostly
+the test pattern's, not crosstalk: its blocks' gains point every way (the
+resultant of their phases is 0.04 to 0.11), and the unshrunk median applied
+to it raised the line by 3.3 dB. NTSC's first carrier is 146.25 times the
+line frequency, among the picture's own harmonics.
+
+The conformance lane (the "vits" label) decodes every cut with
+`--no_audio_carrier_cancel` (`VITS_DECODE_FLAGS` in
+`cmake_modules/LdDecodeTests.cmake`), as the decoder ran when its known
+deviations were recorded; the cancellation is tested by its own unit tests.
+On `ve-monitor` the small correction its pattern earns moves the multiburst's 2 MHz
+packet by 0.01 dB, and the video EQ's estimate sits on its 0.3 dB dead-band
+there: the EQ adopts at frame 5 instead of frame 2, and the opening fields
+the lane averages are decoded without it (2T 97.73 to 97.41 IRE, past its
+recorded deviation). With half the correction the EQ adopts at frame 2 and
+the 2T reads 97.76. Other cuts sit on other servos' dead-bands the same way.
+That is how rev 8's calibration and the lane read the
+opening frames: a servo's first move after the calibration warm-up is not
+rate-limited, so it lands a few frames into the output, inside the fields
+the lane averages. Reordering the warm-up so that it decides for the first
+frame was tried and moved thirteen cuts' readings, some far (the 2T of
+`domesday-ds2-community-north-middle` to 79.8 IRE): a change to rev 8's
+calibration and its recorded deviations, not to this one.
 
 The fit's half-sample lag is taken out of the gains: the instantaneous
 frequency is a phase difference over the sample before, so it is the
@@ -500,6 +519,16 @@ leads the crosstalk's by `pi f / fs` per sample of lag (0.18 rad at 2.3 MHz
 and 40 MHz, 0.36 on the decoder's half-rate band), which leaves a fifth to a
 third of the crosstalk behind. The stacked source's `cancel_crosstalk` takes
 it out as well.
+
+The fit reads the frequency as the discriminator does (`unwrap_hilbert`), in
+`[0, fs / step)`. On the half-rate band the Nyquist is 10 MHz, and an NTSC
+white peak reaches it: read in `(-fs / 2 step, fs / 2 step]`, those peaks
+wrapped to -10 MHz, steps of 20 MHz the demodulated picture does not have.
+On `ggv1069-side1-middle` 0.8 % of the samples did, and the fit followed
+them: a coupling of +27 and +44, against -6.5 and -9.5 read right (the other
+GGV1069 cuts measure -4 to -11). Applied, it raised the carriers' lines
+fourfold, and the 2T pulse left its band (102.07 IRE). The stacked source's
+full-rate band has its Nyquist at 20 MHz, clear of the video.
 
 **The V4300D's clock** is the EFM crystal's 96th multiple (192 x 44.1 kHz =
 8.4672 MHz), and the clock lines take it with the crystal's other multiples,
