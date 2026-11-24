@@ -98,10 +98,19 @@ class WorkerBlockLRU:
 
         self.misses += 1
         entry = compute()
+        self.put(key, entry)
+        return entry
+
+    def __contains__(self, key):
+        return key in self._entries
+
+    def put(self, key, entry):
+        """Store entry under key (a value computed outside get, as a batch
+        of blocks on the GPU is)."""
         self._entries[key] = entry
+        self._entries.move_to_end(key)
         while len(self._entries) > self.capacity:
             self._entries.popitem(last=False)
-        return entry
 
     def clear(self):
         self._entries.clear()
@@ -296,6 +305,32 @@ def _worker_demod_block(b, rawinput, mtf_level, imtf_strength, veq):
     )
 
 
+def _worker_device_prefetch(rf, brange, dbs, span_begin, raw_span, mtf_level,
+                            imtf_strength, veq):
+    """Demodulate, as one GPU batch, the blocks of brange that are not in
+    this worker's cache yet, and store them there (keyed as
+    _worker_demod_block keys them).  Returns them by block index: the cache
+    holds fewer blocks than a field's window, so the caller reads the batch
+    itself."""
+    vkey = tuple(veq) if veq else None
+    todo, raws = [], []
+    for b in brange:
+        off = b * dbs - span_begin
+        rawinput = raw_span[off : off + rf.blocklen]
+        if off < 0 or len(rawinput) < rf.blocklen:
+            break
+        key = (b, mtf_level, imtf_strength, vkey)
+        if key not in _worker_block_lru:
+            todo.append(key)
+            raws.append(rawinput)
+    out = {}
+    if raws:
+        for key, demod in zip(todo, rf.demodblocks(raws, mtf_level, cut=True)):
+            _worker_block_lru.put(key, demod)
+            out[key[0]] = demod
+    return out
+
+
 def _demod_worker_block(rawinput, mtf_level, imtf_strength=None, veq=None):
     if imtf_strength is not None:
         _sync_worker_video(imtf_strength, veq)
@@ -367,15 +402,23 @@ def _decode_field_worker(seq, start, raw_span, span_begin, mtf_level,
         # demod_read()'s per-block assembly, verbatim
         t = {"input": [], "video": [], "audio": [], "efm": [], "rfhpf": []}
         brange = range(begin // dbs, ((begin + length) // dbs) + 1)
+        batch = {}
+        if rf.uses_device_demod():
+            # --device opencl: the blocks this worker has not demodulated yet
+            # go to the GPU as one batch.
+            batch = _worker_device_prefetch(rf, brange, dbs, span_begin, raw_span,
+                                            mtf_level, imtf_strength, veq)
         for b in brange:
             off = b * dbs - span_begin
             rawinput = raw_span[off : off + rf.blocklen]
             if off < 0 or len(rawinput) < rf.blocklen:
                 return {"seq": seq, "eof": True}
 
-            demod = _worker_demod_block(
-                b, rawinput, mtf_level, imtf_strength, veq
-            )
+            demod = batch.get(b)
+            if demod is None:
+                demod = _worker_demod_block(
+                    b, rawinput, mtf_level, imtf_strength, veq
+                )
             t["input"].append(rawinput[rf.blockcut : -rf.blockcut_end])
             for k in ("video", "audio", "efm", "rfhpf"):
                 if k in demod:

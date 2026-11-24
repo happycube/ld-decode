@@ -105,8 +105,10 @@ def build_parser():
         dest="device",
         choices=("cpu", "opencl"),
         default="cpu",
-        help="where --tbc_mode read reads and combines the captures: 'cpu' "
-             "(every core, the default) or 'opencl' (a GPU; needs pyopencl)",
+        help="where the decoder demodulates the RF, and where --tbc_mode read "
+             "reads and combines the captures: 'cpu' (every core, the default) "
+             "or 'opencl' (a GPU; needs pyopencl).  The GPU's demodulation "
+             "agrees with the CPU's to 1 Hz, not bit for bit",
     )
     parser.add_argument(
         "--device_precision",
@@ -749,6 +751,11 @@ def build_options(args, core_count=None):
     if not args.no_audio_carrier_cancel and args.tbc_mode != "read":
         extra_options["AudioCarrierCancel"] = True
 
+    # --device opencl demodulates the blocks on the GPU too (demod_opencl),
+    # in either mode, as it reads and combines the stack's captures there.
+    if getattr(args, "device", "cpu") == "opencl":
+        extra_options["DemodDevice"] = "opencl"
+
     if vid_standard == "PAL" and args.AC3:
         print("ERROR: AC3 audio decoding is only supported for NTSC")
         sys.exit(1)
@@ -987,10 +994,6 @@ def main(args=None):
     if tbc_mode == "resample" and len(inputs) > 1:
         print("ERROR: several inputs are stacked with the read-time TBC; "
               "pass --tbc_mode read", file=sys.stderr)
-        sys.exit(1)
-    if args.device != "cpu" and tbc_mode != "read":
-        print("ERROR: --device runs the read-time TBC; it needs --tbc_mode read",
-              file=sys.stderr)
         sys.exit(1)
     if (tbc_mode == "read" and not args.no_crystal_lines
             and (args.V4300D_notch_filter or args.V4300D_coherent_subtract)):

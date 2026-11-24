@@ -164,13 +164,24 @@ the fine wavering vertical stripes of saturated areas). It is cancelled by
 default.
 
 #### `--device cpu|opencl`
-Where the read-time TBC reads and combines the captures.
+Where the decoder demodulates the RF, and where the read-time TBC reads and
+combines the captures.
 - **Default:** `cpu` (every core)
-- **Note:** `opencl` runs the read and the combination on a GPU, as the
-  reference implementation's `--device opencl`. It needs pyopencl
+- **Note:** `opencl` runs them on a GPU, as the reference implementation's
+  `--device opencl`, in either `--tbc_mode`. It needs pyopencl
   (`pip install 'ld-decode[opencl]'`) and an OpenCL driver; the GPU with the
-  most compute units is used, or the one `PYOPENCL_CTX` names. Needs
-  `--tbc_mode read`.
+  most compute units is used, or the one `PYOPENCL_CTX` names. Without them
+  the decode says so and demodulates on the CPU.
+- **Note:** The GPU's demodulation follows the CPU's precision (double for
+  the block's spectrum and the discriminator, single for the video
+  channels), not its arithmetic: the video channels agree to 1 Hz (a few in
+  ten thousand output samples differ by 1 LSB), the RF high-pass, the EFM and
+  the analog audio exactly. The opt-in `--rf_echo_cancel` and
+  `--V4300D_coherent_subtract` stay on the CPU.
+- **Note:** It frees the cores rather than speeding up a decode that already
+  has them all: on one thread the GPU decodes ve-monitor at 7.2 frames/s
+  against 3.8, about what the CPU reaches on 32 threads, where both stop at
+  8.1 (the writing of the fields is then the limit).
 
 #### `--device_precision single|double`
 The precision of `--device opencl`.
@@ -182,6 +193,7 @@ The precision of `--device opencl`.
 
 **Example:**
 ```bash
+ld-decode --device opencl input.ldf output
 ld-decode --tbc_mode read --device opencl -i a.s16 -i b.s16 -o output
 ```
 

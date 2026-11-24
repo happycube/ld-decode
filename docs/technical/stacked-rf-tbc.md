@@ -708,6 +708,40 @@ driver; the GPU with the most compute units is taken, or the one
 and the development shell, where nixpkgs builds it; outside NixOS, point its
 driver loader at the system's drivers with `OCL_ICD_VENDORS=/etc/OpenCL/vendors`.
 
+### The demodulator on the GPU
+
+`--device opencl` also runs the decoder's block demodulation on the device,
+in either mode (`lddecode/demod_opencl.py`), as the reference's `--gpu-fast`
+runs its 7.4 decoder's: rev 8's `demodblock`, a batch of blocks at a time.
+On the device: the block's FFT, the RF high-pass and EFM products and their
+inverses, the video band (RF video filter, PAL carrier notch, MTF), its
+inverse at half rate, the audio carriers' crosstalk computed as the host's
+`crosstalk_phase` computes it (the mix, the three boxcars clipped to the
+block, the interpolation), the band's turn by it, the discriminator, and the
+video channels' filters. On the host: the PAL carriers' presence and the
+analog audio's first stage, read off the block's spectrum by `demodblock`'s
+own code (`RFDecode.audio_stage1`). The FFTs are radix-8/4/2 Stockham
+transforms with twiddles tabulated in double precision, and the precision
+is the host's: double up to the discriminator, single for the video
+channels, after it has been centred on blanking.
+
+The decoder hands the device whole windows (`RFDecode.demodblocks`): the
+read of a field's window in the main process, and in each worker process
+the blocks of its field job not yet in its cache. The CPU stays the
+reference and the fallback: the opt-in RF echo cancellation, the V4300D
+coherent subtraction and the crosstalk's measurement run there, and a
+device that cannot be opened or fails sends the blocks back to it, once,
+with a warning.
+
+Against the CPU, on 64 blocks of `ggv1069-side1-outer` (NTSC, both carriers
+corrected) and `ggv1011-side1-middle` (PAL): the video channels within 1 Hz
+(a float32 ulp at the carrier's frequency), `demod_raw` the same, the RF
+high-pass, the EFM and the analog audio the same; 0.66-0.76 ms a block on an
+RTX 5080 Laptop GPU against 4 ms on one core. A whole decode differs in
+0.01-0.02 % of its output samples, by 1 LSB. On one thread ve-monitor decodes
+at 7.2 frames/s against 3.8; on every core both reach 8.1, where the main
+process, which validates and writes the fields, is the limit.
+
 ## On the real captures, after the changes above
 
 The eighteen captures of the reference stack (NTSC, 75 MHz, 10 s each, 13.8 G

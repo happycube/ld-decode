@@ -9,10 +9,12 @@ demodulates blocks of raw RF into video, analogue audio and EFM signals.
 Used by decoder.LDdecode, field.Field and the parallel field workers.
 """
 
+import collections
 import copy
 import os
 import threading
 import types
+import weakref
 
 import numpy as np
 import scipy.fft as npfft
@@ -106,6 +108,41 @@ class _BlockScratch:
         self.centred = np.empty(demodlen, dtype=np.float32)
         # The video output stack: one filtered spectrum per channel.
         self.video_stack = np.empty((channels, ndemod), dtype=np.complex64)
+
+
+#: The OpenCL demodulator of each RFDecode with --device opencl, opened on
+#: first use (demodblocks); kept out of the object so that a copy or a
+#: pickle of it carries no device context.
+_DEVICE_DEMODS = weakref.WeakKeyDictionary()
+_DEVICE_LOCKS = collections.defaultdict(threading.Lock)
+_DEVICE_FAILED = set()
+
+
+def _device_demod(rf):
+    """rf's DemodOpenCL, opened on first call; None when it cannot be."""
+    if id(rf) in _DEVICE_FAILED:
+        return None
+    dev = _DEVICE_DEMODS.get(rf)
+    if dev is None:
+        try:
+            from .demod_opencl import DemodOpenCL
+            dev = DemodOpenCL(rf)
+        except Exception as error:
+            _device_failed(rf, error)
+            return None
+        _DEVICE_DEMODS[rf] = dev
+    return dev
+
+
+def _device_failed(rf, error):
+    """Give up the device for rf: its blocks go to the host from now on."""
+    import logging
+    if id(rf) not in _DEVICE_FAILED:
+        logging.getLogger("lddecode").warning(
+            "--device opencl: the GPU demodulator is not available (%s); "
+            "demodulating on the CPU", error)
+    _DEVICE_FAILED.add(id(rf))
+    _DEVICE_DEMODS.pop(rf, None)
 
 
 class RFDecode:
@@ -229,6 +266,9 @@ class RFDecode:
         self.NTSC_ColorNotchFilter = extra_options.get("NTSC_ColorNotchFilter", False)
         self.PAL_V4300D_CoherentSubtract = extra_options.get("PAL_V4300D_CoherentSubtract", False)
         self.AudioCarrierCancel = extra_options.get("AudioCarrierCancel", False)
+        # --device opencl: demodblocks runs the blocks on the GPU
+        # (demod_opencl), opened on first use in each process.
+        self.demod_device = extra_options.get("DemodDevice", "cpu")
         # Cancel the capture/player multi-path reflection ("ghost").  Opt-in via
         # --rf_echo_cancel (auto-detect from the RF cepstrum, re-estimated across
         # the disc) or --rf_echo (manual taps); applies the correction only when
@@ -2288,35 +2328,64 @@ class RFDecode:
         # NOTE: AC3 RF is demodulated from the raw input samples at write time
         # (see LDdecode.AC3demodulate), not from the demod outputs here.
         if self.decode_analog_audio:
-            stage1_out = []
-            for channel in ['left', 'right']:
-                afilter = self.audio[channel]
-
-                # Apply first stage audio filter
-                a1 = npfft.ifft(afilter.slicer(indata_fft) * afilter.filt1)
-                # Demodulate and restore frequency after bin slicing
-                a1u = unwrap_hilbert(a1, afilter.a1_freq) + afilter.low_freq
-
-                stage1_out.append(a1u)
-
-            # Cast on assignment, as the video channels above do.
-            audio_out = np.recarray(
-                stage1_out[0].shape[0],
-                dtype=[("audio_left", np.float32), ("audio_right", np.float32)],
-            )
-            audio_out["audio_left"] = stage1_out[0]
-            audio_out["audio_right"] = stage1_out[1]
-
-            fdiv = video_out.shape[0] // audio_out.shape[0]
-            rv["audio"] = (
-                audio_out[self.blockcut // fdiv : -self.blockcut_end // fdiv]
-                if cut
-                else audio_out
-            )
+            rv["audio"] = self.audio_stage1(indata_fft, video_out.shape[0], cut)
 
         rv['setupcount'] = self.setupcount
 
         return rv
+
+    def uses_device_demod(self):
+        """Whether demodblocks runs on an OpenCL device (--device opencl,
+        and the device opened)."""
+        return self.demod_device == "opencl" and _device_demod(self) is not None
+
+    def demodblocks(self, blocks, mtf_level=0, cut=True):
+        """``[self.demodblock(data=b, mtf_level=mtf_level, cut=cut) for b in
+        blocks]``: on the OpenCL device, a batch at a time, with
+        --device opencl and a configuration it covers; otherwise, or should
+        the device fail, on the host."""
+        if self.demod_device == "opencl":
+            dev = _device_demod(self)
+            if dev is not None and dev.supported():
+                try:
+                    with _DEVICE_LOCKS[id(self)]:
+                        return dev.demod(list(blocks), mtf_level, cut)
+                except Exception as error:   # the device fell over: the host
+                    _device_failed(self, error)
+        return [self.demodblock(data=b, mtf_level=mtf_level, cut=cut)
+                for b in blocks]
+
+    def audio_stage1(self, indata_fft, video_len, cut):
+        """The analog audio's first stage of a block, from the positive half
+        of its spectrum: each carrier's bins sliced out, filtered,
+        demodulated and moved back to its frequency.  ``video_len`` is the
+        block's video length before the cut (the audio is decimated from
+        it).  The device demodulator (demod_opencl) calls it too."""
+        stage1_out = []
+        for channel in ['left', 'right']:
+            afilter = self.audio[channel]
+
+            # Apply first stage audio filter
+            a1 = npfft.ifft(afilter.slicer(indata_fft) * afilter.filt1)
+            # Demodulate and restore frequency after bin slicing
+            a1u = unwrap_hilbert(a1, afilter.a1_freq) + afilter.low_freq
+
+            stage1_out.append(a1u)
+
+        # Cast on assignment, as the video channels are.
+        audio_out = np.recarray(
+            stage1_out[0].shape[0],
+            dtype=[("audio_left", np.float32), ("audio_right", np.float32)],
+        )
+        audio_out["audio_left"] = stage1_out[0]
+        audio_out["audio_right"] = stage1_out[1]
+
+        fdiv = video_len // audio_out.shape[0]
+        return (
+            audio_out[self.blockcut // fdiv : -self.blockcut_end // fdiv]
+            if cut
+            else audio_out
+        )
 
     # Second phase audio filtering.  This works on a whole field's samples, since
     # the frequency has already been reduced.

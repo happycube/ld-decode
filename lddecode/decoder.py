@@ -61,6 +61,24 @@ def applied_eq_db(applied_eq, freq_hz):
     return float(video_eq_db(applied_eq, freq_hz, top))
 
 
+def _device_demod_in_use(rf):
+    """Whether rf demodulates on the GPU (--device opencl); False for an rf
+    without that path (the tests' stand-ins)."""
+    uses = getattr(rf, "uses_device_demod", None)
+    return bool(uses()) if uses is not None else False
+
+
+def _demod_raw_blocks(decoder, raws, mtf_level):
+    """Demodulate a window's raw blocks: one by one on the host
+    (decoder._demod_raw_block), or as one batch on the GPU with
+    --device opencl (RFDecode.demodblocks)."""
+    if not raws:
+        return []
+    if _device_demod_in_use(decoder.rf):
+        return decoder.rf.demodblocks(raws, mtf_level, cut=True)
+    return [decoder._demod_raw_block(r, mtf_level) for r in raws]
+
+
 def pool_reading(pool, entry, keep):
     """A servo's sample pool with entry added, keyed by its field's readloc.
 
@@ -3079,10 +3097,13 @@ class LDdecode:
         blocksize = self.demod_blocksize
         brange = range(begin // blocksize, ((begin + length) // blocksize) + 1)
 
+        device = _device_demod_in_use(self.rf)
         if (self.block_cache is not None and self.pipeline_warm
-                and self._job_engine is None):
+                and self._job_engine is None and not device):
             # Blocks come from the prefetching thread pool; identical values
-            # to the inline path (same per-block computation).
+            # to the inline path (same per-block computation).  With
+            # --device opencl the window goes to the GPU as one batch
+            # instead, below.
             blockdata = self.block_cache.get_span(
                 brange, MTF,
                 self.rf.DecoderParams.get("inverse_mtf_strength", 0.0),
@@ -3101,21 +3122,20 @@ class LDdecode:
             if span is None or len(span) < span_len:
                 blockdata = None
             else:
-                blockdata = []
-                for b in brange:
-                    off = (b - brange.start) * blocksize
-                    rawinput = span[off : off + self.rf.blocklen]
-                    blockdata.append(
-                        (rawinput, self._demod_raw_block(rawinput, MTF))
-                    )
+                raws = [span[(b - brange.start) * blocksize:
+                             (b - brange.start) * blocksize + self.rf.blocklen]
+                        for b in brange]
+                blockdata = list(zip(raws, _demod_raw_blocks(self, raws, MTF)))
         else:
-            blockdata = []
+            raws = []
             for b in brange:
                 rawinput = self._read_raw_block(b)
                 if rawinput is None:
-                    blockdata = None
+                    raws = None
                     break
-                blockdata.append((rawinput, self._demod_raw_block(rawinput, MTF)))
+                raws.append(rawinput)
+            blockdata = (None if raws is None
+                         else list(zip(raws, _demod_raw_blocks(self, raws, MTF))))
 
         truncated = False
         if blockdata is None:
@@ -3157,7 +3177,7 @@ class LDdecode:
         vertical sync it needs, are all in the file.  Every path reads
         the tail here, block by block, so a serial and a threaded decode
         see the same window."""
-        blockdata = []
+        raws = []
         for b in brange:
             if self.block_cache is not None:
                 with self.block_cache.read_lock:
@@ -3166,7 +3186,8 @@ class LDdecode:
                 rawinput = self._read_raw_block(b)
             if rawinput is None:
                 break
-            blockdata.append((rawinput, self._demod_raw_block(rawinput, MTF)))
+            raws.append(rawinput)
+        blockdata = list(zip(raws, _demod_raw_blocks(self, raws, MTF)))
 
         if len(blockdata) * self.demod_blocksize < self.rf.linelen * self.output_lines:
             return None

@@ -328,12 +328,6 @@ def test_a_capture_without_a_sidecar_is_taken_at_40_mhz(monkeypatch):
     assert fileio.capture_sample_rate("capture.s16", 28.636) == pytest.approx(28.636e6)
 
 
-def test_the_device_needs_the_read_time_tbc():
-    """--device runs the read-time TBC: with the reference's way it is refused."""
-    with pytest.raises(SystemExit):
-        main.main(["capture.s16", "out", "--device", "opencl"])
-
-
 def test_the_device_defaults_to_the_cpu_and_the_gpu_to_single_precision():
     args = _parse("capture.rf", "out")
     assert (args.device, args.device_precision) == ("cpu", "single")

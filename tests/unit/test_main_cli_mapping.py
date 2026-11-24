@@ -345,6 +345,14 @@ def test_the_crosstalk_is_cancelled_by_default_in_ntsc_and_pal():
     assert extra("-p")["AudioCarrierCancel"] is True
 
 
+def test_the_device_demodulates_in_either_mode():
+    """--device opencl runs the decoder's demodulation on the GPU, with the
+    resample TBC as with the read-time one; the CPU is the default."""
+    assert "DemodDevice" not in extra()
+    assert extra("--device", "opencl")["DemodDevice"] == "opencl"
+    assert extra("--device", "opencl", "--tbc_mode", "read")["DemodDevice"] == "opencl"
+
+
 def test_the_former_opt_in_is_gone():
     """Rev 8's --audio_carrier_cancel is the default now: the option is
     removed, so no one takes it for a switch that still does something."""
