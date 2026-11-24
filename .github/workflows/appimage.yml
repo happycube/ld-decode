@@ -87,7 +87,10 @@ jobs:
           # because it is packaged as lddecode/version
           python3 scripts/generate_version.py > lddecode/version
           VERSION="$(cat lddecode/version)"
-          echo "VERSION=${VERSION//:/-}" >> "${GITHUB_ENV}"
+          # A branch name can carry a slash (feat/x): it would make the
+          # AppImage's file name a path.
+          SAFE_VERSION="${VERSION//:/-}"
+          echo "VERSION=${SAFE_VERSION//\//-}" >> "${GITHUB_ENV}"
           echo "Building version: ${VERSION}"
 
           AppDir/usr/bin/python3.12 -m pip install \

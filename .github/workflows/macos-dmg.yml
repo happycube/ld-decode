@@ -238,6 +238,9 @@ jobs:
         run: |
           VERSION="${{ env.VERSION }}"
           SAFE_VERSION=${VERSION//:/-}
+          # A branch name can carry a slash (feat/x): it would make the
+          # DMG's file name a path.
+          SAFE_VERSION=${SAFE_VERSION//\//-}
           
           APP_NAME="LD-Decode.app"
           APP_DIR="build/${APP_NAME}"
