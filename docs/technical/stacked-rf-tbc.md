@@ -494,7 +494,8 @@ resultant of their phases is 0.04 to 0.11), and the unshrunk median applied
 to it raised the line by 3.3 dB. NTSC's first carrier is 146.25 times the
 line frequency, among the picture's own harmonics.
 
-The conformance lane (the "vits" label) decodes every cut with
+Every decode a VITS conformance test reads (the "vits" label's cuts and
+captures, and the functional lane's `ntsc-cvbs` and `pal-cvbs`) runs with
 `--no_audio_carrier_cancel` (`VITS_DECODE_FLAGS` in
 `cmake_modules/LdDecodeTests.cmake`), as the decoder ran when its known
 deviations were recorded; the cancellation is tested by its own unit tests.
