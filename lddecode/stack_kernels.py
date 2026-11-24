@@ -430,6 +430,55 @@ def narrow_band_kernel(out, w, dec, boxl, box_span, first):
             first[k] = (sums[hi - lo0] - sums[lo - lo0]) / boxl
 
 
+@njit(cache=True, nogil=True, parallel=True)
+def narrow_band_table_kernel(out, mix, dec, boxl, box_span, first):
+    """``narrow_band_kernel`` with the mixing phasor read from ``mix``
+    (``mix[t] = exp(j w t)``, one per sample of ``out``), for a caller that
+    mixes block after block of the same length: the decoder's resample path
+    (``stack_corrections.crosstalk_phase``)."""
+    n = out.shape[0]
+    nd = first.shape[0]
+    nspans = (nd + box_span - 1) // box_span
+    for sp in prange(nspans):
+        k0 = sp * box_span
+        k1 = min(k0 + box_span, nd)
+        lo0 = max(0, k0 * dec - boxl // 2)
+        hi1 = min(max(0, (k1 - 1) * dec - boxl // 2) + boxl, n)
+        if hi1 <= lo0:
+            for k in range(k0, k1):
+                first[k] = 0j
+            continue
+        sums = np.empty(hi1 - lo0 + 1, dtype=np.complex128)
+        sums[0] = 0j
+        for t in range(lo0, hi1):
+            sums[t - lo0 + 1] = sums[t - lo0] + out[t] * mix[t]
+        for k in range(k0, k1):
+            lo = max(0, k * dec - boxl // 2)
+            hi = min(lo + boxl, n)
+            first[k] = (sums[hi - lo0] - sums[lo - lo0]) / boxl
+
+
+@njit(cache=True, nogil=True, parallel=True)
+def crosstalk_phase_kernel(narrow, unmix, coef, dec, step, theta):
+    """Add one carrier's share of the crosstalk phase to ``theta`` (in
+    place): at decoder sample ``i`` (RF sample ``i * step``),
+    ``Re(coef * narrow(i * step) * unmix[i])``, ``unmix[i]`` being
+    ``exp(-j w i step)`` and ``coef`` the carrier's gain over ``j f``, with
+    the analytic signal's factor two in it."""
+    for i in prange(theta.shape[0]):
+        theta[i] += (coef * _narrow_at(narrow, dec, i * step) * unmix[i]).real
+
+
+@njit(cache=True, nogil=True, parallel=True)
+def turn_band_kernel(band, theta, out):
+    """``out = band * exp(-j theta)``, sample by sample."""
+    for i in prange(band.shape[0]):
+        c = np.cos(theta[i])
+        s = np.sin(theta[i])
+        v = band[i]
+        out[i] = complex(v.real * c + v.imag * s, v.imag * c - v.real * s)
+
+
 @njit(cache=True, nogil=True, inline="always")
 def _narrow_at(narrow, dec, t):
     """The narrow band at sample ``t``, linear between the kept samples."""

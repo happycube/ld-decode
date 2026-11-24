@@ -29,6 +29,7 @@ of the ld-decode-rust project (branch `vrunk11_main`).
 
 from __future__ import annotations
 
+import functools
 import math
 from collections import OrderedDict
 from typing import Callable, Optional, Sequence
@@ -38,9 +39,12 @@ import scipy.fft
 
 from .stack_kernels import (
     crosstalk_correction_kernel,
+    crosstalk_phase_kernel,
     line_phasors_kernel,
     narrow_band_kernel,
+    narrow_band_table_kernel,
     subtract_lines_kernel,
+    turn_band_kernel,
 )
 
 __all__ = [
@@ -48,6 +52,7 @@ __all__ = [
     "crosstalk_block_gains",
     "crosstalk_coupling",
     "crosstalk_phase",
+    "turn_band",
     "cancel_chroma_leak",
     "CrystalLines",
     "AUDIO_CARRIERS_HZ",
@@ -497,6 +502,19 @@ def crosstalk_coupling(block_gains: Sequence[np.ndarray]) -> Optional[np.ndarray
     return med * np.clip(keep, 0.0, 1.0)
 
 
+@functools.lru_cache(maxsize=16)
+def _phasor_table(n: int, w: float, stride: int) -> np.ndarray:
+    """``exp(j w stride t)`` for ``t`` in ``0 .. n-1``, read-only.
+
+    The decoder mixes block after block of the same length with the same
+    carriers, and these phasors depend only on the position in the block:
+    computed once, they were most of what the cancellation cost per block.
+    """
+    table = np.exp(1j * w * (np.arange(n, dtype=np.float64) * stride))
+    table.setflags(write=False)
+    return table
+
+
 def crosstalk_phase(
     rf: np.ndarray,
     m: int,
@@ -510,14 +528,60 @@ def crosstalk_phase(
 
     The decoder's resample path demodulates its own analytic video band, so
     rather than correcting the RF and filtering it again, it turns that band
-    back by the phase returned here, `band * exp(-1j * theta)`, before its
-    discriminator: `cancel_crosstalk`'s correction, applied where the band
-    is.  Only the carriers' own waveform comes from the block: nothing the
-    picture does there moves the correction.
+    back by the phase returned here, `band * exp(-1j * theta)` (`turn_band`),
+    before its discriminator: `cancel_crosstalk`'s correction, applied where
+    the band is.  Only the carriers' own waveform comes from the block:
+    nothing the picture does there moves the correction.
+
+    A carrier whose gain is zero adds nothing and is not computed.  The
+    mixing phasors come from tables kept per block length
+    (`_phasor_table`), and the rest runs in compiled kernels; the result
+    is `_crosstalk_phase_reference`'s to the last few bits.
 
     Returns theta (radians, float64) at the RF samples `0, step, ...`, `m`
     of them.
     """
+    n = rf.shape[0]
+    theta = np.zeros(m, dtype=np.float64)
+    dec = XTALK_DEC
+    boxl = max(int(round(XTALK_BOX_S * fs)), 1)
+    box_d = max(int(round(boxl / dec)), 1)
+    rf64 = None
+    for c, f in enumerate(carriers):
+        g = complex(gains[c])
+        if g == 0:
+            continue
+        if rf64 is None:
+            rf64 = np.ascontiguousarray(rf, dtype=np.float64)
+        w = -TAU * f / fs
+        first = np.empty(-(-n // dec), dtype=np.complex128)
+        narrow_band_table_kernel(rf64, _phasor_table(n, w, 1), dec, boxl,
+                                 XTALK_BOX_SPAN, first)
+        narrow = _boxcar(_boxcar(first, box_d), box_d)
+        crosstalk_phase_kernel(narrow, _phasor_table(m, -w, step),
+                               2.0 * g / (1j * f), dec, step, theta)
+    return theta
+
+
+def turn_band(band: np.ndarray, theta: np.ndarray) -> np.ndarray:
+    """`band * exp(-1j * theta)`, as a new complex128 array."""
+    out = np.empty(band.shape[0], dtype=np.complex128)
+    turn_band_kernel(np.ascontiguousarray(band, dtype=np.complex128),
+                     np.ascontiguousarray(theta, dtype=np.float64), out)
+    return out
+
+
+def _crosstalk_phase_reference(
+    rf: np.ndarray,
+    m: int,
+    step: int,
+    fs: float,
+    carriers: Sequence[float],
+    gains: Sequence[complex],
+) -> np.ndarray:
+    """`crosstalk_phase`, computed as it reads, with numpy: the vectorised
+    reference the cached tables and the compiled kernels are checked
+    against."""
     narrow, ws = _crosstalk_narrow(rf, fs, carriers)
     t = np.arange(m) * step
     theta = np.zeros(m, dtype=np.float64)

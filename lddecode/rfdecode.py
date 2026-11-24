@@ -1985,11 +1985,15 @@ class RFDecode:
         While measure_crosstalk runs, the block's own fit is collected
         instead, and the band is left alone.
         """
-        from .stack_corrections import crosstalk_block_gains, crosstalk_phase
+        from .stack_corrections import (
+            crosstalk_block_gains, crosstalk_phase, turn_band)
 
         collect = getattr(self, "_xtalk_collect", None)
         gains = self.DecoderParams.get("audio_xtalk_gains")
-        if collect is None and gains is None:
+        if collect is None and (
+                gains is None or not any(re or im for re, im in gains)):
+            # Nothing measured yet, or a coupling shrunk away on both
+            # carriers: the band is left exactly as it is.
             return hilbert
         SP = self.SysParams
         bl = self.blocklen
@@ -2007,7 +2011,7 @@ class RFDecode:
         theta = crosstalk_phase(
             rf, hilbert.shape[0], step, self.freq_hz, carriers,
             [complex(re, im) for re, im in gains])
-        return hilbert * np.exp(-1j * theta)
+        return turn_band(hilbert, theta)
 
     def measure_crosstalk(self, blocks):
         """Measure the audio carriers' coupling over `blocks` (raw RF

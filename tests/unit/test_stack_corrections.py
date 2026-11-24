@@ -151,6 +151,31 @@ def test_a_picture_past_the_half_rate_bands_nyquist_does_not_move_the_coupling()
     assert np.std(phase[kept] - true[kept]) < 0.05 * np.std(true[kept])
 
 
+@pytest.mark.parametrize("step", [1, 2])
+@pytest.mark.parametrize("gains", [(3.0 - 2.0j, -1.5 + 4.0j), (0.0, -6.0 + 1.0j)])
+def test_the_compiled_crosstalk_phase_is_the_reference(step, gains):
+    """crosstalk_phase (cached phasor tables, compiled kernels, a carrier of
+    zero gain skipped) gives the vectorised reference's phase, and turn_band
+    the band numpy turns."""
+    rng = np.random.default_rng(7)
+    rf, _, video_band = _crosstalk_chunk(0.02)
+    rf = rf + 0.1 * rng.normal(size=rf.shape[0])
+    band = video_band[::step]
+    m = band.shape[0]
+    for _ in range(2):    # the second call reads the cached tables
+        theta = stack_corrections.crosstalk_phase(rf, m, step, FS, CARRIERS, gains)
+    ref = stack_corrections._crosstalk_phase_reference(rf, m, step, FS, CARRIERS, gains)
+    assert np.max(np.abs(theta - ref)) <= 1e-12 * np.max(np.abs(ref))
+    turned = stack_corrections.turn_band(band, theta)
+    np.testing.assert_allclose(turned, band * np.exp(-1j * theta), rtol=0, atol=1e-14)
+
+
+def test_no_coupling_leaves_no_phase():
+    rf, _, _ = _crosstalk_chunk(0.02)
+    theta = stack_corrections.crosstalk_phase(rf, N // 2, 2, FS, CARRIERS, (0.0, 0.0))
+    assert not np.any(theta)
+
+
 def test_a_clean_block_measures_no_coupling():
     def gains(gamma):
         rf, clean, video_band = _crosstalk_chunk(gamma)
