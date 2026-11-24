@@ -44,7 +44,7 @@ from .metrics import (
     staircase_linearity,
 )
 from .dsp import (FieldInfo, concatenate_blocks, nb_abs, readout_cutoff_from_tilt,
-                  roundfloat, video_eq_db)
+                  readout_otf, roundfloat, video_eq_db)
 
 
 def applied_eq_db(applied_eq, freq_hz):
@@ -2429,10 +2429,16 @@ class LDdecode:
         cutoff = readout_cutoff_from_tilt(
             ratio, f_lo, f_hi, DP["readout_rim_intensity"])
         if cutoff is None:
-            # No tilt (or none to measure) is a cutoff far above the band;
-            # a tilt steeper than any cutoff above f_hi gives is the
-            # deepest compensation the bound allows.
-            return self.READOUT_LEVEL_MAX if ratio > 1.0 else 0.0
+            # No tilt (or none to measure), or less than a cutoff fifty
+            # times f_hi gives, is a cutoff far above the band; only a
+            # tilt steeper than any cutoff just above f_hi gives is the
+            # deepest compensation the bound allows.  (Reading the first
+            # case as the second took a PAL carrier tilt of 1.001 to a
+            # 7.3 MHz cutoff, under which no sync was found again.)
+            rim = DP["readout_rim_intensity"]
+            limit = readout_otf(f_lo, f_hi * 1.0001, rim) / max(
+                readout_otf(f_hi, f_hi * 1.0001, rim), 1e-12)
+            return self.READOUT_LEVEL_MAX if ratio > limit else 0.0
         return float(np.clip(DP["readout_ref_cutoff_hz"] / cutoff,
                              0.0, self.READOUT_LEVEL_MAX))
 
