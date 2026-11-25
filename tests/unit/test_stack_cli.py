@@ -78,11 +78,13 @@ def test_stdin_still_decodes_the_reference_way():
     assert inputs == ["-"]
 
 
-def test_stdin_is_refused_by_the_read_time_path():
-    """The read-time TBC reads its input at random positions, which stdin
-    cannot do."""
-    with pytest.raises(ValueError, match="stdin"):
-        build_stacked_source(["-"], _args(), "NTSC")
+def test_stdin_is_buffered_for_a_decode_that_reads_at_positions(monkeypatch):
+    """The read-time TBC and the cleaning read their input at positions,
+    which stdin cannot be read at: it is buffered to a file first, not
+    refused, and the decode reads that."""
+    monkeypatch.setattr(main, "spool_stdin", lambda: "spooled.s16")
+    assert main.spool_stdin_input(["-"]) == ["spooled.s16"]
+    assert main.spool_stdin_input(["a.s16", "b.s16"]) == ["a.s16", "b.s16"]
 
 
 def test_time_base_mode_defaults_to_resample():
@@ -182,13 +184,12 @@ def _args(**kwargs):
     return types.SimpleNamespace(**base)
 
 
-def test_a_compressed_capture_is_refused_by_the_read_time_path():
-    """A packed or compressed capture cannot be read at arbitrary positions.
-
-    The check is on the name alone, so no file is opened here.
-    """
-    with pytest.raises(ValueError, match="fixed-width"):
-        build_stacked_source(["capture.ldf"], _args(), "NTSC")
+def test_a_format_that_cannot_be_read_at_positions_is_refused():
+    """Raw, packed (.lds, .r30) and compressed (.ldf, .flac) captures are all
+    read at positions; another format is refused, by its name, before any
+    file is opened."""
+    with pytest.raises(ValueError, match="packed"):
+        build_stacked_source(["capture.mkv"], _args(), "NTSC")
 
 
 # --- the rate the decoder is told about --------------------------------
@@ -233,6 +234,7 @@ def _run_main(monkeypatch, argv, rate_hz):
     monkeypatch.setattr(main, "LDdecode", _Decoder)
     monkeypatch.setattr(main, "init_logging", lambda name: logging.getLogger("lddecode-test"))
     monkeypatch.setattr(main, "make_loader", lambda *args, **kwargs: None)
+    monkeypatch.setattr(main, "build_cleaned_loader", lambda *args, **kwargs: _FakeSource())
     monkeypatch.setattr(
         main, "build_stacked_source", lambda *args, **kwargs: (_FakeSource(), rate_hz)
     )
@@ -258,16 +260,20 @@ def test_the_decoder_demodulates_the_virtual_stream_at_its_own_rate(monkeypatch)
     assert kwargs["inputfreq"] == 75.0
 
 
-def test_the_reference_path_demodulates_at_40_mhz(monkeypatch):
-    """The reference's way resamples the RF to 40 MHz, and the decoder is
-    told 40 MHz."""
-    kwargs = _run_main(
-        monkeypatch,
-        ["capture.rf", "out", "-f", "75", "--tbc-mode", "resample"],
-        75e6,
-    )
-
-    assert kwargs["inputfreq"] == 40
+def test_the_resample_path_demodulates_at_the_captures_own_rate(monkeypatch):
+    """The resample path reads the RF at the capture's own rate too, cleaned
+    or not: nothing is resampled to 40 MHz, and the decoder is told the
+    capture's rate, whatever the options."""
+    for extra in ((), ("--no_audio_carrier_cancel", "--no_crystal_lines",
+                       "--no_chroma_leak")):
+        kwargs = _run_main(
+            monkeypatch,
+            ["capture.rf", "out", "-f", "75", "--tbc-mode", "resample", *extra],
+            75e6,
+        )
+        assert kwargs["inputfreq"] == 75.0
+    kwargs = _run_main(monkeypatch, ["capture.rf", "out"], 40e6)
+    assert kwargs["inputfreq"] == 40.0
 
 
 def test_a_stack_without_the_read_time_tbc_is_refused():
@@ -291,9 +297,49 @@ def test_the_default_decode_never_builds_the_stacked_source(monkeypatch):
     monkeypatch.setattr(main, "LDdecode", _FakeDecoder)
     monkeypatch.setattr(main, "init_logging", lambda name: logging.getLogger("lddecode-test"))
     monkeypatch.setattr(main, "make_loader", lambda *args, **kwargs: None)
+    monkeypatch.setattr(main, "build_cleaned_loader", lambda *args, **kwargs: None)
     monkeypatch.setattr(main, "build_stacked_source", no_stack)
     main.main(["capture.s16", "out", "--write-test-ldf", "bug.ldf"])
     assert not built_source
+
+
+def _loaders(monkeypatch, argv):
+    """Which loader main() builds for argv: 'cleaned' or 'plain'."""
+    used = []
+    monkeypatch.setattr(main, "LDdecode", _FakeDecoder)
+    monkeypatch.setattr(main, "init_logging", lambda name: logging.getLogger("lddecode-test"))
+    monkeypatch.setattr(main, "make_loader", lambda *a, **k: used.append("plain"))
+    monkeypatch.setattr(main, "build_cleaned_loader", lambda *a, **k: used.append("cleaned"))
+    main.main(argv)
+    return used
+
+
+def test_resample_cleans_the_rf_unless_all_three_are_left_in(monkeypatch):
+    """--tbc_mode resample takes the crosstalk, the clock lines and the
+    chroma leak out of the RF, as read does; with all three left in it reads
+    the capture as the reference decoder does."""
+    assert _loaders(monkeypatch, ["capture.s16", "out"]) == ["cleaned"]
+    assert _loaders(monkeypatch, ["capture.s16", "out", "--no_crystal_lines"]) == ["cleaned"]
+    assert _loaders(monkeypatch, [
+        "capture.s16", "out", "--no_audio_carrier_cancel", "--no_crystal_lines",
+        "--no_chroma_leak"]) == ["plain"]
+    # PAL has no chroma leak to cancel.
+    assert _loaders(monkeypatch, [
+        "capture.s16", "out", "-p", "--no_audio_carrier_cancel",
+        "--no_crystal_lines"]) == ["plain"]
+
+
+def test_a_cleaning_that_cannot_run_is_an_error(monkeypatch):
+    """No fallback: a resample whose cleaning fails stops, and says how to
+    decode the RF as it is."""
+    def fail(*args, **kwargs):
+        raise ValueError("no such capture")
+
+    monkeypatch.setattr(main, "LDdecode", _FakeDecoder)
+    monkeypatch.setattr(main, "init_logging", lambda name: logging.getLogger("lddecode-test"))
+    monkeypatch.setattr(main, "build_cleaned_loader", fail)
+    with pytest.raises(SystemExit):
+        main.main(["capture.s16", "out"])
 
 
 def test_write_test_ldf_with_an_explicit_read_is_refused(monkeypatch):

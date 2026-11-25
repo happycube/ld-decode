@@ -8,8 +8,10 @@ import traceback
 import numpy as np
 
 from lddecode.decoder import LDdecode
-from lddecode.fileio import (RawCapture, capture_sample_rate, ldf_pipe, make_loader,
-                             open_raw_reader, parse_frequency, raw_layout, samples_to_s16)
+from lddecode.fileio import (DEFAULT_CAPTURE_RATE_HZ, capture_dtype,
+                             capture_sample_rate, ldf_pipe, make_loader, open_capture,
+                             open_capture_reader, parse_frequency, raw_layout,
+                             samples_to_s16, spool_stdin)
 from lddecode.utils_logging import init_logging
 
 # FLAC decode threads for a compressed input when the decode itself is
@@ -90,7 +92,7 @@ def build_parser():
         help="leave the clock lines in the RF: the EFM decoder crystal's "
              "multiples (the LD-V4300D's clock and its satellites among "
              "them), the 4fsc video clock, the capture board's clocks "
-             "(--tbc_mode read subtracts them by default)",
+             "(subtracted by default, in either --tbc_mode)",
     )
     parser.add_argument(
         "--no_chroma_leak",
@@ -98,7 +100,7 @@ def build_parser():
         dest="no_chroma_leak",
         action="store_true",
         help="leave the chroma that leaks into the RF baseband (NTSC; "
-             "--tbc_mode read cancels it by default)",
+             "cancelled by default, in either --tbc_mode)",
     )
     parser.add_argument(
         "--device",
@@ -443,11 +445,11 @@ def build_parser():
         default=False,
         help="Mitigate interference from analog audio in reds in NTSC captures",
     )
-    # The LD-V4300D's clock: with --tbc_mode read the clock lines take it
-    # out by default, its satellites included, on NTSC as well as PAL, so
-    # these are left out of the help; they still act with --tbc_mode
-    # resample (PAL), and with read they warn and leave it to the clock
-    # lines (see build_options).
+    # The LD-V4300D's clock: the clock lines take it out by default, in
+    # either --tbc_mode, its satellites included, on NTSC as well as PAL, so
+    # these are left out of the help; they act with --no_crystal_lines
+    # (PAL), and otherwise warn and leave it to the clock lines (see
+    # build_options).
     parser.add_argument(
         "--V4300D_notch_filter",
         "-V",
@@ -562,7 +564,9 @@ def build_parser():
         metavar="FREQ",
         type=parse_frequency,
         default=None,
-        help="RF sampling frequency in source file (default is 40MHz)",
+        help="RF sampling frequency of the source file, which the decoder "
+             "demodulates at (default: the Domesday Duplicator sidecar's, "
+             "else 40 MHz)",
     )
 
     parser.add_argument(
@@ -728,9 +732,9 @@ def build_options(args, core_count=None):
     elif args.rf_echo_cancel:
         extra_options["rf_echo_cancel"] = True
 
-    # With --tbc_mode read the clock lines take the V4300D's clock out of
-    # the RF (main() says so), unless they are left in.
-    v4300d_to_clock_lines = args.tbc_mode == "read" and not args.no_crystal_lines
+    # The clock lines take the V4300D's clock out of the RF, in either mode
+    # (main() says so), unless they are left in.
+    v4300d_to_clock_lines = not args.no_crystal_lines
     if (vid_standard == "PAL" and (args.V4300D_notch_filter or args.V4300D_coherent_subtract)
             and not v4300d_to_clock_lines):
         # --V4300D_notch_filter is a legacy alias: the coherent subtract
@@ -740,16 +744,10 @@ def build_options(args, core_count=None):
         # parallel demod stays available.
         extra_options["PAL_V4300D_CoherentSubtract"] = True
 
-    # The audio carriers' crosstalk is cancelled by default, in either mode,
-    # by one model: each carrier's own waveform cut out of the RF, the video
-    # carrier's instantaneous frequency fitted on them, and the video band
-    # turned back by that phase before the discriminator.  With
-    # --tbc_mode read the stacked source does it on the RF it hands over;
-    # with resample the decoder does it on its own analytic band, per block
-    # (RFDecode.rf_crosstalk_cancel).  Once, never both; and
-    # --no_audio_carrier_cancel leaves it in either mode.
-    if not args.no_audio_carrier_cancel and args.tbc_mode != "read":
-        extra_options["AudioCarrierCancel"] = True
+    # The audio crosstalk, the clock lines and the chroma leak are taken out
+    # of the RF before the decoder reads it, in either mode, by the stacked
+    # source's code (build_stacked_source, build_cleaned_loader): nothing
+    # for the decoder to do.
 
     # --device opencl demodulates the blocks on the GPU too (demod_opencl),
     # in either mode, as it reads and combines the stack's captures there.
@@ -860,26 +858,31 @@ def resolve_io(args):
     return inputs, outname
 
 
+def spool_stdin_input(inputs):
+    """The inputs, with stdin ("-") buffered to a temporary 16-bit file
+    first: the read-time TBC and the cleaning read their input at positions,
+    which stdin cannot be.  The file is removed when the run ends."""
+    if "-" not in inputs:
+        return list(inputs)
+    import atexit
+
+    path = spool_stdin()
+    atexit.register(lambda: os.path.exists(path) and os.remove(path))
+    return [path if name == "-" else name for name in inputs]
+
+
 def build_stacked_source(inputs, args, vid_standard):
     """The stacked, time-base-corrected RF source the decoder reads.
 
-    Returns (source, fs), the source and the capture rate in Hz.  Raises
-    ValueError when the captures cannot be read that way: a capture that is
-    not fixed-width raw, a capture whose sample rate is unknown, or captures
-    that do not share one sample rate.
+    Returns (source, fs), the source and the capture rate in Hz.  Every
+    capture is read at positions (fileio.open_capture: raw, packed or
+    compressed; stdin is buffered to a file first, spool_stdin_input).
+    Raises ValueError when a capture cannot be read that way, when its
+    sample rate is unknown, or when the captures do not share one sample
+    rate.
     """
-    # The captures are checked before the stacking module is imported, so
-    # that a capture the read-time TBC cannot serve is reported as such.
     rates = set()
     for path in inputs:
-        if path == "-":
-            raise ValueError("the read-time TBC reads its input at random positions, "
-                             "which stdin cannot do")
-        if raw_layout(path) is None:
-            raise ValueError(
-                "--tbc_mode read needs a fixed-width raw input (s16, raw, r16, u16, "
-                f"r8, u8, s8, rf); {path} is not one"
-            )
         rate = capture_sample_rate(path, args.inputfreq)
         if rate is None:
             raise ValueError(
@@ -897,14 +900,14 @@ def build_stacked_source(inputs, args, vid_standard):
     try:
         captures = []
         for path in inputs:
-            capture = RawCapture(path)
+            capture = open_capture(path)
             files.append(capture)
             captures.append(
                 StackInput(
                     path=path,
                     read_fn=capture.read,
                     length=capture.length,
-                    open_reader=functools.partial(open_raw_reader, path),
+                    open_reader=functools.partial(open_capture_reader, path),
                 )
             )
         source = StackedSource(
@@ -916,7 +919,7 @@ def build_stacked_source(inputs, args, vid_standard):
             cancel_xtal=not args.no_crystal_lines,
             cancel_leak=not args.no_chroma_leak,
             rf_out=args.rf_out,
-            rf_out_dtype=raw_layout(inputs[0])[0],
+            rf_out_dtype=capture_dtype(inputs[0]),
             device=args.device,
             device_precision=args.device_precision,
         )
@@ -925,6 +928,45 @@ def build_stacked_source(inputs, args, vid_standard):
             capture.close()
         raise
     return StackedLoader(source, files), fs
+
+
+def resample_cleans(args, vid_standard):
+    """Whether --tbc_mode resample has anything to take out of the RF
+    before the decoder reads it: the audio crosstalk, the clock lines, or
+    (NTSC) the chroma leak."""
+    return (not args.no_audio_carrier_cancel or not args.no_crystal_lines
+            or (vid_standard != "PAL" and not args.no_chroma_leak))
+
+
+def build_cleaned_loader(filename, args, vid_standard, fs):
+    """--tbc_mode resample's loader when the RF is cleaned first: the
+    capture read at positions (fileio.open_capture), through the stacked
+    source's cancellations on a timeline that maps each sample to itself
+    (stack.CleanedSource), as the reference implementation's
+    ``--tbc resample`` cleans it.  ``fs`` is the capture's rate, which the
+    decoder demodulates at.  Raises when the capture cannot be read at
+    positions or the cleaning cannot run: the caller says so, and how to
+    decode it uncleaned.
+    """
+    from lddecode.stack import CleanedSource
+
+    capture = open_capture(filename)
+    try:
+        source = CleanedSource(
+            capture.read,
+            capture.length,
+            fs,
+            ntsc=(vid_standard != "PAL"),
+            cancel_xtalk=not args.no_audio_carrier_cancel,
+            cancel_xtal=not args.no_crystal_lines,
+            cancel_leak=not args.no_chroma_leak,
+            path=filename,
+            open_reader=functools.partial(open_capture_reader, filename),
+        )
+    except BaseException:
+        capture.close()
+        raise
+    return StackedLoader(source, [capture])
 
 
 class StackedLoader:
@@ -995,12 +1037,12 @@ def main(args=None):
         print("ERROR: several inputs are stacked with the read-time TBC; "
               "pass --tbc_mode read", file=sys.stderr)
         sys.exit(1)
-    if (tbc_mode == "read" and not args.no_crystal_lines
+    if (not args.no_crystal_lines
             and (args.V4300D_notch_filter or args.V4300D_coherent_subtract)):
-        # build_options leaves the V4300D subtraction out on this path.
-        print("WARNING: --V4300D_coherent_subtract/-V is not needed with "
-              "--tbc_mode read: the clock lines take the LD-V4300D's clock and "
-              "its satellites out of the RF by default; it is left to them",
+        # build_options leaves the V4300D subtraction out.
+        print("WARNING: --V4300D_coherent_subtract/-V is not needed: the clock "
+              "lines take the LD-V4300D's clock and its satellites out of the RF "
+              "by default; it is left to them (--no_crystal_lines keeps it)",
               file=sys.stderr)
     if args.rf_out is not None and tbc_mode != "read":
         print("ERROR: --rf_out writes the read-time corrected RF; it needs "
@@ -1020,12 +1062,37 @@ def main(args=None):
             print(f"Output: {args.write_test_ldf}", file=sys.stderr)
             sys.exit(1)
 
-    loader = None
-    if tbc_mode == "resample":
+    # Both modes clean the RF by default (the audio crosstalk, the clock
+    # lines, the chroma leak), which reads the input at positions: stdin is
+    # then buffered to a file first.  Only a resample with all three left in
+    # reads it as the stream it is.
+    cleans = tbc_mode == "resample" and resample_cleans(args, vid_standard)
+    if tbc_mode == "read" or cleans:
         try:
+            inputs = spool_stdin_input(inputs)
+        except Exception as e:
+            print(f"ERROR: cannot buffer stdin: {e}", file=sys.stderr)
+            sys.exit(1)
+        filename = inputs[0]
+
+    # The rate the capture was taken at, which the decoder demodulates at in
+    # either mode: -f, or the Domesday Duplicator sidecar, else 40 MHz.
+    capture_rate = (float(args.inputfreq) * 1e6 if filename == "-" and args.inputfreq
+                    else DEFAULT_CAPTURE_RATE_HZ if filename == "-"
+                    else capture_sample_rate(filename, args.inputfreq))
+    if capture_rate is None:
+        print(f"ERROR: the sidecar next to {filename} gives no readable sample_rate_hz; "
+              "pass the capture's rate with -f/--frequency", file=sys.stderr)
+        sys.exit(1)
+
+    loader = None
+    if tbc_mode == "resample" and not cleans:
+        try:
+            # Read at the capture's own rate (no inputfreq: nothing is
+            # resampled), as the cleaned path and the read-time TBC read it.
             loader = make_loader(
                 filename,
-                args.inputfreq,
+                None,
                 decode_threads=FLAC_DECODE_THREADS if extra_options["threads"] > 1 else 1,
             )
         except ValueError as e:
@@ -1041,9 +1108,21 @@ def main(args=None):
     from lddecode import __version__
     logger.debug("ld-decode version " + __version__)
 
-    # The rate the decoder demodulates at.  The loader resamples the RF to
-    # 40 MHz, so that is the rate the decoder is told about.
-    decoder_inputfreq = 40
+    # The rate the decoder demodulates at: the capture's own, in either mode
+    # (the RF is not resampled to 40 MHz).  Told 40 MHz for a 75 MHz stream,
+    # it would look for the sync pulses of a 2542-sample line in a stream
+    # whose lines are 4767 samples long, and find none.
+    decoder_inputfreq = capture_rate / 1e6
+
+    if cleans:
+        try:
+            loader = build_cleaned_loader(filename, args, vid_standard, capture_rate)
+        except Exception as e:
+            print(f"ERROR: --tbc_mode resample cannot clean the RF: {e} "
+                  "(--no_audio_carrier_cancel --no_crystal_lines --no_chroma_leak "
+                  "decode it as it is)", file=sys.stderr)
+            sys.exit(1)
+        logger.info("Resample TBC: the RF of %s cleaned before it is decoded", filename)
 
     if tbc_mode == "read":
         try:
@@ -1051,10 +1130,7 @@ def main(args=None):
         except Exception as e:
             print(f"ERROR: --tbc_mode read: {e}", file=sys.stderr)
             sys.exit(1)
-        # The virtual stream is at the captures' own rate: the decoder
-        # demodulates it there, as the reference implementation does.  Told
-        # 40 MHz, it would look for the sync pulses of a line that is 4767
-        # samples long at 75 MHz in a 2542-sample line, and find none.
+        # The virtual stream is at the captures' own rate.
         decoder_inputfreq = fs / 1e6
         logger.info("Read-time TBC: %d capture(s) at %g MHz, %s weights, on %s",
                     len(inputs), fs / 1e6, args.stack_weight, args.device)
@@ -1163,7 +1239,6 @@ def main(args=None):
             start_sample_position,
             end_sample_position,
             filename,
-            args.inputfreq,
         ):
             exit_status = 1
 
@@ -1175,9 +1250,7 @@ def main(args=None):
 #    print(time.time()-firstdecode)
 
 
-def write_input_ldf_file(
-    ldd, output_filename, start_sample, end_sample, input_filename, inputfreq=None
-):
+def write_input_ldf_file(ldd, output_filename, start_sample, end_sample, input_filename):
     """
     Write the input samples that were decoded to a .ldf file.
     This creates a reproducible test case for bug reporting.
@@ -1195,11 +1268,11 @@ def write_input_ldf_file(
         print("WARNING: No samples to write", file=sys.stderr)
         return True
 
-    # Create a new loader for reading the input file independently.  It must
-    # resample exactly as the decode's loader did: the start and end positions
-    # count 40 MHz samples, and the .ldf is written at 40 MHz.
+    # Create a new loader for reading the input file independently, at the
+    # capture's own rate, as the decode read it: the start and end positions
+    # count its samples.
     try:
-        input_loader = make_loader(input_filename, inputfreq)
+        input_loader = make_loader(input_filename, None)
     except ValueError as e:
         print(f"ERROR: Cannot open input file for writing .ldf: {e}", file=sys.stderr)
         return False

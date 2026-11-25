@@ -132,14 +132,19 @@ the disc or in the player and are the same in every copy:
 - the composite chroma that leaks into the RF baseband on NTSC, the "colour
   wobble" of the saturated areas.
 
-Each can be switched off again (`--no_audio_carrier_cancel`,
-`--no_crystal_lines`, `--no_chroma_leak`). The stacking, the clock lines and
-the chroma leak run only with `--tbc_mode read`: the default stays
+All three are taken out in both modes, by the same code: the default
 `--tbc_mode resample`, the reference decoder's way of correcting the time
-base, whatever the input. The audio crosstalk is taken out in both modes, by
-the same model (in resample, on the decoder's own video band). The path needs fixed-width raw captures, all at the same
-sample rate; see [the command reference](docs/user-guide/command.md) and
-[the technical page](docs/technical/stacked-rf-tbc.md).
+base, cleans the capture's RF the same way before the decoder reads it. Each
+can be switched off again, in either mode (`--no_audio_carrier_cancel`,
+`--no_crystal_lines`, `--no_chroma_leak`); with all three off, `resample`
+keeps the reference decoder's bytes on a 40 MHz capture. The decoder works at
+the capture's own rate in both modes (nothing is resampled to 40 MHz). The
+stacking itself needs
+`--tbc_mode read`. Any capture is read at positions (raw, packed `.lds`/`.r30`,
+compressed `.ldf`/`.flac`; stdin through a temporary file), and the stacked
+ones must share one sample rate; see [the command
+reference](docs/user-guide/command.md) and [the technical
+page](docs/technical/stacked-rf-tbc.md).
 
 ## CVBS output mode
 

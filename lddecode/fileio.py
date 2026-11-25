@@ -218,6 +218,153 @@ class RawCapture:
             self._file = None
 
 
+#: The packed captures: samples and bytes per group.
+PACKED_LAYOUTS = {".lds": (4, 5), ".r30": (3, 4)}
+
+#: The compressed captures, decoded by PyAV (LoadLDF).
+COMPRESSED_EXTENSIONS = (".ldf", ".flac")
+
+
+class PackedCapture:
+    """A packed capture (.lds: four 10-bit samples in five bytes; .r30:
+    three in a 32-bit word), read at absolute sample positions with the
+    loaders the decoder reads them with (load_packed_data_4_40 and
+    load_packed_data_3_32), so the samples are the same."""
+
+    def __init__(self, filename):
+        ext = os.path.splitext(filename)[1].lower()
+        if ext not in PACKED_LAYOUTS:
+            raise ValueError(f"{filename} is not a packed capture (lds, r30)")
+        per_group, group_bytes = PACKED_LAYOUTS[ext]
+        self.filename = filename
+        self._load = load_packed_data_4_40 if ext == ".lds" else load_packed_data_3_32
+        self._file = open(filename, "rb")
+        self._length = os.path.getsize(filename) // group_bytes * per_group
+
+    @property
+    def length(self):
+        return self._length
+
+    def read(self, start, count):
+        """The samples [start, start + count) as float64, zero outside the
+        capture (as RawCapture.read)."""
+        out = np.zeros(count, dtype=np.float64)
+        lo = max(0, int(start))
+        hi = min(self._length, int(start) + int(count))
+        if hi <= lo:
+            return out
+        data = self._load(self._file, lo, hi - lo)
+        n = min(len(data), hi - lo)
+        out[lo - int(start) : lo - int(start) + n] = data[:n]
+        return out
+
+    def close(self):
+        if self._file is not None:
+            self._file.close()
+            self._file = None
+
+
+def compressed_length(filename):
+    """The number of samples in a compressed (.ldf/.flac) capture, from its
+    container; decoded through to the end when the container does not say."""
+    import av
+
+    with av.open(filename) as container:
+        stream = container.streams.audio[0]
+        if stream.duration is not None and stream.time_base is not None:
+            return int(round(stream.duration * stream.time_base * stream.sample_rate))
+        if container.duration is not None:
+            return int(round(container.duration * stream.sample_rate / 1e6))
+        return sum(frame.samples for frame in container.decode(audio=0))
+
+
+class CompressedCapture:
+    """A compressed capture (.ldf, .flac), read at absolute sample positions
+    through the decoder's own FLAC reader (LoadLDF), which seeks in the
+    container and decodes from there."""
+
+    def __init__(self, filename):
+        self.filename = filename
+        self._loader = LoadLDF(filename)
+        self._length = compressed_length(filename)
+
+    @property
+    def length(self):
+        return self._length
+
+    def read(self, start, count):
+        """The samples [start, start + count) as float64, zero outside the
+        capture (as RawCapture.read)."""
+        out = np.zeros(count, dtype=np.float64)
+        lo = max(0, int(start))
+        hi = min(self._length, int(start) + int(count))
+        if hi <= lo:
+            return out
+        data = self._loader.read(None, lo, hi - lo)
+        if data is None:
+            raise IOError(f"{self.filename}: the stream ends before sample {hi}"
+                          + (f" ({self._loader.failed})" if self._loader.failed else ""))
+        out[lo - int(start) : hi - int(start)] = data
+        return out
+
+    def close(self):
+        if self._loader is not None:
+            self._loader._close()
+            self._loader = None
+
+
+def open_capture(filename):
+    """A capture read at absolute sample positions, whatever its format:
+    raw (RawCapture), packed (PackedCapture) or compressed
+    (CompressedCapture).  Raises ValueError for another format."""
+    if raw_layout(filename) is not None:
+        return RawCapture(filename)
+    ext = os.path.splitext(filename)[1].lower()
+    if ext in PACKED_LAYOUTS:
+        return PackedCapture(filename)
+    if ext in COMPRESSED_EXTENSIONS:
+        return CompressedCapture(filename)
+    raise ValueError(
+        f"{filename}: a capture read at positions is raw (s16, raw, r16, u16, "
+        "r8, u8, s8, rf), packed (lds, r30) or compressed (ldf, flac)")
+
+
+def open_capture_reader(filename):
+    """open_capture(filename).read: module-level, so that
+    ``functools.partial(open_capture_reader, filename)`` can be sent to
+    another process (the stacked source's pass 0)."""
+    return open_capture(filename).read
+
+
+def capture_dtype(filename):
+    """The sample type of a capture's samples, as RAW_LAYOUTS names it (the
+    packed and compressed captures read as signed 16-bit)."""
+    layout = raw_layout(filename)
+    return layout[0] if layout is not None else "int16"
+
+
+def spool_stdin():
+    """Buffer what stdin carries to a temporary 16-bit file, for a decode
+    that reads its input at positions; returns its name.  ffmpeg decodes it
+    as the decoder's stdin loader (LoadFFmpeg) does, and the samples keep
+    their own rate.  The caller removes the file."""
+    import sys
+    import tempfile
+
+    fd, path = tempfile.mkstemp(prefix="ld-decode-stdin-", suffix=".s16")
+    os.close(fd)
+    command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", "-",
+               "-c:a", "pcm_s16le", "-f", "s16le", path]
+    try:
+        code = subprocess.run(command, stdin=sys.stdin.buffer).returncode
+        if code != 0:
+            raise IOError(f"stdin: ffmpeg exited with status {code} while buffering it")
+    except BaseException:
+        os.remove(path)
+        raise
+    return path
+
+
 #: The rate a capture is taken to be at when nothing says otherwise (Hz):
 #: the decoder's own default, and the Domesday Duplicator's rate.
 DEFAULT_CAPTURE_RATE_HZ = 40.0e6

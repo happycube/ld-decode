@@ -60,8 +60,7 @@ def device():
 def test_the_device_fft_is_numpys(device):
     cl, ctx, queue = device
     program = cl.Program(ctx, demod_opencl.KERNEL_SOURCE).build(
-        options=["-DN=1024", "-DM=512", "-DNRF=513", "-DDEC=16", "-DBOXL=171",
-                 "-DBOXD=11", "-DSTEP=2"])
+        options=["-DN=1024", "-DM=512", "-DNRF=513"])
     kernels = {k.function_name: k for k in program.all_kernels()}
     rng = np.random.default_rng(2)
     for length in (1024, 512):
@@ -96,14 +95,10 @@ def _rf_block(rf, seed):
 
 
 @pytest.mark.parametrize("system", ["NTSC", "PAL"])
-@pytest.mark.parametrize("gains", [None, [(-4.8, -5.1), (-7.2, -4.8)]])
-def test_the_device_demodulates_as_the_cpu_does(device, system, gains):
+def test_the_device_demodulates_as_the_cpu_does(device, system):
     cl, ctx, queue = device
-    rf = RFDecode(inputfreq=40.0, system=system,
-                  extra_options={"AudioCarrierCancel": gains is not None},
+    rf = RFDecode(inputfreq=40.0, system=system, extra_options={},
                   decode_analog_audio=44100, decode_digital_audio=True)
-    if gains is not None:
-        rf.DecoderParams["audio_xtalk_gains"] = gains
     blocks = [_rf_block(rf, s) for s in range(3)]
     gpu = demod_opencl.DemodOpenCL(rf, cl=cl, ctx=ctx, queue=queue).demod(blocks, 0.4)
     cpu = [rf.demodblock(data=b, mtf_level=0.4, cut=True) for b in blocks]

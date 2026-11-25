@@ -11,8 +11,8 @@ and dsp.band_subtract puts a signal back; dsp.unit_phasor reduces the
 carrier to its phase; dsp.coherent_line_estimate fits a line locked to it,
 with an amplitude that may follow the video level, and backs off for lines
 too weak to fit.  (Rev 8's canceller on the demodulated spectrum was built
-on them; the decoder now takes the crosstalk out of the video carrier's
-phase instead, RFDecode.rf_crosstalk_cancel.)
+on them; the crosstalk is now taken out of the RF before the decoder reads
+it, in either mode, by stack_corrections.cancel_crosstalk.)
 
 All signals are synthetic.
 """

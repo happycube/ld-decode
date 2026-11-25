@@ -101,10 +101,11 @@ A source capture. Repeat it to stack several captures of the same disc; the
 first is the primary; stacking needs `--tbc_mode read`. The positional
 `infile` and `-i` are exclusive.
 - **Type:** String (path)
-- **Note:** The stacked captures must be fixed-width raw captures (`.s16`,
-  `.raw`, `.r16`, `.u16`, `.r8`, `.u8`, `.s8`, `.rf`) and must share one
-  sample rate. A compressed capture (`.ldf`, `.flac`) cannot be read at the
-  arbitrary positions this path needs.
+- **Note:** The stacked captures are read at positions, whatever their
+  format: raw (`.s16`, `.raw`, `.r16`, `.u16`, `.r8`, `.u8`, `.s8`, `.rf`),
+  packed (`.lds`, `.r30`) or compressed (`.ldf`, `.flac`, through the FLAC
+  reader, which seeks in the stream); stdin is buffered to a temporary file
+  first, removed when the decode ends. They must share one sample rate.
 - **Note:** The sample rate comes from `-f`, or from the Domesday Duplicator
   sidecar (a `.yaml` file with a `sample_rate_hz` key) next to the capture,
   and is 40 MHz when neither gives it. The decoder then demodulates at that
@@ -123,12 +124,22 @@ The base name for the destination files. Needs `-i`.
 The time-base correction.
 - **Type:** `read` or `resample`
 - **Default:** `resample`, whatever the input
-- **Note:** `resample` is the reference decoder's way and keeps its bytes.
-- **Note:** `read` locates every line straight from the RF and reads the RF
-  at the corrected positions before demodulating, instead of resampling the
-  demodulated video. Stacking several `-i` captures needs it. It cannot run
-  on stdin or on a compressed capture, and it needs lines to be found; where
-  it cannot run it is an error, never a silent change of mode.
+- **Note:** `resample` resamples the demodulated video, the reference
+  decoder's way; `read` locates every line straight from the RF and reads the
+  RF at the corrected positions before demodulating. Stacking several `-i`
+  captures needs `read`.
+- **Note:** Both take the audio crosstalk, the clock lines and the chroma
+  leak out of the RF first, by the same code (see `--no_audio_carrier_cancel`,
+  `--no_crystal_lines`, `--no_chroma_leak`). With all three left in,
+  `resample` reads the capture as the reference decoder does, and keeps its
+  bytes for a 40 MHz capture (the reference resamples another rate to
+  40 MHz; this decoder demodulates at the capture's own rate).
+- **Note:** The cancellations read the capture at positions, so both modes
+  take any capture: raw, packed (`.lds`, `.r30`) or compressed (`.ldf`,
+  `.flac`); stdin is buffered to a temporary file first (unless `resample`
+  leaves all three in). There is no fallback between the modes: a capture
+  that cannot be read, a cleaning that cannot run, or a `read` that finds no
+  lines is an error, never a silent change of method.
 - **Note:** `--write-test-ldf` copies the capture at the positions the
   decoder read, which only `resample` reads it at: it is refused with
   `read`.
@@ -156,12 +167,14 @@ either mode: see `--no_audio_carrier_cancel`.
 Leave the clock lines in the RF: the player's EFM decoder crystal and its
 multiples (the LD-V4300D's 8.4672 MHz clock and its satellites among them),
 its 4fsc video clock, the capture board's clocks. They are subtracted by
-default.
+default, in either `--tbc_mode`. They are detected a quarter into the capture
+(at most 4 Mi samples from its end), where there is picture, with `resample`,
+and where the first line is found with `read`.
 
 #### `--no_chroma_leak`
 Leave the composite chroma that leaks into the RF baseband (NTSC; it makes
 the fine wavering vertical stripes of saturated areas). It is cancelled by
-default.
+default, in either `--tbc_mode`.
 
 #### `--device cpu|opencl`
 Where the decoder demodulates the RF, and where the read-time TBC reads and
@@ -367,22 +380,12 @@ Leave the analog audio carriers' crosstalk in the video. The audio FM
 carriers leak into the video carrier's phase on the disc, and the
 demodulated video carries faint lines at the carriers' own frequencies
 (NTSC 2.30 and 2.81 MHz, in the luminance band; PAL 0.68 and 1.07 MHz). By
-default they are taken out, in either `--tbc_mode`, the same way: each
-carrier's own waveform is cut out of the RF, the coupling of the video
-carrier's frequency to it is measured, and the video band is turned back by
-the phase error that coupling makes, before the demodulator. With
-`--tbc_mode read` the stacked source does it on the RF it hands the decoder;
-with `--tbc_mode resample` the decoder does it on each block's analytic
-video band. This one option leaves it in either mode.
+default they are taken out of the RF before the decoder reads it, in either
+`--tbc_mode`, by the same code: on each chunk of 2 Mi samples, each
+carrier's own waveform is cut out of the RF, the video carrier's
+instantaneous frequency is fitted on it, and the video band is turned back
+by the phase error that coupling makes.
 - **Default:** Disabled (the crosstalk is cancelled)
-- **Note:** With `--tbc_mode resample` the coupling is measured once, on the
-  first 256 blocks the decode reads (a fifth of a second at 40 MHz), and the
-  same gains correct every block. One block's own fit would not do: over 13
-  lines the picture's detail near the carriers correlates with them by
-  chance several times more than the coupling itself. A coupling that does
-  not stand three standard errors clear of that spread is shrunk away, so a
-  disc without crosstalk, or one whose picture fills the carriers'
-  frequencies (a test pattern), is left as it is.
 - **Note:** The former rev 8 prototype, `--audio_carrier_cancel` (which
   subtracted the lines from the demodulated spectrum, block by block, and
   moved the VITS readings), is replaced by this, and the option is
@@ -672,8 +675,12 @@ about 288,000 symbols (bytes) per second of decoded video.
 #### `-f FREQ`, `--frequency FREQ`
 RF sampling frequency of the source file.
 - **Type:** FREQ (see Frequency Format section)
-- **Default:** 40MHz
-- **Note:** If the source file has a different sample rate, specify it here; the decoder will resample to 40MHz internally (`--tbc_mode resample`), or demodulate at that rate (`--tbc_mode read`)
+- **Default:** the Domesday Duplicator sidecar's (a `.yaml` file with a
+  `sample_rate_hz` key next to the capture), else 40MHz
+- **Note:** The decoder demodulates at the capture's own rate, in either
+  `--tbc_mode`: nothing is resampled to 40 MHz. (The reference decoder
+  resamples to 40 MHz, so a capture at another rate no longer decodes to its
+  bytes.)
 
 **Example:**
 ```bash
@@ -923,7 +930,7 @@ ERROR: bug.ldf was not written: ffmpeg exited with status 1
 
 - **Default Video Standard**: If neither `--PAL` nor `--NTSC` is specified, NTSC is assumed.
 - **Thread Count**: The default (`-t 0`) picks the machine's physical cores minus 2, capped at 10; `-t 1` decodes serially.
-- **Sample Rate**: With `--tbc_mode resample` the decoder works at 40MHz and all other sample rates are resampled; with `--tbc_mode read` it works at the capture's own rate.
+- **Sample Rate**: The decoder works at the capture's own rate, in either `--tbc_mode` (`-f`, else the sidecar's, else 40 MHz); nothing is resampled to 40 MHz.
 - **Frame Counting**: Frames are counted as complete video frames; internally, the decoder processes fields (2 fields = 1 frame).
 - **Lead-out**: The lead-out section marks the end of valid disc content; decoding typically stops here unless `--ignoreleadout` is used.
 

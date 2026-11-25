@@ -265,7 +265,6 @@ class RFDecode:
 
         self.NTSC_ColorNotchFilter = extra_options.get("NTSC_ColorNotchFilter", False)
         self.PAL_V4300D_CoherentSubtract = extra_options.get("PAL_V4300D_CoherentSubtract", False)
-        self.AudioCarrierCancel = extra_options.get("AudioCarrierCancel", False)
         # --device opencl: demodblocks runs the blocks on the GPU
         # (demod_opencl), opened on first use in each process.
         self.demod_device = extra_options.get("DemodDevice", "cpu")
@@ -1999,82 +1998,6 @@ class RFDecode:
         whole = self.v4300d_coherent_subtract(self.mirror_spectrum(indata_fft))
         return whole[: indata_fft.shape[0]]
 
-    #: Blocks the crosstalk's coupling is measured over (crosstalk_coupling):
-    #: one block's own fit is mostly the picture's chance correlation with
-    #: the carriers; the median of 256 (a fifth of a second at 40 MHz) is
-    #: the coupling to within a tenth of itself on the test captures.
-    XTALK_COUPLING_BLOCKS = 256
-
-    def rf_crosstalk_cancel(self, data, indata_fft, hilbert):
-        """Take the analog audio carriers' crosstalk out of the video
-        carrier's phase, before the discriminator: the stacked source's
-        cancellation (stack_corrections.cancel_crosstalk), on this block.
-
-        The carriers leak into the video carrier's phase on the disc.  The
-        coupling (one complex gain per carrier: the video carrier's
-        frequency error per unit of carrier) is measured once over a
-        stretch of the capture (measure_crosstalk, kept in DecoderParams
-        so that the worker processes have it too); here each carrier's own
-        waveform, audio and all, is cut out of this block's RF, and the
-        band is turned back by the phase error that coupling makes of it.
-        Nothing is subtracted from the demodulated picture, and nothing the
-        picture does in this block moves the correction: its detail at the
-        carriers' frequencies (NTSC's 2.30 and 2.81 MHz sit in the luminance
-        band) is left as it is.
-
-        While measure_crosstalk runs, the block's own fit is collected
-        instead, and the band is left alone.
-        """
-        from .stack_corrections import (
-            crosstalk_block_gains, crosstalk_phase, turn_band)
-
-        collect = getattr(self, "_xtalk_collect", None)
-        gains = self.DecoderParams.get("audio_xtalk_gains")
-        if collect is None and (
-                gains is None or not any(re or im for re, im in gains)):
-            # Nothing measured yet, or a coupling shrunk away on both
-            # carriers: the band is left exactly as it is.
-            return hilbert
-        SP = self.SysParams
-        bl = self.blocklen
-        if data is not None:
-            rf = np.asarray(data[:bl], dtype=np.float64)
-        else:
-            rf = npfft.irfft(indata_fft, n=bl)
-        step = 1 if self.full_rate_demod else 2
-        carriers = (SP["audio_lfreq"], SP["audio_rfreq"])
-        if collect is not None:
-            collect.append(crosstalk_block_gains(
-                rf, hilbert, step, self.freq_hz, carriers,
-                (self.blockcut, bl - self.blockcut_end)))
-            return hilbert
-        theta = crosstalk_phase(
-            rf, hilbert.shape[0], step, self.freq_hz, carriers,
-            [complex(re, im) for re, im in gains])
-        return turn_band(hilbert, theta)
-
-    def measure_crosstalk(self, blocks):
-        """Measure the audio carriers' coupling over `blocks` (raw RF
-        blocks, each blocklen long) and keep it in DecoderParams, where
-        rf_crosstalk_cancel reads it.  Returns the gains, or None (the
-        crosstalk is then left in)."""
-        from .stack_corrections import crosstalk_coupling
-
-        if not (self.AudioCarrierCancel and self.SysParams["analog_audio"]):
-            return None
-        self.DecoderParams.pop("audio_xtalk_gains", None)
-        self._xtalk_collect = []
-        try:
-            for block in blocks:
-                self.demodblock(data=block, echo_cancel=False)
-            gains = crosstalk_coupling(self._xtalk_collect)
-        finally:
-            self._xtalk_collect = None
-        if gains is not None:
-            self.DecoderParams["audio_xtalk_gains"] = [
-                (float(g.real), float(g.imag)) for g in gains]
-        return gains
-
     def demodblock_sync(self, data=None, fftdata=None, cut=False):
         """Demodulate only the 0.5 MHz path used for vertical-sync detection.
 
@@ -2219,8 +2142,6 @@ class RFDecode:
             hilbert = npfft.ifft(block)
         else:
             hilbert = npfft.ifft(indata_fft_filt[: self.blocklen // 2])
-        if self.AudioCarrierCancel and self.SysParams["analog_audio"]:
-            hilbert = self.rf_crosstalk_cancel(data, indata_fft, hilbert)
         demod = unwrap_hilbert(hilbert, self.freq_hz_demod)
 
         # use a clipped demod for video output processing to reduce speckling impact.

@@ -316,15 +316,17 @@ def test_a_malformed_echo_tap_is_dropped_rather_than_crashing():
 def test_the_v4300d_options_apply_to_pal_only():
     """They exist for one PAL player's 8.4672 MHz clock spur; on NTSC the
     flags parse but must not reach the decoder."""
-    assert extra("-p", "--V4300D_coherent_subtract")["PAL_V4300D_CoherentSubtract"] is True
-    assert "PAL_V4300D_CoherentSubtract" not in extra("--V4300D_coherent_subtract")
+    assert extra("-p", "--no_crystal_lines",
+                 "--V4300D_coherent_subtract")["PAL_V4300D_CoherentSubtract"] is True
+    assert "PAL_V4300D_CoherentSubtract" not in extra("--no_crystal_lines",
+                                                      "--V4300D_coherent_subtract")
 
 
 def test_the_notch_switch_is_an_alias_for_the_coherent_subtract():
     """--V4300D_notch_filter/-V predates the coherent subtract; it now maps
     to the same (better) filter so existing command lines keep working."""
-    assert extra("-p", "-V")["PAL_V4300D_CoherentSubtract"] is True
-    assert "PAL_V4300D_CoherentSubtract" not in extra("-V")
+    assert extra("-p", "--no_crystal_lines", "-V")["PAL_V4300D_CoherentSubtract"] is True
+    assert "PAL_V4300D_CoherentSubtract" not in extra("--no_crystal_lines", "-V")
 
 
 def test_the_spur_filter_no_longer_defers():
@@ -340,9 +342,12 @@ def test_the_colour_notch_filter_applies_to_ntsc_only():
     assert "NTSC_ColorNotchFilter" not in extra("-p", "-N")
 
 
-def test_the_crosstalk_is_cancelled_by_default_in_ntsc_and_pal():
-    assert extra()["AudioCarrierCancel"] is True
-    assert extra("-p")["AudioCarrierCancel"] is True
+def test_the_decoder_does_not_cancel_the_crosstalk_itself():
+    """The crosstalk is taken out of the RF before the decoder reads it, in
+    either mode (the stacked source's model): the decoder has nothing of its
+    own to do, and no option for it."""
+    for argv in ((), ("-p",), ("--tbc_mode", "read")):
+        assert "AudioCarrierCancel" not in extra(*argv)
 
 
 def test_the_device_demodulates_in_either_mode():
@@ -360,24 +365,14 @@ def test_the_former_opt_in_is_gone():
         extra("--audio_carrier_cancel")
 
 
-def test_the_read_time_tbc_cancels_the_crosstalk_in_the_stacked_source():
-    """With --tbc_mode read the stacked source cancels it, so the decoder
-    does not do it a second time."""
-    assert "AudioCarrierCancel" not in extra("--tbc_mode", "read")
-
-
-def test_one_option_leaves_the_crosstalk_whatever_the_mode():
-    assert "AudioCarrierCancel" not in extra("--no_audio_carrier_cancel")
-    assert "AudioCarrierCancel" not in extra("-p", "--no_audio_carrier_cancel")
-
-
-def test_the_read_time_tbc_leaves_the_v4300d_clock_to_the_clock_lines():
-    """The clock lines take the V4300D's clock out with --tbc_mode read; its
-    own subtraction applies only where they are left in."""
-    assert "PAL_V4300D_CoherentSubtract" not in extra(
-        "-p", "--tbc_mode", "read", "--V4300D_coherent_subtract")
-    assert extra("-p", "--tbc_mode", "read", "--no_crystal_lines",
-                 "--V4300D_coherent_subtract")["PAL_V4300D_CoherentSubtract"] is True
+def test_the_clock_lines_take_the_v4300d_clock_in_either_mode():
+    """The clock lines take the V4300D's clock out by default, in either
+    mode; its own subtraction applies only where they are left in."""
+    for mode in ("resample", "read"):
+        assert "PAL_V4300D_CoherentSubtract" not in extra(
+            "-p", "--tbc_mode", mode, "--V4300D_coherent_subtract")
+        assert extra("-p", "--tbc_mode", mode, "--no_crystal_lines",
+                     "--V4300D_coherent_subtract")["PAL_V4300D_CoherentSubtract"] is True
 
 
 def test_the_vits_white_level_servo_is_opt_in():

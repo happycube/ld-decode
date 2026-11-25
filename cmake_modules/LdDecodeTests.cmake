@@ -83,18 +83,20 @@ set(TESTDATA_DIR ${CMAKE_SOURCE_DIR}/testdata)
 # Every decode a VITS conformance test reads - the radius cuts, the two whole
 # captures and the calibrated cuts of the "vits" label, and the functional
 # lane's ntsc-cvbs and pal-cvbs (with pal-cvbs-parallel, which is compared
-# with it byte for byte) - leaves the analog audio carriers' crosstalk in
-# (--no_audio_carrier_cancel), as the decoder did when the known deviations
-# were recorded.  The cancellation's correction is small, but these tests
+# with it byte for byte) - leaves the RF as it is: the analog audio
+# carriers' crosstalk, the clock lines and the chroma leak, which both TBC
+# modes take out by default (--no_audio_carrier_cancel --no_crystal_lines
+# --no_chroma_leak), as the decoder did when the known deviations were
+# recorded.  The cancellations' corrections are small, but these tests
 # average the opening fields, where rev 8's servos are still adopting: a
 # servo's first move after the calibration warm-up is not rate-limited, and
 # a correction of a few hundredths of a dB moves which frame it lands in.
 # On ve-monitor the video EQ's estimate sits on its 0.3 dB dead-band, and
 # the cancellation moved its adoption from frame 2 to frame 5, out of the
 # averaged fields (2T 97.73 -> 97.41 IRE).  The tests gate rev 8's
-# calibration on the opening frames; the cancellation is tested by its own
-# unit tests (test_rf_crosstalk_cancel.py, test_stack_corrections.py).
-set(VITS_DECODE_FLAGS --no_audio_carrier_cancel)
+# calibration on the opening frames; the cancellations are tested by their own
+# unit tests (test_stack_corrections.py, test_stack.py).
+set(VITS_DECODE_FLAGS --no_audio_carrier_cancel --no_crystal_lines --no_chroma_leak)
 
 # Every decode below writes here.  Created at configure time so that "ctest"
 # in a fresh build directory works on its own; the CI workflows' "mkdir -p

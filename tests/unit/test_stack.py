@@ -902,3 +902,105 @@ def test_the_read_kernel_matches_the_reference():
     np.testing.assert_array_equal(got[2], want[2])
     np.testing.assert_allclose(got[0], want[0], rtol=1e-12, atol=1e-9)
     np.testing.assert_allclose(got[1], want[1], rtol=1e-12, atol=1e-9)
+
+
+# --- the cleaned source (--tbc_mode resample) -----------------------------
+
+
+def _xtalk_capture(gamma, n=65536, fs=40e6):
+    """A video carrier whose phase follows the first NTSC audio carrier, with
+    both carriers in the RF; and the same without the crosstalk."""
+    t = np.arange(n) / fs
+    carriers = sum(0.3 * np.cos(2 * np.pi * f * t + 0.3 * (i + 1))
+                   for i, f in enumerate(stack.AUDIO_CARRIERS_HZ))
+    psi = 0.05 * np.sin(2 * np.pi * 50e3 * t)
+    theta = gamma * np.sin(2 * np.pi * stack.AUDIO_CARRIERS_HZ[0] * t + 0.7)
+    rf = 8000.0 * (np.cos(2 * np.pi * 6.8e6 * t + psi + theta) + carriers)
+    clean = 8000.0 * (np.cos(2 * np.pi * 6.8e6 * t + psi) + carriers)
+    return rf, clean
+
+
+def _reader(samples):
+    def read(start, count):
+        out = np.zeros(count)
+        lo, hi = max(start, 0), min(start + count, samples.size)
+        if hi > lo:
+            out[lo - start : hi - start] = samples[lo:hi]
+        return out
+    return read
+
+
+def test_the_cleaned_source_with_nothing_to_cancel_is_the_capture():
+    """Virtual sample s is capture sample s: with every cancellation off the
+    stream is the capture itself, to the last bit, and ends where it ends."""
+    rng = np.random.default_rng(4)
+    raw = np.round(rng.normal(scale=3000.0, size=70000))
+    source = stack.CleanedSource(_reader(raw), raw.size, 40e6, ntsc=True,
+                                 cancel_xtalk=False, cancel_xtal=False, cancel_leak=False)
+    try:
+        assert source.length == raw.size
+        np.testing.assert_array_equal(source.read(0, raw.size), raw.astype(np.float32))
+        np.testing.assert_array_equal(source.read(1234, 100), raw[1234:1334].astype(np.float32))
+        assert source.read(raw.size - 10, 50).shape == (10,)
+        assert source.read(raw.size, 10).shape == (0,)
+    finally:
+        source.close()
+
+
+def test_the_cleaned_source_takes_the_crosstalk_out():
+    """The stacked source's crosstalk cancellation, on the capture read as it
+    is: most of the phase error the carrier put on the video goes."""
+    rf, clean = _xtalk_capture(0.02)
+    source = stack.CleanedSource(_reader(rf), rf.size, 40e6, ntsc=True,
+                                 cancel_xtalk=True, cancel_xtal=False, cancel_leak=False)
+    try:
+        out = source.read(0, rf.size).astype(np.float64)
+    finally:
+        source.close()
+    mid = slice(4096, rf.size - 4096)
+    assert np.std(out[mid] - clean[mid]) < np.std(rf[mid] - clean[mid]) / 3.0
+
+
+def test_the_cleaned_source_detects_the_clock_lines_a_quarter_in(monkeypatch):
+    """The clock lines are detected where there is picture, a quarter into the
+    capture (CLEAN_PROBE_TAIL from its end at most), and subtracted from the
+    samples at their own positions."""
+    from lddecode import stack_corrections
+
+    seen = {}
+
+    class _Lines:
+        has_lines = True
+
+        def clean(self, raw, start):
+            # A line whose phase follows the absolute position.
+            t = np.arange(start, start + raw.shape[0])
+            return raw - 100.0 * np.cos(2 * np.pi * t / 37.0)
+
+    def detect(read_fn, fs, *, ntsc, line_hz, length, start):
+        seen.update(start=start, length=length)
+        return _Lines()
+
+    monkeypatch.setattr(stack_corrections.CrystalLines, "detect", staticmethod(detect))
+
+    def line(start, count):
+        t = np.arange(start, start + count)
+        return 100.0 * np.cos(2 * np.pi * t / 37.0)
+
+    # Long enough for a quarter in to be CLEAN_PROBE_TAIL from the end.
+    n = 20_000_000
+    source = stack.CleanedSource(line, n, 40e6, ntsc=True,
+                                 cancel_xtalk=False, cancel_xtal=True, cancel_leak=False)
+    try:
+        out = source.read(1000, 80000)
+    finally:
+        source.close()
+    assert seen == {"start": n // 4, "length": n}
+    assert np.max(np.abs(out)) < 1e-3
+
+    # A short capture is probed from its start (the reference's
+    # min(len / 4, len - 2^22)).
+    source = stack.CleanedSource(line, 80000, 40e6, ntsc=True,
+                                 cancel_xtalk=False, cancel_xtal=True, cancel_leak=False)
+    source.close()
+    assert seen["start"] == 0

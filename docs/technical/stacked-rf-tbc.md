@@ -124,7 +124,9 @@ tuned on the video carrier would be wrong there.
 
 ## The three corrections
 
-All three run on the combined stream, before the decoder sees it.
+All three run on the combined stream, before the decoder sees it, and with
+`--tbc_mode resample` on the capture's own stream (see "Resample: the RF
+cleaned first" below).
 
 ### The audio carriers' crosstalk
 
@@ -437,99 +439,65 @@ crosstalk, and the V4300D's clock.
 
 | cancellation | rev 8 | this branch | the reference port |
 | --- | --- | --- | --- |
-| the audio carriers' crosstalk | `--audio_carrier_cancel`, on the demodulated spectrum (opt-in prototype; replaced) | on the video carrier's phase, before demodulation, in both modes (NTSC and PAL; by default) | yes, with `--tbc_mode read` |
-| the clock lines | no | yes | yes |
-| the chroma leak | no | yes | yes |
+| the audio carriers' crosstalk | `--audio_carrier_cancel`, on the demodulated spectrum (opt-in prototype; replaced) | on the RF, in both modes (NTSC and PAL; by default) | yes, in both modes |
+| the clock lines | no | yes, in both modes | yes, in both modes |
+| the chroma leak | no | yes, in both modes | yes, in both modes |
 | the RF echo (the ghost) | yes (`--rf_echo_cancel`) | no | no |
 | the V4300D clock | `--V4300D_coherent_subtract` (PAL; out of the help) | the clock lines (NTSC and PAL), its satellites included | the master clock alone |
 | the audio excursion blanking | yes | inherited | yes |
 | the demodulator clipping | yes | inherited | yes |
 | the dropout record | yes | inherited | yes |
 
-**The crosstalk** is cancelled by default in both modes, by one model, and
-`--no_audio_carrier_cancel` leaves it in either. Each audio carrier's own
-waveform is cut out of the RF, the video carrier's instantaneous frequency
-is fitted on them (one complex gain per carrier), and the video band is
-turned back by the phase error that coupling makes, before the
-demodulator. With `--tbc_mode read` the stacked source does it on the RF it
-hands over, as the reference implementation does; with `--tbc_mode resample`
-the decoder does it on each block's own analytic video band
-(`RFDecode.rf_crosstalk_cancel`, through
-`stack_corrections.crosstalk_phase`), so the RF is not filtered twice. It
-runs once: the decoder's never runs on the read-time path.
+**The crosstalk** is cancelled by default in both modes, by one model and
+one piece of code, `stack_corrections.cancel_crosstalk`, and
+`--no_audio_carrier_cancel` leaves it in either. On each chunk of the stream
+(2 Mi samples), each audio carrier's own waveform is cut out of the RF, the
+video carrier's instantaneous frequency is fitted on them (one complex gain
+per carrier), and the video band is turned back by the phase error that
+coupling makes, before the demodulator. With `--tbc_mode read` the stacked
+source does it on the RF it hands over; with `--tbc_mode resample` the
+cleaned source does it on the capture's RF (below), as the reference
+implementation's `--tbc resample` does since it cleans the RF too.
 
 Rev 8's canceller, an opt-in prototype (`--audio_carrier_cancel`), fitted
-the lines on the demodulated spectrum, block by block, and subtracted them.
-On by default it failed the conformance lane: the 2T pulse of
-`ggv1069-side1-outer` read 103.0 IRE, the PAL white bar of
-`ggv1011-side1-outer` left its band. The branch's model, fitted block by
-block on the resample path, moved the same readings (102.7 IRE; and the
-`domesday-ds2-community-north-outer` PAL 2T by 7 IRE). The cause is the
-fit's length, not the model: a 32768-sample block is 13 lines, and over 13
-lines the picture's own detail near the carriers correlates with them by
-chance. Per block, the gains measured on these cuts are white from one
-block to the next (correlation 0.01 between neighbours), spread 15 to 140
-around a coupling of 0 to 12, so a block's own fit is mostly picture.
+the lines on the demodulated spectrum, block by block, and subtracted them;
+on by default it failed the conformance lane (the 2T pulse of
+`ggv1069-side1-outer` at 103.0 IRE). Before the reference cleaned the RF in
+resample too, this branch ran the model inside the decoder on that path, on
+each block's analytic band with a coupling measured once on the first 256
+blocks. It is gone: one method, the stacked source's, in both modes. Two
+findings from it stay in the stacked source's fit:
 
-So on the resample path the coupling is measured once, before the decode's
-first block is demodulated, on the first 256 blocks it reads
-(`Decoder._measure_crosstalk`, `RFDecode.measure_crosstalk`): the median of
-their gains, shrunk away unless it stands three standard errors clear of
-their spread (`stack_corrections.crosstalk_coupling`). It is kept in
-DecoderParams, so the worker processes correct their blocks with the same
-gains; only the carriers' waveform comes from each block, and nothing the
-picture does there moves the correction. On the test cuts:
+- The fit's half-sample lag is taken out of the gains: the instantaneous
+  frequency is a phase difference over the sample before, so it is the
+  frequency half a sample earlier, and left in, the phase the gains give
+  leads the crosstalk's by `pi f / fs` per sample of lag (0.18 rad at 2.3
+  MHz and 40 MHz), which leaves a fifth of the crosstalk behind.
+- A coupling fitted on too short a stretch follows the picture: over a
+  32768-sample block (13 lines) the picture's detail near the carriers
+  correlates with them by chance several times more than the coupling
+  itself. The stacked source fits on its 2 Mi-sample chunks.
 
-| cut | coupling, in standard errors | kept | the carriers' lines in the demodulated video |
-| --- | --- | --- | --- |
-| `ggv1069-side1-outer` (NTSC) | 12 and 24 | 0.94, 0.98 | 2171 and 2409 Hz down to 1231 and 1427 (the rest is picture) |
-| `ggv1069-side1-middle` (NTSC) | 23 and 14 | 0.98, 0.96 | 3112 and 3503 Hz down to 1779 and 3102 |
-| `domesday-ds2-community-north-outer` (PAL) | 3.2 and 3.2 | 0.11, 0.12 | next to unchanged |
-| `ggv1011-side1-outer` (PAL) | 1.1 and 0.9 | none | unchanged |
-| `ve-monitor` (NTSC) | 3.8 and 2.7 | 0.38, none | 2212 Hz down to 2052 |
-
-On `ve-monitor` the line the demodulated video holds at 2.30 MHz is mostly
-the test pattern's, not crosstalk: its blocks' gains point every way (the
-resultant of their phases is 0.04 to 0.11), and the unshrunk median applied
-to it raised the line by 3.3 dB. NTSC's first carrier is 146.25 times the
-line frequency, among the picture's own harmonics.
+On `ggv1069-side1-outer` the cleaned resample takes the carriers' lines in
+the CVBS output from +0.99 to +0.15 dB over the floor beside them (2.30
+MHz), and from +0.25 to -0.95 dB (2.81 MHz).
 
 Every decode a VITS conformance test reads (the "vits" label's cuts and
-captures, and the functional lane's `ntsc-cvbs` and `pal-cvbs`) runs with
-`--no_audio_carrier_cancel` (`VITS_DECODE_FLAGS` in
-`cmake_modules/LdDecodeTests.cmake`), as the decoder ran when its known
-deviations were recorded; the cancellation is tested by its own unit tests.
-On `ve-monitor` the small correction its pattern earns moves the multiburst's 2 MHz
-packet by 0.01 dB, and the video EQ's estimate sits on its 0.3 dB dead-band
-there: the EQ adopts at frame 5 instead of frame 2, and the opening fields
-the lane averages are decoded without it (2T 97.73 to 97.41 IRE, past its
-recorded deviation). With half the correction the EQ adopts at frame 2 and
-the 2T reads 97.76. Other cuts sit on other servos' dead-bands the same way.
-That is how rev 8's calibration and the lane read the
-opening frames: a servo's first move after the calibration warm-up is not
-rate-limited, so it lands a few frames into the output, inside the fields
-the lane averages. Reordering the warm-up so that it decides for the first
-frame was tried and moved thirteen cuts' readings, some far (the 2T of
-`domesday-ds2-community-north-middle` to 79.8 IRE): a change to rev 8's
-calibration and its recorded deviations, not to this one.
-
-The fit's half-sample lag is taken out of the gains: the instantaneous
-frequency is a phase difference over the sample before, so it is the
-frequency half a sample earlier, and left in, the phase the gains give
-leads the crosstalk's by `pi f / fs` per sample of lag (0.18 rad at 2.3 MHz
-and 40 MHz, 0.36 on the decoder's half-rate band), which leaves a fifth to a
-third of the crosstalk behind. The stacked source's `cancel_crosstalk` takes
-it out as well.
-
-The fit reads the frequency as the discriminator does (`unwrap_hilbert`), in
-`[0, fs / step)`. On the half-rate band the Nyquist is 10 MHz, and an NTSC
-white peak reaches it: read in `(-fs / 2 step, fs / 2 step]`, those peaks
-wrapped to -10 MHz, steps of 20 MHz the demodulated picture does not have.
-On `ggv1069-side1-middle` 0.8 % of the samples did, and the fit followed
-them: a coupling of +27 and +44, against -6.5 and -9.5 read right (the other
-GGV1069 cuts measure -4 to -11). Applied, it raised the carriers' lines
-fourfold, and the 2T pulse left its band (102.07 IRE). The stacked source's
-full-rate band has its Nyquist at 20 MHz, clear of the video.
+captures, and the functional lane's `ntsc-cvbs` and `pal-cvbs`) leaves the
+RF as it is (`--no_audio_carrier_cancel --no_crystal_lines --no_chroma_leak`,
+`VITS_DECODE_FLAGS` in `cmake_modules/LdDecodeTests.cmake`), as the decoder
+ran when its known deviations were recorded; the cancellations are tested by
+their own unit tests. A small correction moves rev 8's servos: on
+`ve-monitor` the decoder-level crosstalk model moved the multiburst's 2 MHz
+packet by 0.01 dB, the video EQ's estimate sits on its 0.3 dB dead-band
+there, and the EQ adopted at frame 5 instead of frame 2, so the opening
+fields the lane averages were decoded without it (2T 97.73 to 97.41 IRE,
+past its recorded deviation). A servo's first move after the calibration
+warm-up is not rate-limited, so it lands a few frames into the output,
+inside the fields the lane averages. Reordering the warm-up so that it
+decides for the first frame was tried and moved thirteen cuts' readings,
+some far (the 2T of `domesday-ds2-community-north-middle` to 79.8 IRE): a
+change to rev 8's calibration and its recorded deviations, not to this one.
 
 **The V4300D's clock** is the EFM crystal's 96th multiple (192 x 44.1 kHz =
 8.4672 MHz), and the clock lines take it with the crystal's other multiples,
@@ -541,8 +509,53 @@ master clock is found, the satellites are kept from 3 times the floor (rev
 8's threshold), unless a still picture's comb explains them; the reference
 kept none of them. So the clock lines cover what `--V4300D_coherent_subtract`
 does, on any player and either system. That option is left out of the help:
-with `--tbc_mode read` it warns and is left to the clock lines (unless
-`--no_crystal_lines` leaves them in), and with resample it still acts on PAL.
+in either mode it warns and is left to the clock lines, unless
+`--no_crystal_lines` leaves them in (then it acts, on PAL).
+
+### Resample: the RF cleaned first
+
+As the reference implementation's `--tbc resample` does, `--tbc_mode
+resample` takes the three out of the capture's RF before the decoder reads
+it, on a timeline that maps each sample to itself (`stack.CleanedSource`,
+the reference's `Live::identity`): the same chunks, the same clock-line
+subtraction, crosstalk and chroma-leak cancellations as the stacked source,
+then the decoder's own resampling of the demodulated video. With all three
+left in, the decoder reads the capture through its usual loader, and the
+output is the reference decoder's to the byte.
+
+Where it differs from the reference's, for rev 8:
+
+- **The rate.** Rev 8's resample loader resampled a capture taken at another
+  rate (`-f`) to 40 MHz with ffmpeg. It no longer does: in either mode, cleaned
+  or not, the decoder demodulates at the capture's own rate (`-f`, else the
+  sidecar's, else 40 MHz), as the reference implementation does and as the
+  read-time TBC always did. So no option changes the rate the decoder works
+  at, and a 40 MHz capture with all three left in is still the reference
+  decoder's to the byte.
+- **The read.** On a timeline that maps each sample to itself the stack's
+  sinc read is the sample (its phase is always zero), so it is skipped; the
+  analytic video band the cancellations need is the stacked source's at
+  phase zero, computed as one convolution by FFT (the filter is the same at
+  every sample), the same to 5e-11 of 2e4.
+- **The producers.** The chunks are cleaned by four processes, each with its
+  own reader and its own clock lines rebuilt from the ones detected (a
+  `CrystalLines` keeps a reader and a cache of its own, which neither cross
+  a process boundary nor are safe to share between threads). On threads of
+  the decoder's own process they held its interpreter from the decode: a
+  resample of `ve-monitor` ran at 5.2 frames/s cleaned on one thread, 6.4 on
+  four, 8.1 on four processes, against 10.5 left as it is; on
+  `ggv1069-side1-outer` 4.6 against 4.75.
+
+The clock lines are detected a quarter into the capture, at most 4 Mi
+samples from its end (the reference's `min(len / 4, len - 2^22)`), where
+there is picture. Every capture is read at positions (`fileio.open_capture`):
+raw, packed (`.lds`, `.r30`, through the decoder's own unpackers) and
+compressed (`.ldf`, `.flac`, through its FLAC reader, which seeks in the
+stream; the reference indexes the FLAC frames itself). stdin is buffered to
+a temporary 16-bit file first, removed when the run ends, unless resample
+leaves all three in. There is no fallback between the modes: a capture that
+cannot be read at positions, a cleaning that cannot run, or a read-time TBC
+that finds no lines is an error, which says how to decode the RF as it is.
 
 ### What the stacking cannot fix
 
@@ -564,9 +577,10 @@ cancellation worth bringing into the stacking path.
 
 ## The decoder at the capture's rate
 
-The capture loaders resample the RF to 40 MHz, so rev 8's decoder had only
-ever run at that rate, and three of its stages held it as a constant. The
-read-time TBC hands it the captures' own rate, where all three were wrong.
+Rev 8's capture loaders resampled the RF to 40 MHz, so its decoder had only
+ever run at that rate, and three of its stages held it as a constant. This
+branch hands it the captures' own rate, in either mode, where all three were
+wrong.
 The reference implementation had the same three, and fixed them in its
 decoder (`e923c39`, `58f28bc`); they are ported here the same way. At 40 MHz
 each one is the value it was, bit for bit.
@@ -715,10 +729,8 @@ in either mode (`lddecode/demod_opencl.py`), as the reference's `--gpu-fast`
 runs its 7.4 decoder's: rev 8's `demodblock`, a batch of blocks at a time.
 On the device: the block's FFT, the RF high-pass and EFM products and their
 inverses, the video band (RF video filter, PAL carrier notch, MTF), its
-inverse at half rate, the audio carriers' crosstalk computed as the host's
-`crosstalk_phase` computes it (the mix, the three boxcars clipped to the
-block, the interpolation), the band's turn by it, the discriminator, and the
-video channels' filters. On the host: the PAL carriers' presence and the
+inverse at half rate, the discriminator, and the video channels' filters
+(the crosstalk is taken out of the RF before the decoder reads it). On the host: the PAL carriers' presence and the
 analog audio's first stage, read off the block's spectrum by `demodblock`'s
 own code (`RFDecode.audio_stage1`). The FFTs are radix-8/4/2 Stockham
 transforms with twiddles tabulated in double precision, and the precision
@@ -728,13 +740,12 @@ channels, after it has been centred on blanking.
 The decoder hands the device whole windows (`RFDecode.demodblocks`): the
 read of a field's window in the main process, and in each worker process
 the blocks of its field job not yet in its cache. The CPU stays the
-reference and the fallback: the opt-in RF echo cancellation, the V4300D
-coherent subtraction and the crosstalk's measurement run there, and a
-device that cannot be opened or fails sends the blocks back to it, once,
-with a warning.
+reference and the fallback: the opt-in RF echo cancellation and the V4300D
+coherent subtraction run there, and a device that cannot be opened or fails
+sends the blocks back to it, once, with a warning.
 
-Against the CPU, on 64 blocks of `ggv1069-side1-outer` (NTSC, both carriers
-corrected) and `ggv1011-side1-middle` (PAL): the video channels within 1 Hz
+Against the CPU, on 64 blocks of `ggv1069-side1-outer` (NTSC) and
+`ggv1011-side1-middle` (PAL): the video channels within 1 Hz
 (a float32 ulp at the carrier's frequency), `demod_raw` the same, the RF
 high-pass, the EFM and the analog audio the same; 0.66-0.76 ms a block on an
 RTX 5080 Laptop GPU against 4 ms on one core. A whole decode differs in

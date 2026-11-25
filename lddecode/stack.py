@@ -53,6 +53,7 @@ from dataclasses import dataclass
 from typing import Callable, Iterable, Sequence
 
 import numpy as np
+import scipy.signal
 from numba import njit
 from scipy.special import i0 as _bessel_i0
 
@@ -1504,7 +1505,9 @@ class _ChunkCache:
 
     ``compute(index, chunk)`` returns the chunk, or None past the end of
     the stream: the stream's length is only known once pass 0 has located
-    the primary to its end, so the end is found, not given.
+    the primary to its end, so the end is found, not given.  ``workers``
+    producers compute different chunks at once (``compute`` must then be
+    safe to call from several threads).
     """
 
     def __init__(
@@ -1513,6 +1516,7 @@ class _ChunkCache:
         chunk: int = CHUNK,
         ahead: int = AHEAD,
         behind: int = BEHIND,
+        workers: int = 1,
     ) -> None:
         self._compute = compute
         #: The first chunk past the end of the stream, once it is known.
@@ -1526,8 +1530,14 @@ class _ChunkCache:
         self._want = 0
         self._error: str | None = None
         self._stop = False
-        self._thread = threading.Thread(target=self._produce, name="stack-ahead", daemon=True)
-        self._thread.start()
+        #: The chunks a producer is computing.
+        self._busy: set[int] = set()
+        self._threads = [
+            threading.Thread(target=self._produce, name=f"stack-ahead-{i}", daemon=True)
+            for i in range(max(int(workers), 1))
+        ]
+        for thread in self._threads:
+            thread.start()
 
     def _past_end(self, index: int) -> bool:
         return self._end is not None and index >= self._end
@@ -1592,20 +1602,24 @@ class _ChunkCache:
                         return
                     target = None
                     for c in range(self._want, self._want + self._ahead):
-                        if not self._past_end(c) and c not in self._chunks:
+                        if (not self._past_end(c) and c not in self._chunks
+                                and c not in self._busy):
                             target = c
                             break
                     if target is not None:
+                        self._busy.add(target)
                         break
                     self._cv.wait()
             try:
                 data = self._compute(target, self._chunk)
             except Exception as exc:  # noqa: BLE001 - reported to the reader
                 with self._cv:
+                    self._busy.discard(target)
                     self._error = f"{exc}"
                     self._cv.notify_all()
                 return
             with self._cv:
+                self._busy.discard(target)
                 if data is None:
                     self._end = target if self._end is None else min(self._end, target)
                 else:
@@ -2124,3 +2138,190 @@ class StackedSource:
             self.close()
         except Exception:  # noqa: BLE001 - never raise from a destructor
             pass
+
+
+#: Where the cleaned source detects the clock lines: a quarter into the
+#: capture (where there is picture), at most this far from its end.
+CLEAN_PROBE_TAIL = 1 << 22
+
+#: The cleaned source's producer processes, and the chunks it keeps ready
+#: ahead of the read: one producer cleans about 7 M samples/s, a resample
+#: decode on every core reads up to 14 M (ve-monitor, 10.5 frames/s), and
+#: producers on threads of the decoder's own process would hold its
+#: interpreter from the decode (as pass 0's scans would; see _scan).
+CLEAN_WORKERS = 4
+CLEAN_AHEAD = 6
+
+
+def _crystal_params(lines: object) -> dict | None:
+    """What rebuilds a capture's clock lines in another process (its own
+    reader aside): CrystalLines keeps a reader and a cache of its own, and
+    neither crosses a process boundary nor is shared between threads."""
+    if lines is None:
+        return None
+    return {name: getattr(lines, name)
+            for name in ("fs", "f0", "ks", "reference", "others", "length")}
+
+
+def _clean_chunk(
+    read_fn: Callable[[int, int], np.ndarray],
+    crystal: object | None,
+    h0: np.ndarray,
+    s0: int,
+    n: int,
+    fs: float,
+    ntsc: bool,
+    cancel_xtalk: bool,
+    cancel_leak: bool,
+) -> np.ndarray:
+    """The cleaned source's chunk of ``n`` samples from ``s0``: the capture
+    read as it is, its clock lines subtracted, then the audio crosstalk and
+    the chroma leak cancelled on the chunk, as the stacked source cancels
+    them; float32, as the stacked source keeps its chunks."""
+    from .stack_corrections import cancel_chroma_leak, cancel_crosstalk
+
+    pad = HI_TAPS
+    raw = _read_span(read_fn, s0 - pad, n + 2 * pad)
+    if crystal is not None:
+        raw = crystal.clean(raw, s0 - pad)
+    out = np.array(raw[pad : pad + n], dtype=np.float64)
+    leak = cancel_leak and ntsc
+    if cancel_xtalk or leak:
+        # The stacked source's band at phase zero (_fir with the table's
+        # first row): band[j] = sum_d h[d] raw[pad + j + d - (HI_TAPS/2 - 1)].
+        # The filter is the same at every sample here, so it is one
+        # convolution, by FFT.
+        first = pad - (HI_TAPS // 2 - 1)
+        band = scipy.signal.oaconvolve(raw, h0[::-1], mode="valid")[first : first + n]
+        if cancel_xtalk:
+            carriers = AUDIO_CARRIERS_HZ if ntsc else PAL_AUDIO_CARRIERS_HZ
+            keep = XTALK_KEEP_HZ if ntsc else PAL_SPLIT_HZ
+            out = cancel_crosstalk(out, band, fs, carriers, keep)
+        if leak:
+            out = cancel_chroma_leak(out, band, fs, LEAK_BAND_HZ)
+    return out.astype(np.float32)
+
+
+#: A producer process's state (_clean_worker_init).
+_CLEAN_WORKER: dict = {}
+
+
+def _clean_worker_init(open_reader, crystal_params, h0, fs, ntsc, cancel_xtalk, cancel_leak):
+    """A producer process: its own reader of the capture, and its own clock
+    lines rebuilt on it."""
+    read_fn = open_reader()
+    crystal = None
+    if crystal_params is not None:
+        from .stack_corrections import CrystalLines
+        crystal = CrystalLines(read_fn=read_fn, **crystal_params)
+    _CLEAN_WORKER.update(read_fn=read_fn, crystal=crystal, h0=h0, fs=fs, ntsc=ntsc,
+                         cancel_xtalk=cancel_xtalk, cancel_leak=cancel_leak)
+
+
+def _clean_worker_chunk(s0: int, n: int) -> np.ndarray:
+    w = _CLEAN_WORKER
+    return _clean_chunk(w["read_fn"], w["crystal"], w["h0"], s0, n, w["fs"], w["ntsc"],
+                        w["cancel_xtalk"], w["cancel_leak"])
+
+
+class CleanedSource(StackedSource):
+    """``--tbc_mode resample``: one capture with the read-time TBC's
+    cancellations but no time-base correction, the reference
+    implementation's ``Live::identity``.
+
+    Virtual sample ``s`` is capture sample ``s``.  The clock lines are
+    subtracted, and the audio crosstalk and the chroma leak cancelled, on
+    the same chunks and by the same code as the stacked source's; the
+    decoder then resamples the demodulated video, its own way.  On a timeline
+    that maps each sample to itself the stack's sinc read is the sample
+    (its phase is always zero), so only the analytic video band, which the
+    cancellations need, is computed: with the video band filter's phase-zero
+    row, as the stacked source computes it there, as one convolution by FFT
+    (the filter is the same at every sample).  The clock lines are detected
+    a quarter into the capture (``CLEAN_PROBE_TAIL`` from its end at most),
+    where there is picture.
+
+    ``read_fn(start, count)`` reads the capture (zero outside it); ``length``
+    is its length.  With ``open_reader``, a picklable factory of such a
+    reader, the chunks are cleaned by ``CLEAN_WORKERS`` processes, each with
+    its own reader; without it, by one thread of this process.  A detection
+    that fails is an error, not a decode left uncleaned.
+    """
+
+    def __init__(
+        self,
+        read_fn: Callable[[int, int], np.ndarray],
+        length: int,
+        fs: float,
+        *,
+        ntsc: bool,
+        cancel_xtalk: bool = True,
+        cancel_xtal: bool = True,
+        cancel_leak: bool = True,
+        path: str = "capture",
+        open_reader: Callable[[], Callable[[int, int], np.ndarray]] | None = None,
+    ) -> None:
+        self.device = "cpu"
+        self._gpu = None
+        self.inputs = [StackInput(path=path, read_fn=read_fn, length=int(length),
+                                  open_reader=open_reader)]
+        self._readers = [read_fn]
+        self.fs = float(fs)
+        self.ntsc = bool(ntsc)
+        self.stack_weight = "fixed"
+        self.cancel_xtalk = bool(cancel_xtalk)
+        self.cancel_xtal = bool(cancel_xtal)
+        self.cancel_leak = bool(cancel_leak)
+        self.system = SYSTEM_NTSC if self.ntsc else SYSTEM_PAL
+        self._rf_out = None
+        self._xtalk_broken = False
+        self._leak_broken = False
+        self._length = int(length)
+        self._live = None
+        self._scan_stops = []
+        self._cache = None
+        self._pool = None
+        split = (SPLIT_LO_HZ, SPLIT_HI_HZ) if self.ntsc else PAL_SPLIT_HZ
+        self._h0 = np.ascontiguousarray(video_band_lut(self.fs, split)[0])
+        self._crystal = [None]
+        try:
+            if self.cancel_xtal:
+                probe = min(self._length // 4, max(self._length - CLEAN_PROBE_TAIL, 0))
+                self._crystal[0] = self._detect_crystal(0, probe)
+            if open_reader is not None:
+                import concurrent.futures
+
+                self._pool = concurrent.futures.ProcessPoolExecutor(
+                    max_workers=CLEAN_WORKERS,
+                    initializer=_clean_worker_init,
+                    initargs=(open_reader, _crystal_params(self._crystal[0]), self._h0,
+                              self.fs, self.ntsc, self.cancel_xtalk, self.cancel_leak),
+                )
+                self._cache = _ChunkCache(self._compute_chunk, ahead=CLEAN_AHEAD,
+                                          workers=CLEAN_WORKERS)
+            else:
+                self._cache = _ChunkCache(self._compute_chunk)
+        except BaseException:
+            self.close()
+            raise
+
+    @property
+    def length(self) -> int:
+        return self._length
+
+    def _compute_chunk(self, index: int, chunk: int) -> np.ndarray | None:
+        s0 = index * chunk
+        if s0 >= self._length:
+            return None
+        n = min(chunk, self._length - s0)
+        if self._pool is not None:
+            return self._pool.submit(_clean_worker_chunk, s0, n).result()
+        return _clean_chunk(self._readers[0], self._crystal[0], self._h0, s0, n,
+                            self.fs, self.ntsc, self.cancel_xtalk, self.cancel_leak)
+
+    def close(self) -> None:
+        super().close()
+        pool = getattr(self, "_pool", None)
+        if pool is not None:
+            self._pool = None
+            pool.shutdown(wait=False, cancel_futures=True)
