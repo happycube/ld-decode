@@ -385,6 +385,18 @@ def build_parser():
     )
 
     parser.add_argument(
+        "--pal_audio_image_cancel",
+        dest="pal_audio_image_cancel",
+        action="store_true",
+        default=False,
+        help="Remove from the written PAL picture the beat the analog audio "
+        "carriers' images (2fv - fa, 13-14.4 MHz RF) put in the video at "
+        "fv - fa (5.7-7.2 MHz), fitted per block to the carriers' phase.  "
+        "Decoder servos and metrics still read the uncancelled signal.  "
+        "PAL only.",
+    )
+
+    parser.add_argument(
         "--rf_echo_cancel",
         dest="rf_echo_cancel",
         action="store_true",
@@ -645,6 +657,9 @@ def build_options(args, core_count=None):
 
     if vid_standard == "NTSC" and args.audio_carrier_cancel:
         extra_options["AudioCarrierCancel"] = True
+
+    if vid_standard == "PAL" and args.pal_audio_image_cancel:
+        extra_options["PALAudioImageCancel"] = True
 
     if vid_standard == "PAL" and args.AC3:
         print("ERROR: AC3 audio decoding is only supported for NTSC")

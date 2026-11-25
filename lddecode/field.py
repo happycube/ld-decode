@@ -396,7 +396,9 @@ def chroma_dg_output_picture(picture, field, slope, phase, tolerance=None,
             and abs(applied[1] - key[1]) <= tolerance[1]
         )
         if not close_enough:
-            picture = field.dspicture
+            picture = (field.dspicture_out
+                       if getattr(field, "dspicture_out", None) is not None
+                       else field.dspicture)
             applied = None
     if applied is None and output_correction_active(slope, phase, luma_gain):
         picture = apply_chroma_dg_correction_output(
@@ -485,6 +487,9 @@ class Field:
         self.sync_confidence = 100
 
         self.dspicture = None
+        # The picture to write, when it differs from dspicture (the
+        # PAL audio image canceller's: see image_cleaned_demod)
+        self.dspicture_out = None
         self.dsaudio = None
         self.audio_field_number = None
 
@@ -1465,8 +1470,38 @@ class Field:
         if final:
             dsout = self.hz_to_output(dsout)
             self.dspicture = dsout
+            self.dspicture_out = None
+            cleaned = self.image_cleaned_demod() if channel == "demod" else None
+            if cleaned is not None:
+                # dspicture stays as main decodes it, for the servos and
+                # metrics; the written picture loses the image beat.
+                dsclean = np.zeros((linesout * outwidth), dtype=np.float32)
+                scale_spline(
+                    cleaned,
+                    dsclean,
+                    outwidth * (self.lineoffset + 1),
+                    np.arange(npixels) * outscale,
+                    breaks,
+                    coeffs,
+                    self.rf.downscale_sinc_lut,
+                    outwidth,
+                    wow_level_adjust_smoothing=self.wow_level_adjust_smoothing
+                )
+                self.dspicture_out = self.hz_to_output(dsclean)
+                return self.dspicture_out, self.dsaudio, self.efmout
 
         return dsout, self.dsaudio, self.efmout
+
+    def image_cleaned_demod(self):
+        """demod less the PAL audio carriers' image beat (float32), or None
+        when the decode does not carry it (--pal_audio_image_cancel off)."""
+        if self.data is None:
+            return None
+        video = self.data["video"]
+        if "demod_image" not in (video.dtype.names or ()):
+            return None
+        return (video["demod"].astype(np.float32)
+                - video["demod_image"].astype(np.float32))
 
     def compute_audio_field_number(self, lastfieldwritten, audio):
         """The absolute field number the audio clock derives from the
@@ -1573,8 +1608,10 @@ class Field:
         """
         self.anchor_out = FieldAnchor.from_field(self)
         if keep_demod and self.data is not None:
+            cleaned = self.image_cleaned_demod()
             self.transport_demod = np.ascontiguousarray(
-                self.data["video"]["demod"], dtype=np.float32
+                self.data["video"]["demod"] if cleaned is None else cleaned,
+                dtype=np.float32
             )
 
         for attr in self.TRANSPORT_STRIP:
@@ -2158,7 +2195,9 @@ class FieldPAL(Field):
         # stripped; the demod survives as transport_demod when the
         # worker was told to keep it (prepare_transport(keep_demod=True)).
         if self.data is not None:
-            demod = self.data["video"]["demod"].astype(np.float32, copy=False)
+            demod = self.image_cleaned_demod()
+            if demod is None:
+                demod = self.data["video"]["demod"].astype(np.float32, copy=False)
         elif self.transport_demod is not None:
             demod = self.transport_demod
         else:
