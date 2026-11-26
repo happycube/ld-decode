@@ -2076,6 +2076,27 @@ class RFDecode:
     #: Polynomial order in that level.
     IMAGE_CANCEL_ORDER = 3
 
+    #: The band the image line is subtracted in: raised-cosine edges
+    #: 5.0-5.4 MHz and 7.5-7.9 MHz (fv - fa over the video's range, both
+    #: carriers).  Outside it the fitted estimate holds no beat, and
+    #: against a multi-capture average its content there adds error
+    #: rather than removing noise, so only this band is taken out.
+    IMAGE_BAND_HZ = (5.0e6, 5.4e6, 7.5e6, 7.9e6)
+
+    def image_band(self, n):
+        """rfft-bin weights (n // 2 + 1) for an n-sample block on the demod
+        lattice: 1 inside the image band, 0 outside, raised-cosine edges."""
+        cached = getattr(self, "_image_band_cache", None)
+        if cached is not None and cached[0] == n:
+            return cached[1]
+        a, b, c, d = self.IMAGE_BAND_HZ
+        f = np.fft.rfftfreq(n, 1.0 / self.freq_hz_demod)
+        up = np.clip((f - a) / (b - a), 0.0, 1.0)
+        dn = np.clip((d - f) / (d - c), 0.0, 1.0)
+        band = (0.5 - 0.5 * np.cos(np.pi * up)) * (0.5 - 0.5 * np.cos(np.pi * dn))
+        self._image_band_cache = (n, band)
+        return band
+
     def pal_audio_image_cancel(self, indata_fft, hilbert, demod):
         """The PAL analog audio carriers' image beat in demod, on demod's
         lattice, or None when the block carries neither carrier.  Opt-in
@@ -2430,7 +2451,8 @@ class RFDecode:
                 video_out["demod_image"] = 0.0
             else:
                 video_out["demod_image"] = npfft.irfft(
-                    npfft.rfft(image) * self.Filters["FVideo_rfft32"][0], n=bl)
+                    npfft.rfft(image) * self.Filters["FVideo_rfft32"][0]
+                    * self.image_band(len(image)), n=bl)
 
         rv["video"] = (
             video_out[self.blockcut : -self.blockcut_end] if cut else video_out

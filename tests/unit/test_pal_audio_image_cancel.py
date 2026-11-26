@@ -159,3 +159,17 @@ def test_the_field_writes_the_cleaned_demod_and_keeps_the_raw_one():
         data={"video": np.rec.fromarrays([np.full(8, 7.5e6)], names=["demod"])})
     assert Field.image_cleaned_demod(plain) is None
     assert Field.image_cleaned_demod(types.SimpleNamespace(data=None)) is None
+
+
+def test_the_image_is_subtracted_only_in_its_band():
+    # The fitted line is taken out of the written picture in 5.0-7.9 MHz only:
+    # unity across fv - fa (5.4-7.5 MHz), zero outside 5.0 / 7.9 MHz.
+    rf = types.SimpleNamespace(IMAGE_BAND_HZ=RFDecode.IMAGE_BAND_HZ, freq_hz_demod=RF_FS / 2)
+    n = 16384
+    band = RFDecode.image_band(rf, n)
+    f = np.fft.rfftfreq(n, 1.0 / rf.freq_hz_demod)
+    assert band.shape == f.shape
+    assert np.all(band[(f >= 5.4e6) & (f <= 7.5e6)] == 1.0)
+    assert np.all(band[(f <= 5.0e6) | (f >= 7.9e6)] == 0.0)
+    edge = band[(f > 5.0e6) & (f < 5.4e6)]
+    assert np.all(np.diff(edge) >= 0) and edge.min() >= 0 and edge.max() <= 1
