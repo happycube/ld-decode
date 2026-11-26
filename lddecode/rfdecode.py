@@ -232,6 +232,7 @@ class RFDecode:
         self.NTSC_ColorNotchFilter = extra_options.get("NTSC_ColorNotchFilter", False)
         self.PAL_V4300D_CoherentSubtract = extra_options.get("PAL_V4300D_CoherentSubtract", False)
         self.AudioCarrierCancel = extra_options.get("AudioCarrierCancel", False)
+        self.PALAudioImageCancel = extra_options.get("PALAudioImageCancel", False)
         # Cancel the capture/player multi-path reflection ("ghost").  Opt-in via
         # --rf_echo_cancel (auto-detect from the RF cepstrum, re-estimated across
         # the disc) or --rf_echo (manual taps); applies the correction only when
@@ -2062,6 +2063,146 @@ class RFDecode:
             lines += line
         band_subtract(spectrum, lines, lo, n)
 
+    #: Half-width of the RF band each PAL audio carrier's phase is taken
+    #: from for the image canceller (+-100 kHz deviation, +-150 kHz peak).
+    IMAGE_CANCEL_HALFBAND_HZ = 150e3
+    #: Band of the demodulated video the image lines are fitted in: fv - fa
+    #: for fv from sync tip (6.76 MHz) to peak white (7.9 MHz) and fa =
+    #: 0.683 / 1.066 MHz (5.7-7.2 MHz), with room for the carriers' own
+    #: deviation either side.
+    IMAGE_CANCEL_BAND_HZ = (5.4e6, 7.5e6)
+    #: The level the image's coupling follows: demod low-passed to here.
+    IMAGE_CANCEL_LEVEL_HZ = 500e3
+    #: Polynomial order in that level.
+    IMAGE_CANCEL_ORDER = 3
+
+    #: The band the image line is subtracted in: raised-cosine edges
+    #: 5.0-5.4 MHz and 7.5-7.9 MHz (fv - fa over the video's range, both
+    #: carriers).  Outside it the fitted estimate holds no beat, and
+    #: against a multi-capture average its content there adds error
+    #: rather than removing noise, so only this band is taken out.
+    IMAGE_BAND_HZ = (5.0e6, 5.4e6, 7.5e6, 7.9e6)
+
+    def image_band(self, n):
+        """rfft-bin weights (n // 2 + 1) for an n-sample block on the demod
+        lattice: 1 inside the image band, 0 outside, raised-cosine edges."""
+        cached = getattr(self, "_image_band_cache", None)
+        if cached is not None and cached[0] == n:
+            return cached[1]
+        a, b, c, d = self.IMAGE_BAND_HZ
+        f = np.fft.rfftfreq(n, 1.0 / self.freq_hz_demod)
+        up = np.clip((f - a) / (b - a), 0.0, 1.0)
+        dn = np.clip((d - f) / (d - c), 0.0, 1.0)
+        band = (0.5 - 0.5 * np.cos(np.pi * up)) * (0.5 - 0.5 * np.cos(np.pi * dn))
+        self._image_band_cache = (n, band)
+        return band
+
+    def pal_audio_image_cancel(self, indata_fft, hilbert, demod):
+        """The PAL analog audio carriers' image beat in demod, on demod's
+        lattice, or None when the block carries neither carrier.  Opt-in
+        (--pal_audio_image_cancel).
+
+        The pits carry the video FM carrier fv and the audio carriers fa
+        (0.683 / 1.066 MHz) summed and hard-limited, so the RF also holds
+        products at 2 fv - fa: 13.1-14.4 MHz over the video's range, inside
+        the RF band-pass.  Each is the mirror image of fa about the carrier
+        and demodulates as a line at fv - fa, 5.7 to 7.2 MHz: in and just
+        above the top of the luminance band, a fine beat texture strongest
+        on dark and mid-grey picture at the middle and outer radius.
+
+        A fixed RF notch cannot remove it: the product moves at twice the
+        video's deviation, and over 13.1-13.6 MHz it shares the RF with the
+        upper sideband of 5.8 MHz detail on grey (the VITS multiburst's top
+        packet).  But its phase is known: the analytic RF's own carrier
+        phase less the audio carrier's.  So the line is fitted as
+        Re(w(level) p), p = exp(j(phi_v - phi_a)), w a polynomial in the
+        video level, by least squares on the demod's analytic signal in
+        the band it can fall in.  Picture detail and noise
+        are uncorrelated with the audio's phase; what they explain anyway
+        is measured by the same fit against p moved off frequency, and the
+        estimate is scaled down by it (a Wiener gain, as
+        coherent_line_estimate).  A carrier the disc does not carry is
+        skipped.  demod itself is not changed (see demodblock).
+        """
+        SP = self.SysParams
+        bl = self.blocklen
+        L = len(hilbert)
+        fs = self.freq_hz * L / bl
+        fpb = self.freq_hz / bl
+        hw = self.IMAGE_CANCEL_HALFBAND_HZ
+
+        def bandpower(f0, width):
+            lo, hi = int((f0 - width) / fpb), int((f0 + width) / fpb) + 1
+            return np.mean(sqsum(indata_fft[lo:hi]) ** 2)
+
+        mid = (SP["audio_lfreq"] + SP["audio_rfreq"]) / 2
+        carriers = [
+            fa for fa in (SP["audio_lfreq"], SP["audio_rfreq"])
+            if bandpower(fa, 40e3) >= 5.0 * bandpower(
+                fa + (-1 if fa < mid else 1) * (hw + 100e3), 50e3)
+        ]
+        if not carriers:
+            return None
+
+        start = -(-self.blockcut * L // bl)
+        stop = (bl - self.blockcut_end) * L // bl
+
+        # The demod's analytic signal in the fit band, and the level.
+        dspec = npfft.fft(demod)
+        fr = np.fft.fftfreq(L, 1.0 / fs)
+        lo_hz, hi_hz = self.IMAGE_CANCEL_BAND_HZ
+        band = (fr >= lo_hz) & (fr <= hi_hz)
+        sig = npfft.ifft(np.where(band, 2 * dspec, 0))
+        kl = self.IMAGE_CANCEL_LEVEL_HZ
+        low = np.abs(fr) < kl
+        level = (npfft.ifft(np.where(low, dspec, 0)).real - SP["ire0"]) / (
+            100 * SP["hz_ire"])
+        kept = slice(start, stop)
+        # The polynomial is only known over the levels the block visits:
+        # held at its ends beyond them, so a level the block barely holds
+        # (a white pulse in a dark block) cannot extrapolate it.
+        # Mapped onto -1..1 (or a 10 IRE span about a flat block's level),
+        # and solved by pseudo-inverse, so a block of one level (black, a
+        # still caption) degrades to a constant fit rather than an
+        # ill-conditioned one.
+        lo_lv, hi_lv = np.percentile(level[kept], (1, 99))
+        x = (np.clip(level, lo_lv, hi_lv) - 0.5 * (lo_lv + hi_lv)) / max(
+            0.5 * (hi_lv - lo_lv), 0.05)
+
+        pv = unit_phasor(hilbert)
+        order = self.IMAGE_CANCEL_ORDER
+        basis = np.stack([x ** k for k in range(order + 1)])
+        Ginv = np.linalg.pinv(basis[:, kept] @ basis[:, kept].T, rcond=1e-9)
+        n = stop - start
+        t = np.arange(n)
+
+        total = np.zeros(L, dtype=np.complex128)
+        for fa in carriers:
+            k0, k1 = int((fa - hw) / fpb), int((fa + hw) / fpb) + 1
+            a = np.zeros(L, dtype=np.complex128)
+            a[k0:k1] = indata_fft[k0:k1]
+            p = pv * np.conj(unit_phasor(npfft.ifft(a)))
+            z = sig * np.conj(p)
+            zk = z[kept]
+
+            def fit(zz):
+                c = Ginv @ (basis[:, kept] @ zz)
+                w = c @ basis[:, kept]
+                return c, 0.5 * np.mean(np.abs(w) ** 2)
+
+            c, power = fit(zk)
+            if power <= 0:
+                continue
+            control = np.mean([
+                fit(zk * np.exp(-2j * np.pi * off / fs * t))[1]
+                for off in (37e3, -53e3)
+            ])
+            gain = max(0.0, 1.0 - control / power)
+            line = gain * (c @ basis) * p
+            sig -= line
+            total += line
+        return total.real
+
     def demodblock_sync(self, data=None, fftdata=None, cut=False):
         """Demodulate only the 0.5 MHz path used for vertical-sync detection.
 
@@ -2207,6 +2348,15 @@ class RFDecode:
         else:
             hilbert = npfft.ifft(indata_fft_filt[: self.blocklen // 2])
         demod = unwrap_hilbert(hilbert, self.freq_hz_demod)
+        # The image beat is carried beside demod, not taken out of it: every
+        # measurement the servos and calibration make reads demod as main
+        # does, and only the written picture is cleaned (Field.downscale,
+        # Field.downscale_cvbs).  Taken out here, the 2T servo's scatter
+        # gate sees less 6-6.5 MHz noise on the ITS line and engages on
+        # discs where it otherwise holds.
+        image_cancel = self.PALAudioImageCancel and self.SysParams["analog_audio"]
+        image = (self.pal_audio_image_cancel(indata_fft, hilbert, demod)
+                 if image_cancel else None)
 
         # use a clipped demod for video output processing to reduce speckling impact.
         # demod is real and these video outputs are real, so the half-spectrum
@@ -2246,6 +2396,8 @@ class RFDecode:
         if self.system == "PAL":
             names.append("demod_pilot")
             filtered.append(("demod_pilot", 3))
+        if image_cancel:
+            names.append("demod_image")
 
         video_out = np.recarray(bl, dtype=[(name, np.float32) for name in names])
         # Taken before the clip below, which is the unfiltered channel's only
@@ -2292,6 +2444,15 @@ class RFDecode:
                 np.add(video_results[i], dc[i], out=video_out[name])
             else:
                 video_out[name] = video_results[i]
+
+        if image_cancel:
+            # The line as the demod channel's own filter passes it.
+            if image is None:
+                video_out["demod_image"] = 0.0
+            else:
+                video_out["demod_image"] = npfft.irfft(
+                    npfft.rfft(image) * self.Filters["FVideo_rfft32"][0]
+                    * self.image_band(len(image)), n=bl)
 
         rv["video"] = (
             video_out[self.blockcut : -self.blockcut_end] if cut else video_out
