@@ -381,6 +381,10 @@ class CVBSWriter:
         # on NTSC, -0.1 to -1.04 on PAL, which a spec reader can take for
         # the wrong colour frame
         self.legacy_origin = legacy_origin
+        # The write-side residual video EQ's stream state (PAL,
+        # --pal_vits_eq: the decoder sets it); None writes frames as
+        # they are.
+        self.vits_eq = None
         if legacy_origin:
             self._ntsc_shift = 0
         self._lock_initialised = False
@@ -549,6 +553,19 @@ class CVBSWriter:
             a = self._to_spec_levels(a_raw, f_a)
             b = self._to_spec_levels(b_raw, f_b)
             frame = np.concatenate([a, b])
+            if getattr(self, "vits_eq", None) is not None:
+                # one continuous stream, under the taps current at the
+                # frame's second field's commit (which the first field's
+                # view was re-bound to, see LDdecode._pair_cvbs_view)
+                taps = (None if f_b is None
+                        else f_b.rf.DecoderParams.get("vits_eq_taps"))
+                floor = None
+                if f_a is not None and f_b is not None:
+                    # the decoder's own floor (its 16-bit zero, the
+                    # clipped sync tip) at spec levels
+                    floor = min(float(self._to_spec_levels(np.zeros(1), f)[0])
+                                for f in (f_a, f_b))
+                frame = self.vits_eq.process(frame, taps, floor)
 
         frame_id = self.frames_written
         if not self._write_frame(frame):

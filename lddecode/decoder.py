@@ -43,6 +43,7 @@ from .metrics import (
     precompute_vits,
     staircase_linearity,
 )
+from . import vits_eq
 from .dsp import (FieldInfo, concatenate_blocks, nb_abs, readout_cutoff_from_tilt,
                   roundfloat, video_eq_db)
 
@@ -724,6 +725,18 @@ class LDdecode:
         self._dg_samples = []      # (field readloc, slope per IRE)
         self._dg_last_adopt = None
         self.dg_calibrated = False
+
+        # Write-side residual video EQ (--pal_vits_eq, checkVitsEQ).
+        self.pal_vits_eq = extra_options.get("PALVitsEQ", False)
+        self._vitseq_samples = []   # (readloc, field_reading, _vitseq_key)
+        self._vitseq_decided = False
+        self._vitseq_since_fit = 0
+        self._vitseq_fit_key = None
+        self._vitseq_stale = False
+        self._vitseq_cut_taps = None
+        self._vitseq_tbc = vits_eq.StreamEQ()
+        if self.pal_vits_eq and self.cvbs_writer is not None:
+            self.cvbs_writer.vits_eq = vits_eq.StreamEQ()
 
         self.auto_deemp = extra_options.get("auto_deemp", True)
         # --no_auto_chroma: no inverse-MTF chroma correction at all - the
@@ -1824,6 +1837,140 @@ class LDdecode:
         engine = getattr(self, "_job_engine", None)
         if engine is not None:
             engine.set_chroma_dg(self._engine_chroma_dg())
+
+    def checkVitsEQ(self, field):
+        """Pool this field's VITS readings for the write-side residual EQ
+        (--pal_vits_eq, see vits_eq) and adopt its fit.
+
+        The readings are taken from field.dspicture, which is what the
+        servos and metrics read, and the EQ only reaches the written
+        picture (_writeout_data, CVBSWriter): adopting never moves a
+        decode parameter or invalidates a field.  Serial and threaded
+        decodes pool the same committed fields in the same order, so
+        they adopt identically.  The pool is cleared whenever a decode
+        parameter moves (with the chroma DG pool).  The first fit is
+        taken once MIN_FIELDS fields are pooled; later fits every
+        REFIT_FIELDS fields, adopted only if the gain moves by more than
+        ADOPT_DB somewhere in the picture band.
+        """
+        if not self.pal_vits_eq or field.dspicture is None:
+            return
+        found = self._vits_measurement(field, measure_its_2t_ratio)
+        mb = self._vits_measurement(field, measure_vits_multiburst)
+        reading = vits_eq.field_reading(
+            field, None if found is None else found[1], mb)
+        # Only readings decoded under this field's filters are pooled
+        # with it: a parameter that moved without clearing the pool (the
+        # inverse-MTF ceiling in the warm-up, say) leaves its old
+        # readings behind here.
+        key = self._vitseq_key(field)
+        self._vitseq_samples = [x for x in self._vitseq_samples
+                                if x[2] == key]
+        if (self._vitseq_decided and key != self._vitseq_fit_key
+                and not self._vitseq_stale):
+            # A decode filter moved since the fit (the 2T servo still
+            # converging, say): its boost was sized against a channel
+            # that is no longer there, so only its cut stands until the
+            # pool has refilled under the new filters and a refit is due.
+            self._vitseq_stale = True
+            cut = self._vitseq_cut_taps
+            if cut is None:
+                self.rf.DecoderParams.pop("vits_eq_taps", None)
+            else:
+                self.rf.DecoderParams["vits_eq_taps"] = cut
+            logs.logger.debug("VITS EQ: decode filters moved, boost "
+                              "withdrawn until the refit")
+        self._vitseq_samples = pool_reading(
+            self._vitseq_samples, (field.readloc, reading, key),
+            vits_eq.KEEP_FIELDS)
+        self._vitseq_since_fit += 1
+        if len(self._vitseq_samples) < vits_eq.MIN_FIELDS:
+            return
+        if (self._vitseq_decided and not self._vitseq_stale
+                and self._vitseq_since_fit < vits_eq.REFIT_FIELDS):
+            return
+        self._vitseq_since_fit = 0
+        fs_hz = self.rf.SysParams["outfreq"] * 1e6
+        taps, rep = vits_eq.fit([x[1] for x in self._vitseq_samples], fs_hz,
+                                allow_boost=not self._vitseq_servo_has_room())
+        current = self.rf.DecoderParams.get("vits_eq_taps")
+        grid = np.linspace(0.5e6, 5.0e6, 19)
+        change = float(np.max(np.abs(
+            vits_eq.gain_db(taps, fs_hz, grid)
+            - vits_eq.gain_db(current, fs_hz, grid))))
+        self._vitseq_fit_key = key
+        stale, self._vitseq_stale = self._vitseq_stale, False
+        cut = rep.get("cut_taps")
+        self._vitseq_cut_taps = (None if taps is None or cut is None
+                                 else tuple(float(t) for t in cut))
+        if self._vitseq_decided and not stale and change < vits_eq.ADOPT_DB:
+            return
+        first = not self._vitseq_decided
+        self._vitseq_decided = True
+        if taps is None:
+            self.rf.DecoderParams.pop("vits_eq_taps", None)
+        else:
+            self.rf.DecoderParams["vits_eq_taps"] = tuple(
+                float(t) for t in taps)
+        gain = rep.get("gain") or {}
+        logs.logger.debug("VITS EQ fit: %s",
+                          {k: v for k, v in rep.items() if k != "cut_taps"})
+        logs.logger.info(
+            "VITS EQ %s: %s (tail c %.3f tau %.1f, 2T %s, multiburst "
+            "deficit %s; gain %s)",
+            "set" if first else "trimmed",
+            "identity" if taps is None else f"{len(taps)} taps",
+            rep.get("c", 0.0), rep.get("tau", 0.0),
+            "-" if rep.get("t2") is None else f"{rep['t2']:.3f}",
+            "-" if rep.get("deficit") is None else f"{rep['deficit']:.3f}",
+            " ".join(f"{k}:{20 * np.log10(v):+.2f}dB"
+                     for k, v in gain.items()) or "0 dB")
+
+    def _vitseq_servo_has_room(self):
+        """Whether the 2T servo can still raise the pulse itself: it holds
+        the 2T pulse (not the staircase), it is not at the bottom of its
+        clip, and its pool is not too scattered for it to act on.  The
+        write-side EQ only boosts what the servo cannot reach, so that
+        the two never correct the same deficit (while the servo is still
+        converging, a boost sized against the level in force overshoots
+        once the level arrives)."""
+        if not (self.autoMTF and self.mtf_2t_servo
+                and self.mtf_servo_reference == "2t"):
+            return False
+        if self.mtf_level <= self.mtf_servo_clip[0] + 0.02:
+            return False
+        if self._servo_engaged:
+            # it has acted on this disc and will again
+            return True
+        if len(self._servo_samples) < self.mtf_servo_min_samples:
+            return True
+        _, scatter = self._mtf_servo_pooled(self._servo_samples)
+        return scatter <= self.mtf_servo_scatter
+
+    @staticmethod
+    def _vitseq_key(field):
+        """The decode filters a field's VITS readings depend on."""
+        veq = getattr(field, "decoded_video_eq", None)
+        return (round(float(getattr(field, "decoded_mtf_level", 0.0) or 0.0), 6),
+                round(float(getattr(field, "decoded_imtf_strength", 0.0)
+                            or 0.0), 6),
+                tuple(veq) if veq else None,
+                float(field.rf.DecoderParams.get("vsync_ire", 0.0)))
+
+    def _vitseq_tbc_picture(self, picture, f):
+        """The TBC picture through the write-side EQ current at its
+        commit (f is the field's output view), filtered as one
+        continuous stream across fields."""
+        if not getattr(self, "pal_vits_eq", False) or f is None:
+            return picture
+        taps = f.rf.DecoderParams.get("vits_eq_taps")
+        x = (np.frombuffer(picture, dtype=np.uint16)
+             if isinstance(picture, (bytes, bytearray)) else
+             np.asarray(picture))
+        y = self._vitseq_tbc.process(x.astype(np.float64), taps)
+        if taps is None:
+            return picture
+        return np.clip(np.rint(y), 0, 65535).astype(np.uint16)
 
     # VITS white-level servo (--vits_white_level, off by default): pools
     # the ITS / NTC-7 white bar's level above blanking per field
@@ -3002,7 +3149,7 @@ class LDdecode:
             self.cvbs_writer.push_field(fi, picture, f, efm=efm_out,
                                         audio=audio)
         else:
-            self.outfile_video.write(picture)
+            self.outfile_video.write(self._vitseq_tbc_picture(picture, f))
 
         if self.do_rftbc:
             rftbc = f.rf_tbc()
@@ -3499,6 +3646,8 @@ class LDdecode:
                 # Write-time only, so it never moves a decode parameter:
                 # pooled here so the first frame goes out corrected.
                 self.checkChromaDG(nf)
+                if getattr(self, "pal_vits_eq", False):
+                    self.checkVitsEQ(nf)
             if moved:
                 # this field (and any pool samples) were measured under
                 # parameters that just changed
@@ -3506,6 +3655,8 @@ class LDdecode:
                 self._veq_samples.clear()
                 self._veq_held = False
                 self._dg_samples.clear()
+                if getattr(self, "pal_vits_eq", False):
+                    self._vitseq_samples.clear()
             elif np.isfinite(nf.burstmedian) and nf.burstmedian > 5:
                 self._deemp_burst_samples.append(nf.burstmedian)
 
@@ -3590,6 +3741,8 @@ class LDdecode:
             self._deemp_burst_offset = None
             self._veq_samples.clear()
             self._dg_samples.clear()
+            if getattr(self, "pal_vits_eq", False):
+                self._vitseq_samples.clear()
 
         redo = not self.checkMTF(f, self.fieldstack[0])
         if redo:
@@ -3599,6 +3752,8 @@ class LDdecode:
             self._deemp_burst_offset = None
             self._veq_samples.clear()
             self._dg_samples.clear()
+            if getattr(self, "pal_vits_eq", False):
+                self._vitseq_samples.clear()
 
         veq_redo = False
         if not agc_adjusted and not redo:
@@ -3616,10 +3771,14 @@ class LDdecode:
             # two different channels.  Likewise the white bar's level,
             # which the AGC moves outright.
             self._dg_samples.clear()
+            if getattr(self, "pal_vits_eq", False):
+                self._vitseq_samples.clear()
             self._level_samples.clear()
         else:
             self.checkChromaDG(f)
             self.checkLumaLevel(f)
+            if getattr(self, "pal_vits_eq", False):
+                self.checkVitsEQ(f)
         return changed
 
     def validate_chain(self, f, prevfield):
