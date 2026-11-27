@@ -119,3 +119,12 @@ def test_the_pilot_is_read_before_the_burst():
     it = stub(tilts=[tilt_at(14e6)] * 8, sides=[sides_at(16e6)] * 8,
               pilots=[pilot_at(11.9e6)] * 3)
     assert REF / LDdecode._readout_level_estimate(it) == pytest.approx(16e6, rel=1e-6)
+
+
+def test_a_tilt_too_slight_for_any_cutoff_means_no_compensation():
+    """A ratio just above one - less tilt than a cutoff fifty times the
+    white carrier gives - is no readout to compensate, not the steepest:
+    a PAL carrier tilt of 1.001 had been held at the bound (a 7.3 MHz
+    cutoff), and the decode found no sync after it."""
+    assert tilt_at(50 * WHITE) > 1.0001
+    assert LDdecode._readout_level_estimate(stub(tilts=[1.0001] * 5)) == 0.0
