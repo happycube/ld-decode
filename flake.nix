@@ -27,11 +27,12 @@
         # dirtyShortRev format is "abc1234-dirty", so replace "-" with "."
         fullVersion = "${version}+git.${builtins.replaceStrings ["-"] ["."] gitCommit}";
         
-        # --device opencl: the stacked source's read and combination on a GPU.
+        # --device opencl: the decoder's demodulation, and the stacked source's
+        # read and combination, on a GPU.
         # pyopencl loads the vendor drivers through ocl-icd (on NixOS from
         # /run/opengl-driver; elsewhere set OCL_ICD_VENDORS=/etc/OpenCL/vendors).
         # Left out on a platform where nixpkgs does not build it, where the
-        # stack runs on the CPU and --device opencl says pyopencl is missing.
+        # decode runs on the CPU and --device opencl says pyopencl is missing.
         openclPackages = pkgs.lib.optionals
           (pkgs.lib.meta.availableOn pkgs.stdenv.hostPlatform pythonPackages.pyopencl
             && !(pythonPackages.pyopencl.meta.broken or false))
