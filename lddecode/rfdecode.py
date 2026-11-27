@@ -504,8 +504,8 @@ class RFDecode:
         # The Nyquist argument follows the input rate.  It was the 40 Msps
         # literal (20 MHz), which put the band elsewhere at any other rate
         # (37.5 kHz-3 MHz at 75 MHz); at 40 MHz the two are the same value,
-        # so the filter is unchanged bit for bit there.  Only the read-time
-        # TBC hands the decoder another rate: the loaders resample to 40 MHz.
+        # so the filter is unchanged bit for bit there.  The decoder runs at
+        # the capture's own rate in both TBC modes.
         self.Filters["Fefm"] *= gen_bpf_supergauss(
             _sglow, _sghigh, _sgorder, self.freq_hz_half, self.blocklen
         )

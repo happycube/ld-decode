@@ -32,7 +32,7 @@ capture 3 ─┘   (lines)    (VBI codes)  (positions)  (weights)    (3 of them)
 
 The decoder itself is unchanged: it reads that stream and demodulates it as
 usual, so its sync, VBI, dropout and resampling stages are the same code
-either way. The output is a better decode, not a different format.
+either way. The output keeps its formats; only the RF it is decoded from changes.
 
 ## Pass 0: the lines, straight from the RF
 
@@ -155,9 +155,11 @@ On `ggv1069-side1-outer`, a signed capture whose offset is 2 % of its RMS,
 the centring moves 7.6 % of the `.tbc`'s samples (0.08 levels on average,
 a level at the 99th percentile), and leaves the carriers' lines where they
 were (+0.76 and +0.96 dB over the floor, against +2.78 and +3.27 uncleaned).
-The three cost the resample 4 % (`ggv1069-side1-outer`, 4.72 to 4.54
-frames/s) to 9 % (`ve-monitor`, 7.15 to 6.49) of its speed with `-t 4`, and
-the decoder's process some 165 MB of read-ahead. The reference
+Against the cleaned resample before them, the three changes cost 4 %
+(`ggv1069-side1-outer`, 4.72 to 4.54 frames/s) to 9 % (`ve-monitor`, 7.15 to
+6.49) of its speed with `-t 4`, and the decoder's process some 165 MB of
+read-ahead. What the cleaning itself costs, against the RF left as it is, is
+in "The limits" below. The reference
 implementation does not centre its captures. Pass 0's line locator reads
 the captures as they are.
 
@@ -575,10 +577,11 @@ Where it differs from the reference's, for rev 8:
   own reader and its own clock lines rebuilt from the ones detected (a
   `CrystalLines` keeps a reader and a cache of its own, which neither cross
   a process boundary nor are safe to share between threads). On threads of
-  the decoder's own process they held its interpreter from the decode: a
-  resample of `ve-monitor` ran at 5.2 frames/s cleaned on one thread, 6.4 on
-  four, 8.1 on four processes, against 10.5 left as it is; on
-  `ggv1069-side1-outer` 4.6 against 4.75.
+  the decoder's own process they held its interpreter from the decode: in
+  one session, a resample of `ve-monitor` ran at 5.2 frames/s cleaned on one
+  thread, 6.4 on four threads and 8.1 on four processes. These were
+  measured before the DC centring, with the decoder's default thread count;
+  the current figures, with `-t 4`, are in "The limits" below.
 
 The clock lines are detected a quarter into the capture, at most 4 Mi
 samples from its end (the reference's `min(len / 4, len - 2^22)`), where
@@ -819,8 +822,8 @@ it is a measurement of the RF, and it is over long before the decode is.
   `--tbc_mode read`, which stacking several captures needs. Where it cannot
   run (no lines found) it is an error: the decode never changes mode on its
   own.
-- **Not the reference's bytes, unless asked for.** The corrections make a
-  better decode than the reference's, so by default neither mode produces the
+- **Not the reference's bytes, unless asked for.** The corrections remove
+  the three interferences above, so by default neither mode produces the
   reference decoder's output. `--tbc_mode resample` with
   `--no_audio_carrier_cancel --no_crystal_lines --no_chroma_leak` reads the
   capture through the decoder's usual loader and keeps its bytes for a 40 MHz
