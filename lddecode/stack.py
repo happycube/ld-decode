@@ -2290,9 +2290,16 @@ class CleanedSource(StackedSource):
                 self._crystal[0] = self._detect_crystal(0, probe)
             if open_reader is not None:
                 import concurrent.futures
+                import multiprocessing
 
+                # Spawned, never forked: the decoder's process already runs
+                # threads (the producers, numba's, the writer's), and a child
+                # forked while one of them holds a lock keeps it held forever.
+                # On Linux, where fork is the default, such a worker hung the
+                # decode at exit, after its last frame was written.
                 self._pool = concurrent.futures.ProcessPoolExecutor(
                     max_workers=CLEAN_WORKERS,
+                    mp_context=multiprocessing.get_context("spawn"),
                     initializer=_clean_worker_init,
                     initargs=(open_reader, _crystal_params(self._crystal[0]), self._h0,
                               self.fs, self.ntsc, self.cancel_xtalk, self.cancel_leak),
@@ -2324,4 +2331,11 @@ class CleanedSource(StackedSource):
         pool = getattr(self, "_pool", None)
         if pool is not None:
             self._pool = None
+            # The chunks still in flight are read ahead of a decode that has
+            # ended: stop their workers rather than let the interpreter's exit
+            # wait for them.
+            processes = list((getattr(pool, "_processes", None) or {}).values())
             pool.shutdown(wait=False, cancel_futures=True)
+            for proc in processes:
+                if proc.is_alive():
+                    proc.terminate()
