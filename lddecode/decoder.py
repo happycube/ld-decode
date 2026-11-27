@@ -557,6 +557,13 @@ class LDdecode:
         self.doDOD = doDOD
 
         self.fieldinfo = FieldInfo()
+        # PAL sequence state of the commit stage (see settle_pal_phase_id):
+        # running reference for the burst phase of fields 1-4 (a vector,
+        # angle in subcarrier half-cycles), whether the committed position
+        # rests on a reading, and the offset of a reading held back
+        self.burst_phase_ref = None
+        self.phase_id_measured = False
+        self.phase_jump_pending = None
 
         self.leadIn = False
         self.leadOut = False
@@ -3644,6 +3651,100 @@ class LDdecode:
 
         return abs(line0 - prev_end) <= self.rf.linelen * 2
 
+    #: weight of each new field in the PAL burst phase reference
+    BURST_PHASE_REF_WEIGHT = 1 / 16
+
+    def _follows_last_committed(self, f):
+        """f is the field straight after the last one committed: opposite
+        parity, one field period on in the file."""
+        if not len(self.fieldinfo):
+            return False
+        last = self.fieldinfo[-1]
+        distance = f.readloc - last["fileLoc"]
+        return (bool(last["isFirstField"]) != bool(f.isFirstField)
+                and 0.5 * self.bytes_per_field < distance < 1.5 * self.bytes_per_field)
+
+    def settle_pal_phase_id(self, f):
+        """Commit-stage decision of a PAL field's 8-field sequence position.
+
+        A field reads its position from two burst measurements: whether
+        line 6 carries burst (the 4-field position, with the field's
+        parity) and the burst phase on lines 7-19 (fields 1-4 against 5-8,
+        180 degrees apart).  Here both are checked against the fields
+        committed before it.
+
+        The half.  On its own, a field compares its burst phase with 0
+        degrees; a disc whose burst sits near 90 degrees from that reads
+        either way at random.  The burst's phase relative to the line is
+        the same on every field of a disc, so the fields decided so far
+        give a reference for it, and the half is the one nearer that
+        reference.  The first field to be decided starts the reference -
+        by its majority of rising crossings as before, or if those tie by
+        its burst phase against 0 degrees - so a disc whose burst does sit
+        near 0 degrees decides as before.
+
+        The position.  A reading that contradicts the committed sequence,
+        on the field straight after the last committed one, while that
+        sequence rests on a reading, is held to the sequence; the next
+        reading that continues from it confirms a real break (a track
+        jump, a still frame), which is then taken one reading late.  A
+        single misread no longer breaks the sequence.  After a gap, or
+        while the committed position is only a fallback continuation, the
+        reading is taken as it is.
+
+        Fields that could not read line 6 keep the fallback continuation
+        commit_field gave them.
+        """
+        if self.rf.SysParams["fieldPhases"] != 8:
+            return
+
+        follows = self._follows_last_committed(f)
+        if not follows:
+            self.phase_id_measured = False
+            self.phase_jump_pending = None
+
+        m4 = getattr(f, "phase_m4", None)
+        phase = getattr(f, "burst_phase", None)
+        if m4 is None or phase is None:
+            if not f.phase_id_fallback:
+                self.phase_id_measured = True
+            return
+
+        ref = self.burst_phase_ref
+        ref_phase = 0.0 if ref is None else np.angle(ref) / np.pi
+        if ref is not None or f.phase_id_fallback:
+            # distance from the reference in half-cycles, in [-1, 1)
+            d = (phase - ref_phase + 1.0) % 2.0 - 1.0
+            measured = m4 + (0 if abs(d) < 0.5 else 4)
+        else:
+            measured = f.fieldPhaseID
+        f.phase_id_fallback = False
+
+        if follows and self.phase_id_measured:
+            expected = self.fieldinfo[-1]["fieldPhaseID"] % 8 + 1
+            offset = (measured - expected) % 8
+            if offset and offset != self.phase_jump_pending:
+                self.phase_jump_pending = offset
+                f.fieldPhaseID = expected
+                if logs.logger is not None:
+                    logs.logger.debug(
+                        "At field #%d, fieldPhaseID read as %d held to the "
+                        "sequence (%d) until a following field confirms it",
+                        len(self.fieldinfo), measured, expected)
+                return
+
+        self.phase_jump_pending = None
+        self.phase_id_measured = True
+        f.fieldPhaseID = measured
+
+        half = 0 if measured <= 4 else 1
+        sample = np.exp(1j * np.pi * (phase - half))
+        if ref is None:
+            self.burst_phase_ref = sample
+        else:
+            w = self.BURST_PHASE_REF_WEIGHT
+            self.burst_phase_ref = (1 - w) * ref + w * sample
+
     def commit_field(self, f, picture, efm, audio=None, audio_ready=False):
         """Serial commit stage: audio clock, metadata chain checks and
         ordered writeout.  Returns f (a first field may be held back, and
@@ -3672,6 +3773,8 @@ class LDdecode:
             f.fieldPhaseID = (
                 1 if nphase > self.rf.SysParams["fieldPhases"] else nphase
             )
+
+        self.settle_pal_phase_id(f)
 
         # The audio clock needs the last *written* field, so this runs at
         # commit time, not with the video downscale - unless a field job

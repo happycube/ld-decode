@@ -1378,3 +1378,47 @@ def video_eq_db(points, freq_hz, top_hz):
     interp = scipy.interpolate.PchipInterpolator(freqs, gains,
                                                  extrapolate=False)
     return np.nan_to_num(interp(f), nan=0.0)
+
+
+# -- PAL 8-field sequence position --------------------------------------
+
+
+def line6_burst_state(level6, median):
+    """PAL line 6 burst present (True), absent (False) or undecided (None)
+    by the fixed bands: 0.8-1.2x the field's burst median, or under 0.2x.
+    level6 is None when it could not be measured."""
+    if level6 is None:
+        return None
+    if median * 0.8 <= level6 <= median * 1.2:
+        return True
+    if level6 < median * 0.2:
+        return False
+    return None
+
+
+def line6_burst_self_referenced(level6, level5, median):
+    """PAL line 6 burst present (True), absent (False) or undecided (None),
+    for a line 6 the fixed bands (line6_burst_state) leave undecided.
+
+    Levels are measured without the peak limit.  Present is the fixed
+    0.8-1.2x band around the field's burst median: a full burst with noise
+    on it can exceed the 30 IRE peak limit, which then lost the reading.
+    Absent is judged against line 5, which never carries burst and so reads
+    what the burst window holds without one - noise and residual video,
+    which on a worn or outer-radius disc is a third of the burst level and
+    more: line 6 within 2x of line 5 and below the midpoint between line 5
+    and the median.  Anything else - a part burst, a dropout, interference
+    - stays undecided."""
+    if level6 is None or level5 is None or level6 <= 0 or level5 <= 0:
+        return None
+    if median * 0.8 <= level6 <= median * 1.2:
+        return True
+    if level6 <= 2 * level5 and level6 < (level5 + median) / 2 and level6 < median * 0.8:
+        return False
+    return None
+
+
+def circular_mean_halfcycles(phases):
+    """Circular mean of phases in subcarrier half-cycles (period 2)."""
+    v = np.mean(np.exp(1j * np.pi * np.asarray(phases, dtype=np.float64)))
+    return float(np.angle(v) / np.pi) % 2.0

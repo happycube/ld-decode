@@ -32,11 +32,16 @@ def commit(field, committed, phases=8):
     `committed` [(fileLoc, fieldPhaseID), ...]."""
     it = types.SimpleNamespace(
         fname_out="out", lastvalidfield={True: None, False: None},
-        fieldinfo=[{"fileLoc": loc, "fieldPhaseID": p} for loc, p in committed],
+        fieldinfo=[{"fileLoc": loc, "fieldPhaseID": p, "isFirstField": False}
+                   for loc, p in committed],
         rf=types.SimpleNamespace(SysParams={"fieldPhases": phases}),
         # a filler request returns before anything is written
         buildmetadata=lambda f: ({}, True),
+        bytes_per_field=1000, burst_phase_ref=None,
+        phase_id_measured=False, phase_jump_pending=None,
     )
+    it._follows_last_committed = lambda f: LDdecode._follows_last_committed(it, f)
+    it.settle_pal_phase_id = lambda f: LDdecode.settle_pal_phase_id(it, f)
     LDdecode.commit_field(it, field, None, None, audio_ready=True)
     return field.fieldPhaseID
 

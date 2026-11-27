@@ -31,6 +31,9 @@ from .pulses import (
 )
 from .dsp import (
     angular_mean_helper,
+    circular_mean_halfcycles,
+    line6_burst_self_referenced,
+    line6_burst_state,
     compute_linelocs_kernel,
     equalise_chroma_gain,
     equalise_chroma_gain_phase,
@@ -555,13 +558,15 @@ class Field:
 
         return length
 
-    def get_burstlevel(self, line, linelocs=None):
+    def get_burstlevel(self, line, linelocs=None, limit=True):
         # Fields that pass validity checks can still have nonsense linelocs
         # (issue #621); an empty slice makes nb_mean/max throw.
+        # limit=False skips the burst_max_ire peak check.
         try:
             burstarea = self.data["video"]["demod"][self.lineslice(line, 5.5, 2.4, linelocs)].copy()
             burstarea -= nb_mean(burstarea)
-            if self.burst_max_ire is not None and max(burstarea) > (self.burst_max_ire * self.rf.DecoderParams["hz_ire"]):
+            if (limit and self.burst_max_ire is not None
+                    and max(burstarea) > (self.burst_max_ire * self.rf.DecoderParams["hz_ire"])):
                 return None
             return rms(burstarea) * np.sqrt(2)
         except Exception:
@@ -2037,21 +2042,34 @@ class FieldPAL(Field):
         # This map is based in (first field, has burst on line 6)
         map4 = {(True, False): 1, (False, True): 2, (True, True): 3, (False, False): 4}
 
+        # The commit stage can settle the 1-4 / 5-8 half against the burst
+        # phase of the fields around this one (see LDdecode.settle_pal_phase_id),
+        # so the 4-field position and this field's burst phase are kept
+        # even when the vote below is tied.
+        self.phase_m4 = None
+        self.burst_phase = None
+
         # Determine if line 6 has valid burst - or lack of it.  If there's rot interference,
         # the burst level may be in the middle (or even None), and if so extrapolate
         # from the previous field.
+        hz_ire = self.rf.DecoderParams["hz_ire"]
         burstlevel6 = self.get_burstlevel(6)
+        if burstlevel6 is not None:
+            burstlevel6 /= hz_ire
 
-        if burstlevel6 is None:
-            return self.get_following_field_number()
+        hasburst = line6_burst_state(burstlevel6, self.burstmedian)
+        if hasburst is None:
+            # Outside the fixed bands: judge line 6 against this field's
+            # own levels instead, its burst median and line 5, which never
+            # carries burst, both without the burst_max_ire peak limit.
+            level6 = self.get_burstlevel(6, limit=False)
+            level5 = self.get_burstlevel(5, limit=False)
+            hasburst = line6_burst_self_referenced(
+                None if level6 is None else level6 / hz_ire,
+                None if level5 is None else level5 / hz_ire,
+                self.burstmedian)
 
-        burstlevel6 /= self.rf.DecoderParams["hz_ire"]
-
-        if inrange(burstlevel6, self.burstmedian * 0.8, self.burstmedian * 1.2):
-            hasburst = True
-        elif burstlevel6 < self.burstmedian * 0.2:
-            hasburst = False
-        else:
+        if hasburst is None:
             return self.get_following_field_number()
 
         m4 = map4[(self.isFirstField, hasburst)]
@@ -2060,6 +2078,7 @@ class FieldPAL(Field):
 
         rcount = 0
         count  = 0
+        phases = []
 
         self.phase_adjust = {}
 
@@ -2081,6 +2100,16 @@ class FieldPAL(Field):
             if rising is not None:
                 rcount += (rising is True)
                 count  += 1
+                # rising crossings sit at (even half-cycle if rising, else
+                # odd) + phase_adjust half-cycles from the line's grid
+                phases.append((0.0 if rising else 1.0) + self.phase_adjust[line])
+
+        if count:
+            self.phase_m4 = m4
+            # field 2/6 reads the opposite way round (see below)
+            self.burst_phase = (
+                circular_mean_halfcycles(phases) + (1.0 if m4 == 2 else 0.0)
+            ) % 2.0
 
         if count == 0 or (rcount * 2) == count:
             return self.get_following_field_number()

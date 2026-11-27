@@ -170,7 +170,7 @@ owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "The 2T pulse and the luminance references it is judged against. Worst allowance in the radius baseline on both systems, and it grows outwards; see docs/technical/vits-radius-baseline.md, \"The 2T pulse was judged against the wrong reference\"."
 
 
-# domesday-ds2-community-north-inner (PAL): 5 of its checks fail.
+# domesday-ds2-community-north-inner (PAL): 6 of its checks fail.
 
 [[deviation]]
 capture = "domesday-ds2-community-north-inner"
@@ -196,42 +196,53 @@ ceiling = 8.86
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "Frequency response above the band the video EQ servo anchors, where no servo acts and the reading is the static filter chain's. PAL loses roughly 7-8 dB at 5.8 MHz at every radius; see docs/technical/vits-radius-baseline.md, \"The top multiburst packet, and what is left of it\".  Re-recorded when the chroma blowout on this capture was fixed: the earlier figure was read off a decode whose whole chroma band ran +3.6 dB at 4.0 MHz and +4.0 dB at 4.8, and the same boost was lifting this packet by about 6 dB with it.  With the band levelled (packets 1-5 now flat within 0.6 dB) what is left is the disc's own band-edge loss, unflattered; the correction that levelled the band is measured at the subcarrier and the inverse-MTF curve it rides deepens above it, so 5.8 MHz gets 7.8 dB of a cut worth 4.6 dB at 4.43."
 
-
-[[deviation]]
-capture = "domesday-ds2-community-north-inner"
-check = "pal-multiburst-field2/chroma_bar_100"
-field_line = 20
-parity = "second"
-measured = 41.745
-unit = "IRE"
-band_used = 1.27
-ceiling = 1.40
-owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
-reason = "The chroma strength the first frame is written at.  The warm-up waits for the 2T servo to settle and writes after 12.5 frames with the multiburst chroma-band ceiling at -1.292.  Re-recorded (42.695 -> 41.745) when the PAL pilot line lock stopped doubling the disc's speed error: the line positions moved by up to 0.1 samples, the 2T servo's path moved with them, and it now settles at -0.922 inside its dead-band where it used to step to its -1.0 limit, under less chroma-band lift.  See docs/technical/vits-servos.md, \"Calibrating before the first frame\"."
-
-[[deviation]]
-capture = "domesday-ds2-community-north-inner"
-check = "pal-multiburst-field1/packet_5"
-field_line = 20
-parity = "first"
-measured = 25.511
-unit = "IRE"
-band_used = 1.04
-ceiling = 1.15
-owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
-reason = "The 4.8 MHz packet, read under the MTF level the 2T servo settles at.  BBC Domesday DD86-DS2 sits at the thresholds of three coupled loops; since the PAL pilot line lock stopped doubling the disc's speed error the servo settles at -0.922, inside its dead-band of the -1.0 limit it used to reach, and the packet loses the last 0.4 IRE of pre-demod HF lift (25.92 -> 25.51).  See docs/technical/vits-servos.md."
-
 [[deviation]]
 capture = "domesday-ds2-community-north-inner"
 check = "pal-its-field2/pulse_2t"
 field_line = 19
 parity = "second"
-measured = 97.881
+measured = 95.077
 unit = "IRE"
-band_used = 1.21
-ceiling = 1.33
+band_used = 2.28
+ceiling = 2.51
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
-reason = "The 2T pulse under the MTF level the 2T servo settles at.  The two PAL ITS variants on this disc read about 3 IRE apart (field 1 100.8, field 2 97.9), and the servo centres between them; since the PAL pilot line lock stopped doubling the disc's speed error it settles at -0.922 instead of -1.0, which lowers both by about 1 IRE and takes field 2 past its band.  See docs/technical/vits-radius-baseline.md, \"The 2T pulse was judged against the wrong reference\"."
+reason = "The 2T pulse under the MTF level the 2T servo settles at.  The two PAL ITS variants on this disc read about 3 IRE apart (field 1 100.8, field 2 97.9), and the servo centres between them; since the PAL pilot line lock stopped doubling the disc's speed error it settles at -0.922 instead of -1.0, which lowers both by about 1 IRE and takes field 2 past its band.  Re-recorded (97.881 -> 95.077) when the PAL 8-field position began to be read against the disc's own burst: this cut's decode used to start on fields that could not read line 6, numbered on from a guess, and its first committed field was a first field numbered 2, so the writer waited 4 frames for sequence frame 1 and wrote 25 frames.  It now reads its position from field 0 and writes from the real sequence frame 1, 4 frames earlier (29 frames); the 25 frames it used to write match the last 25 of these to 1 LSB.  The four fields averaged per parity now include those first 4 frames, and single-field 2T and chrominance readings on this cut move by several IRE from one window to the next.  See docs/technical/vits-radius-baseline.md, \"The 2T pulse was judged against the wrong reference\"."
+
+[[deviation]]
+capture = "domesday-ds2-community-north-inner"
+check = "pal-its-field1/pulse_2t"
+field_line = 19
+parity = "first"
+measured = 103.554
+unit = "IRE"
+band_used = 1.14
+ceiling = 1.25
+owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
+reason = "The 2T pulse under the MTF level the 2T servo settles at; the two PAL ITS variants on this disc read apart and the servo centres between them.  Re-recorded when the PAL 8-field position began to be read against the disc's own burst: this cut's decode used to start on fields that could not read line 6, numbered on from a guess, and its first committed field was a first field numbered 2, so the writer waited 4 frames for sequence frame 1 and wrote 25 frames.  It now reads its position from field 0 and writes from the real sequence frame 1, 4 frames earlier (29 frames); the 25 frames it used to write match the last 25 of these to 1 LSB.  The four fields averaged per parity now include those first 4 frames, and single-field 2T and chrominance readings on this cut move by several IRE from one window to the next.  See docs/technical/vits-radius-baseline.md, \"The 2T pulse was judged against the wrong reference\"."
+
+[[deviation]]
+capture = "domesday-ds2-community-north-inner"
+check = "pal-multiburst-field2/chroma_nonlinearity"
+field_line = 20
+parity = "second"
+measured = 0.152
+unit = "fraction"
+band_used = 1.52
+ceiling = 1.67
+owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 2"
+reason = "Chrominance gain is not constant across the amplitudes the multiburst presents.  Re-recorded when the PAL 8-field position began to be read against the disc's own burst: this cut's decode used to start on fields that could not read line 6, numbered on from a guess, and its first committed field was a first field numbered 2, so the writer waited 4 frames for sequence frame 1 and wrote 25 frames.  It now reads its position from field 0 and writes from the real sequence frame 1, 4 frames earlier (29 frames); the 25 frames it used to write match the last 25 of these to 1 LSB.  The four fields averaged per parity now include those first 4 frames, and single-field 2T and chrominance readings on this cut move by several IRE from one window to the next."
+
+[[deviation]]
+capture = "domesday-ds2-community-north-inner"
+check = "gain_ratio/PAL"
+parity = "second"
+measured = 0.262
+unit = "ratio"
+band_used = 1.75
+ceiling = 1.92
+owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
+reason = "The colour bars against the luminance bar read where the 2T servo, the multiburst EQ and the inverse-MTF chroma-band ceiling settle on BBC Domesday DD86-DS2.  Re-recorded when the PAL 8-field position began to be read against the disc's own burst: this cut's decode used to start on fields that could not read line 6, numbered on from a guess, and its first committed field was a first field numbered 2, so the writer waited 4 frames for sequence frame 1 and wrote 25 frames.  It now reads its position from field 0 and writes from the real sequence frame 1, 4 frames earlier (29 frames); the 25 frames it used to write match the last 25 of these to 1 LSB.  The four fields averaged per parity now include those first 4 frames, and single-field 2T and chrominance readings on this cut move by several IRE from one window to the next.  See docs/technical/vits-servos.md."
+
 
 # domesday-ds2-community-north-middle (PAL): 9 of its checks fail.
 
