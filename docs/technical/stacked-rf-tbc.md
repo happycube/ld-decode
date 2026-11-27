@@ -436,8 +436,9 @@ Two of the fixes (`e923c39`, `58f28bc`, the input rate in the EFM PLL and in the
 `.efm` band-pass) are already in the branch's `main`. The PAL parity work
 (`13610d5`, `d1a7555`, `a24df84`) and the OpenCL demodulator (`e09bbf3`) sit in
 the branch's other branches, and are not in `upstream/main`. This port keeps
-them out of scope: the Python decoder already has the PAL path, and OpenCL is
-out.
+the PAL work out of scope (the Python decoder already has the PAL path); the
+OpenCL demodulator is ported, on rev 8's `demodblock` (see "The demodulator on
+the GPU").
 
 ### What rev 8 has that the reference port does not
 
@@ -812,17 +813,22 @@ it is a measurement of the RF, and it is over long before the decode is.
 
 ## The limits
 
-- **Fixed-width raw captures only.** The path reads a capture at arbitrary
-  positions, which a compressed capture cannot serve.
-- **One sample rate.** Every capture must be at the same rate.
+- **One sample rate.** Every capture of a stack must be at the same rate.
 - **Only when asked for.** `--tbc_mode resample`, the reference's way, is
   the default whatever the input; the read-time TBC runs only with
   `--tbc_mode read`, which stacking several captures needs. Where it cannot
-  run - stdin, a compressed capture, no lines found - it is an error: the
-  decode never changes mode on its own.
-- **Not the reference's bytes.** The read-time TBC and the corrections make
-  a better decode than the reference's, so they do not produce the
-  reference's output.
+  run (no lines found) it is an error: the decode never changes mode on its
+  own.
+- **Not the reference's bytes, unless asked for.** The corrections make a
+  better decode than the reference's, so by default neither mode produces the
+  reference decoder's output. `--tbc_mode resample` with
+  `--no_audio_carrier_cancel --no_crystal_lines --no_chroma_leak` reads the
+  capture through the decoder's usual loader and keeps its bytes for a 40 MHz
+  capture.
+- **What the cleaning costs.** The default resample cleans the RF in four
+  producer processes: with `-t 4`, `ve-monitor` decodes at 6.5 frames/s
+  against 8.4 left as it is, and `ggv1069-side1-outer` at 4.6 against 5.3;
+  the decode's processes peak at 2.6-3.0 GB against 1.25-1.3 GB.
 - **The field's position.** A field decoded from the virtual stream is
   reported at its position in that stream (`diskLoc`, `fileLoc` in the
   `.tbc.db`), where the reference reports the position in the primary
