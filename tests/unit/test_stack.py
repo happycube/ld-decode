@@ -536,7 +536,7 @@ def test_read_returns_exactly_readlen_samples(monkeypatch):
     for readlen in (1, 1000, 12345):
         got = source.read(0, readlen)
         assert got.shape == (readlen,)
-        assert got.dtype == np.float32
+        assert got.dtype == np.float64
 
 
 def test_read_is_short_at_the_end_of_the_stream(monkeypatch):
@@ -945,6 +945,37 @@ def test_the_cleaned_source_with_nothing_to_cancel_is_the_capture():
         assert source.read(raw.size, 10).shape == (0,)
     finally:
         source.close()
+
+
+def test_a_centred_reader_takes_the_offset_out_inside_the_capture_only():
+    """Inside the capture the samples lose its DC offset; outside it they read
+    zero as before, the centred signal's level, so the corrections see no
+    step at the capture's ends."""
+    raw = np.arange(10, dtype=np.float64) + 100.0
+    reader = stack._CentredReader(_reader(raw), 104.5, raw.size)
+    np.testing.assert_array_equal(reader(0, 10), raw - 104.5)
+    np.testing.assert_array_equal(reader(-3, 6), [0.0, 0.0, 0.0, -4.5, -3.5, -2.5])
+    np.testing.assert_array_equal(reader(8, 4), [3.5, 4.5, 0.0, 0.0])
+    assert stack.capture_dc(_reader(raw), raw.size) == pytest.approx(104.5, abs=1e-12)
+
+
+@pytest.mark.parametrize("dc", [512.0, -16384.0])
+def test_the_cleaning_does_not_depend_on_the_captures_dc_offset(dc):
+    """The same RF with a DC offset (an unsigned capture's) is cleaned the
+    same, the offset kept: the corrections read zero past the chunk and the
+    capture, and an offset left in made a step there that moved their fits."""
+    rf, _ = _xtalk_capture(0.02, n=200000)
+    rf = np.round(rf)
+    outs = []
+    for offset in (0.0, dc):
+        source = stack.CleanedSource(_reader(rf + offset), rf.size, 40e6, ntsc=True,
+                                     cancel_xtalk=True, cancel_xtal=False, cancel_leak=True)
+        try:
+            outs.append(source.read(0, rf.size).astype(np.float64) - offset)
+        finally:
+            source.close()
+    # float32 chunks: a few ulps at the offset's magnitude.
+    np.testing.assert_allclose(outs[1], outs[0], rtol=0, atol=0.02)
 
 
 def test_the_cleaned_source_takes_the_crosstalk_out():

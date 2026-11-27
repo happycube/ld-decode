@@ -78,11 +78,12 @@ def test_the_device_gets_the_tables_the_weights_and_the_constants(monkeypatch):
 
 def test_the_stream_is_the_devices_combination(monkeypatch):
     """With --device opencl the chunk is what the device combined, over the
-    plan's samples within the lock margins."""
+    plan's samples within the lock margins, with the primary capture's DC
+    offset put back (the device combines the captures centred)."""
     source = _gpu_source(monkeypatch)
     try:
         got = source.read(0, 100)
-        np.testing.assert_array_equal(got, np.full(100, 7.0, dtype=np.float32))
+        np.testing.assert_array_equal(got, np.full(100, 7.0 + source._dc[0]))
         plan, margin, nout = _Backend.instances[-1].runs[0]
         assert margin == stack.LOCK_MARGIN
         assert plan.length == nout + 2 * margin

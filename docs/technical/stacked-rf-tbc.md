@@ -128,6 +128,39 @@ All three run on the combined stream, before the decoder sees it, and with
 `--tbc_mode resample` on the capture's own stream (see "Resample: the RF
 cleaned first" below).
 
+In both modes each capture is centred first: its DC offset, its mean over
+2 Mi samples a quarter into it (`stack.capture_dc`), is taken out of the
+samples it is combined and cleaned from, and the primary's is put back on
+the stream (the decoder ignores it). The corrections read zero past the
+chunk and the capture, so an offset left in makes a step there that moves
+their fits, and the same disc was cleaned otherwise from a signed capture
+than from an unsigned one. A `.r30` (10-bit values on 512) decoded up to 35
+levels away from the same samples in a `.s16`, 89 % of them off. Centred,
+it decodes to the `.s16`'s bytes, with every correction on, once two more
+roundings that followed the capture's scale or offset are gone:
+
+- the offset is on a grid of 2^-32 and measured over a power-of-two span,
+  so it is exact for integer samples, scales with them, and the stream of a
+  source with nothing to cancel is the capture to the last bit;
+- the stream's chunks are kept in double precision (the reference keeps
+  f32): in single precision a sample's rounding carried the offset (512 in
+  a `.r30`), and 2 % of the `.tbc` was a level off;
+- the chroma leak's band filter puts the RF through a real FFT of its own:
+  carried as the imaginary part of the instantaneous frequency's transform
+  (the reference's), its rounding followed the frequency's magnitude (some
+  1e7 Hz), and the fit moved with the RF's scale (6449 samples off, up to 6
+  levels).
+
+On `ggv1069-side1-outer`, a signed capture whose offset is 2 % of its RMS,
+the centring moves 7.6 % of the `.tbc`'s samples (0.08 levels on average,
+a level at the 99th percentile), and leaves the carriers' lines where they
+were (+0.76 and +0.96 dB over the floor, against +2.78 and +3.27 uncleaned).
+The three cost the resample 4 % (`ggv1069-side1-outer`, 4.72 to 4.54
+frames/s) to 9 % (`ve-monitor`, 7.15 to 6.49) of its speed with `-t 4`, and
+the decoder's process some 165 MB of read-ahead. The reference
+implementation does not centre its captures. Pass 0's line locator reads
+the captures as they are.
+
 ### The audio carriers' crosstalk
 
 The analog audio carriers leak into the video carrier's phase. The leak is
@@ -631,9 +664,10 @@ scan has gone, as it can in the reference.
 The stream reaches the decoder through the loader protocol, as a capture
 does, with two properties it relies on:
 
-- **The samples are float32**, neither rounded nor clipped, as the reference
-  hands its decoder f32. A stack carries finer steps than any one capture,
-  and an unsigned 16-bit capture reads up to 65535, past the int16 range.
+- **The samples are float64**, neither rounded nor clipped (the reference
+  hands its decoder f32; see "The three corrections" for why not here). A
+  stack carries finer steps than any one capture, and an unsigned 16-bit
+  capture reads up to 65535, past the int16 range.
 - **The end of the stream is a short read**: the decoder takes a read that
   returns fewer samples than asked as the end of its input.
 

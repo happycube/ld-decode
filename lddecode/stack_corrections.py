@@ -521,9 +521,9 @@ def _leak_bands(
 
     Returns the video band's instantaneous frequency (Hz) and the RF, both
     through the band (rising edge `rise`, falling edge `fall`), by
-    overlap-save FFT blocks.  One complex FFT carries the pair, the
-    frequency as its real part and the RF as its imaginary part, the band's
-    gain being real and even.
+    overlap-save FFT blocks, each signal through a real FFT of its own (the
+    reference carries the pair in one complex FFT, which ties the RF's
+    rounding to the frequency's magnitude).
     """
     n = x.shape[0]
     size = LEAK_FFT_LEN
@@ -534,6 +534,7 @@ def _leak_bands(
     bins = np.arange(size)
     freq = np.minimum(bins, size - bins) * fs / size
     gain = _raised_cosine(freq, rise[0], rise[1]) * (1.0 - _raised_cosine(freq, fall[0], fall[1]))
+    half_gain = gain[: size // 2 + 1]
 
     inst = _instant_frequency(video_band, fs)
     oc = np.zeros(n, dtype=np.float32)
@@ -545,12 +546,16 @@ def _leak_bands(
         tc = np.clip(t, 0, max(n - 1, 0))
         re = np.where(inside & (t >= 1), inst[tc], 0.0)
         im = np.where(inside, x[tc], 0.0)
-        buf = re + 1j * im
-        spec = scipy.fft.fft(buf) * gain
-        y = scipy.fft.ifft(spec)
+        # Each through its own transform: carried as the real and imaginary
+        # parts of one, the RF's rounding error followed the frequency's
+        # magnitude (some 1e7 Hz), not its own, so the same disc was cleaned
+        # otherwise at another scale (a .r30 against the same samples in a
+        # .s16).
+        yc = scipy.fft.irfft(scipy.fft.rfft(re) * half_gain, n=size)
+        yr = scipy.fft.irfft(scipy.fft.rfft(im) * half_gain, n=size)
         cnt = min(step, n - s0)
-        oc[s0 : s0 + cnt] = y[ov : ov + cnt].real
-        orr[s0 : s0 + cnt] = y[ov : ov + cnt].imag
+        oc[s0 : s0 + cnt] = yc[ov : ov + cnt]
+        orr[s0 : s0 + cnt] = yr[ov : ov + cnt]
     return oc, orr
 
 

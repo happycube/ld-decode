@@ -192,7 +192,7 @@ AHEAD = 3
 BEHIND = 1
 #: Chunks kept beyond those, least recently used first out: the decoder's
 #: field jobs (``-t N``) read several fields ahead of its inline reads, and
-#: a field is up to 1.3 M samples at 75 MHz.  A chunk is 8 MB (float32).
+#: a field is up to 1.3 M samples at 75 MHz.  A chunk is 16 MB (float64).
 SPARE_CHUNKS = 8
 #: Where the disc's own signal makes steady lines, left out of the crystal
 #: search (Hz, NTSC then PAL): the analog audio carriers, the chroma leak's
@@ -1066,6 +1066,76 @@ class _Plan:
     inputs: list[_InputSpan | None]
 
 
+#: The span a capture's DC offset is measured on, and where: a quarter into
+#: the capture, at most twice the span from its end (where the cleaned source
+#: detects the clock lines).
+DC_SPAN = 1 << 21
+#: The grid the offset is rounded to (see capture_dc).
+DC_GRID = float(1 << 32)
+
+
+def capture_dc(read_fn: Callable[[int, int], np.ndarray], length: int) -> float:
+    """The capture's DC offset: its mean over ``DC_SPAN`` samples a quarter
+    into it (all of it when it is shorter).
+
+    The corrections assume a centred RF.  They read zero outside the chunk
+    and outside the capture, so an offset makes a step there, which leaks
+    into their fits: an unsigned capture (a .r30's 10-bit values sit on 512)
+    was cleaned otherwise than the same capture signed.
+
+    The offset is on a grid of 2^-32: an integer sample less it, and the
+    difference plus it, are exact in double precision, so the stream of a
+    source with nothing to cancel is the capture to the last bit.  Over the
+    whole span (a power of two) the mean of integer samples is exact, so a
+    capture at a power-of-two scale with an integer offset (a .r30 against
+    the same samples in a .s16) gets the offset scaled and shifted exactly,
+    and is cleaned to the same stream at that scale.
+    """
+    length = int(length)
+    if length <= 0:
+        return 0.0
+    count = min(DC_SPAN, length)
+    start = min(length // 4, max(length - 2 * DC_SPAN, 0), length - count)
+    data = np.asarray(read_fn(int(start), int(count)), dtype=np.float64).ravel()[:count]
+    if not data.size:
+        return 0.0
+    return float(np.round(data.mean() * DC_GRID) / DC_GRID)
+
+
+class _CentredReader:
+    """A capture's reader with its DC offset taken out of the samples inside
+    the capture; outside it, the samples read as zero, as they did, so they
+    now sit at the signal's level instead of a step away from it.  Picklable
+    with a picklable reader."""
+
+    def __init__(self, read_fn: Callable[[int, int], np.ndarray], dc: float, length: int) -> None:
+        self.read_fn = read_fn
+        self.dc = float(dc)
+        self.length = int(length)
+
+    def __call__(self, start: int, count: int) -> np.ndarray:
+        data = np.array(self.read_fn(int(start), int(count)), dtype=np.float64).ravel()
+        if self.dc:
+            i0 = min(max(-int(start), 0), data.shape[0])
+            i1 = min(max(self.length - int(start), 0), data.shape[0])
+            if i1 > i0:
+                data[i0:i1] -= self.dc
+        return data
+
+
+class _CentredOpener:
+    """``open_reader`` for a centred capture, for another process."""
+
+    def __init__(self, open_reader: Callable[[], Callable[[int, int], np.ndarray]],
+                 dc: float, length: int) -> None:
+        self.open_reader = open_reader
+        self.dc = float(dc)
+        self.length = int(length)
+
+    def __call__(self) -> _CentredReader:
+        return _CentredReader(self.open_reader(), self.dc, self.length)
+
+
 def _read_span(reader: Callable[[int, int], np.ndarray], start: int, count: int) -> np.ndarray:
     """The samples ``[start, start + count)`` of an input, as float64.
 
@@ -1780,6 +1850,13 @@ class StackedSource:
         # capture returns fewer samples, as they document (the crystal-line
         # detector finds the capture's length by probing it).
         self._readers = [self._reader(inp) for inp in self.inputs]
+        # Each capture centred before it is combined and cleaned (see
+        # capture_dc); the stream gets the primary's offset back, as it was.
+        self._dc = [capture_dc(reader, inp.length)
+                    for reader, inp in zip(self._readers, self.inputs)]
+        self._raw_readers = self._readers
+        self._readers = [_CentredReader(reader, dc, inp.length)
+                         for reader, dc, inp in zip(self._readers, self._dc, self.inputs)]
 
         # Pass 0: one line-locating scan per input, each on its own thread,
         # feeding the timeline as it goes.  It runs alongside the decode and
@@ -1911,7 +1988,7 @@ class StackedSource:
         live = self._live
         try:
             for rec in locate_fields(
-                self._readers[index],
+                self._raw_readers[index],
                 self.fs,
                 self.ntsc,
                 stop=live.stopped,
@@ -2047,9 +2124,15 @@ class StackedSource:
         """The cancellations on a combined chunk, then the chunk as kept."""
         if self._wants_band():
             self._cancel(out, combined)
-        # Kept in single precision, as the reference keeps its chunks: the
-        # read-ahead holds several of them.
-        chunk_out = out.astype(np.float32)
+        dc = getattr(self, "_dc", None)
+        if dc and dc[0]:
+            out = out + dc[0]
+        # Kept in double precision (the reference keeps f32): rounded to
+        # single precision, a sample carries the capture's DC offset in its
+        # error, so the same disc decoded otherwise from an unsigned capture
+        # than from a signed one (a .r30's values sit on 512), by a level on
+        # 2 % of a .tbc's samples.
+        chunk_out = np.asarray(out, dtype=np.float64)
         if self._rf_out is not None:
             self._rf_out.write(s0, chunk_out)
         return chunk_out
@@ -2087,7 +2170,7 @@ class StackedSource:
     def read(self, sample: int, readlen: int) -> np.ndarray:
         """Return up to ``readlen`` samples of the virtual stream from ``sample``.
 
-        The samples are float32, in the captures' own units, neither rounded
+        The samples are float64, in the captures' own units, neither rounded
         nor clipped (the reference's virtual source hands the decoder f32):
         a stack carries finer steps than any one capture, and an unsigned
         16-bit capture reads up to 65535, past the int16 range.
@@ -2097,7 +2180,7 @@ class StackedSource:
         a capture loader.  Returns a new array.
         """
         readlen = int(readlen)
-        out = np.zeros(max(readlen, 0), dtype=np.float32)
+        out = np.zeros(max(readlen, 0), dtype=np.float64)
         pos = 0
         while pos < readlen:
             at = int(sample) + pos
@@ -2152,6 +2235,11 @@ CLEAN_PROBE_TAIL = 1 << 22
 CLEAN_WORKERS = 4
 CLEAN_AHEAD = 6
 
+#: How long closing the cleaned source waits for the chunks its workers are
+#: computing (one is well under a second on a healthy pool) before it
+#: terminates the workers that are still busy.
+CLEAN_DRAIN_TIMEOUT_S = 10
+
 
 def _crystal_params(lines: object) -> dict | None:
     """What rebuilds a capture's clock lines in another process (its own
@@ -2173,11 +2261,14 @@ def _clean_chunk(
     ntsc: bool,
     cancel_xtalk: bool,
     cancel_leak: bool,
+    dc: float = 0.0,
 ) -> np.ndarray:
     """The cleaned source's chunk of ``n`` samples from ``s0``: the capture
     read as it is, its clock lines subtracted, then the audio crosstalk and
     the chroma leak cancelled on the chunk, as the stacked source cancels
-    them; float32, as the stacked source keeps its chunks."""
+    them; float64, as the stacked source keeps its chunks.  ``read_fn``
+    reads the capture centred (_CentredReader): ``dc``, its offset, is put
+    back on the chunk."""
     from .stack_corrections import cancel_chroma_leak, cancel_crosstalk
 
     pad = HI_TAPS
@@ -2199,14 +2290,17 @@ def _clean_chunk(
             out = cancel_crosstalk(out, band, fs, carriers, keep)
         if leak:
             out = cancel_chroma_leak(out, band, fs, LEAK_BAND_HZ)
-    return out.astype(np.float32)
+    if dc:
+        out = out + dc
+    return out
 
 
 #: A producer process's state (_clean_worker_init).
 _CLEAN_WORKER: dict = {}
 
 
-def _clean_worker_init(open_reader, crystal_params, h0, fs, ntsc, cancel_xtalk, cancel_leak):
+def _clean_worker_init(open_reader, crystal_params, h0, fs, ntsc, cancel_xtalk, cancel_leak,
+                       dc=0.0):
     """A producer process: its own reader of the capture, and its own clock
     lines rebuilt on it."""
     read_fn = open_reader()
@@ -2215,13 +2309,13 @@ def _clean_worker_init(open_reader, crystal_params, h0, fs, ntsc, cancel_xtalk, 
         from .stack_corrections import CrystalLines
         crystal = CrystalLines(read_fn=read_fn, **crystal_params)
     _CLEAN_WORKER.update(read_fn=read_fn, crystal=crystal, h0=h0, fs=fs, ntsc=ntsc,
-                         cancel_xtalk=cancel_xtalk, cancel_leak=cancel_leak)
+                         cancel_xtalk=cancel_xtalk, cancel_leak=cancel_leak, dc=dc)
 
 
 def _clean_worker_chunk(s0: int, n: int) -> np.ndarray:
     w = _CLEAN_WORKER
     return _clean_chunk(w["read_fn"], w["crystal"], w["h0"], s0, n, w["fs"], w["ntsc"],
-                        w["cancel_xtalk"], w["cancel_leak"])
+                        w["cancel_xtalk"], w["cancel_leak"], w["dc"])
 
 
 class CleanedSource(StackedSource):
@@ -2265,6 +2359,12 @@ class CleanedSource(StackedSource):
         self._gpu = None
         self.inputs = [StackInput(path=path, read_fn=read_fn, length=int(length),
                                   open_reader=open_reader)]
+        # Centred before it is cleaned, as the stacked source centres its
+        # captures (capture_dc); the chunks get the offset back.
+        self._dc = [capture_dc(read_fn, length)]
+        read_fn = _CentredReader(read_fn, self._dc[0], length)
+        if open_reader is not None:
+            open_reader = _CentredOpener(open_reader, self._dc[0], length)
         self._readers = [read_fn]
         self.fs = float(fs)
         self.ntsc = bool(ntsc)
@@ -2281,6 +2381,8 @@ class CleanedSource(StackedSource):
         self._scan_stops = []
         self._cache = None
         self._pool = None
+        self._inflight = set()
+        self._inflight_lock = threading.Lock()
         split = (SPLIT_LO_HZ, SPLIT_HI_HZ) if self.ntsc else PAL_SPLIT_HZ
         self._h0 = np.ascontiguousarray(video_band_lut(self.fs, split)[0])
         self._crystal = [None]
@@ -2292,17 +2394,17 @@ class CleanedSource(StackedSource):
                 import concurrent.futures
                 import multiprocessing
 
-                # Spawned, never forked: the decoder's process already runs
-                # threads (the producers, numba's, the writer's), and a child
-                # forked while one of them holds a lock keeps it held forever.
-                # On Linux, where fork is the default, such a worker hung the
-                # decode at exit, after its last frame was written.
+                # Spawned, never forked, as the decoder's own pools are
+                # (parallel.py): the decoder's process already runs threads
+                # (the producers, numba's, the writer's), and a child forked
+                # while one of them holds a lock keeps it held forever.
                 self._pool = concurrent.futures.ProcessPoolExecutor(
                     max_workers=CLEAN_WORKERS,
                     mp_context=multiprocessing.get_context("spawn"),
                     initializer=_clean_worker_init,
                     initargs=(open_reader, _crystal_params(self._crystal[0]), self._h0,
-                              self.fs, self.ntsc, self.cancel_xtalk, self.cancel_leak),
+                              self.fs, self.ntsc, self.cancel_xtalk, self.cancel_leak,
+                              self._dc[0]),
                 )
                 self._cache = _ChunkCache(self._compute_chunk, ahead=CLEAN_AHEAD,
                                           workers=CLEAN_WORKERS)
@@ -2321,21 +2423,43 @@ class CleanedSource(StackedSource):
         if s0 >= self._length:
             return None
         n = min(chunk, self._length - s0)
-        if self._pool is not None:
-            return self._pool.submit(_clean_worker_chunk, s0, n).result()
-        return _clean_chunk(self._readers[0], self._crystal[0], self._h0, s0, n,
-                            self.fs, self.ntsc, self.cancel_xtalk, self.cancel_leak)
+        pool = self._pool
+        if pool is not None:
+            future = pool.submit(_clean_worker_chunk, s0, n)
+            with self._inflight_lock:
+                self._inflight.add(future)
+            try:
+                out = future.result()
+            finally:
+                with self._inflight_lock:
+                    self._inflight.discard(future)
+        else:
+            out = _clean_chunk(self._readers[0], self._crystal[0], self._h0, s0, n,
+                               self.fs, self.ntsc, self.cancel_xtalk, self.cancel_leak,
+                               self._dc[0])
+        return out
 
     def close(self) -> None:
         super().close()
         pool = getattr(self, "_pool", None)
         if pool is not None:
             self._pool = None
-            # The chunks still in flight are read ahead of a decode that has
-            # ended: stop their workers rather than let the interpreter's exit
-            # wait for them.
+            # Cancel the chunks queued ahead of a decode that has ended, and
+            # let those a worker is computing finish: a worker terminated
+            # while it writes its result (a chunk is 16 MB) leaves the
+            # executor's manager thread blocked on a truncated pickle, and the
+            # interpreter's exit then joins it forever - the decode printed
+            # its summary and never exited (decode-pal-basic on a CI runner).
+            # Only a worker still busy after the drain is wedged: terminated,
+            # as parallel.AffinityPool.close does.
             processes = list((getattr(pool, "_processes", None) or {}).values())
             pool.shutdown(wait=False, cancel_futures=True)
-            for proc in processes:
-                if proc.is_alive():
-                    proc.terminate()
+            with self._inflight_lock:
+                pending = list(self._inflight)
+            import concurrent.futures
+
+            concurrent.futures.wait(pending, timeout=CLEAN_DRAIN_TIMEOUT_S)
+            if any(not f.done() for f in pending):
+                for proc in processes:
+                    if proc.is_alive():
+                        proc.terminate()
