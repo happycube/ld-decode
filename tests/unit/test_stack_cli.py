@@ -395,3 +395,11 @@ def test_the_domesday_duplicator_sidecar_gives_the_rate_in_hertz():
     assert sidecar_sample_rate(io.StringIO(text)) == 75.0e6
     assert sidecar_sample_rate(io.StringIO("sample_rate_hz: 40000000  # DdD\n")) == 40.0e6
     assert sidecar_sample_rate(io.StringIO('"capture":\n  "file": "x"\n')) is None
+
+
+def test_the_discs_own_lines_need_the_read_time_tbc():
+    """--disc_lines works on the RF read on the disc's timeline, which
+    resample never reads: asked for there, it is an error, not ignored."""
+    assert _parse("capture.s16", "out").disc_lines is False
+    with pytest.raises(SystemExit):
+        main.main(["capture.s16", "out", "--disc_lines"])

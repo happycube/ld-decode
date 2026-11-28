@@ -226,6 +226,36 @@ XTAL_FOLD_BLOCK_S = 6.5e-3
 XTAL_CUT_SNR = 8.0
 XTAL_CUT_FLOOR = 0.3
 
+#: The lines the disc itself carries (an optional cleaning, ``--disc_lines``,
+#: read-time TBC only): a clock that leaked into the signal at mastering is
+#: on the disc, so it follows the disc's speed, spread in the capture's time
+#: and narrow on the disc's.  It is found on the primary capture's RF read on
+#: its own located lines over `XTAL_SEGMENTS` stretches of at least
+#: `XTAL_CHECK_FRAMES` frames, and taken only on every count:
+#:
+#: - narrow on the disc's timeline (`XTAL_SHARP` in every stretch), at least
+#:   `XTAL_KEEP` over the floor (the median within `DISC_FLOOR_HZ`);
+#: - spread in the capture's time (under `XTAL_SHARP` there; a line narrow in
+#:   both is a capture's clock, `CrystalLines`' work);
+#: - outside the sensitive bands (EFM, analog audio carriers);
+#: - no neighbour at a line, frame or field rate's distance (the picture's
+#:   combs);
+#: - continuous through the sync, and that confirmed: folded on the
+#:   position in the line as `_cut_by_the_sync` folds, on the disc's
+#:   timeline, the line's in-phase amplitude must be `XTAL_CUT_SNR` times
+#:   the quadrature's and never below `DISC_CONTINUOUS` of its mean.  A line
+#:   too weak to be judged is left: what is taken from the disc's own signal
+#:   must be shown not to be the picture.
+#:
+#: Each line is then subtracted from each chunk of the stream, its phasor
+#: measured over the chunk, the phase referenced to the stream's first
+#: sample, so a sample gets the same value whatever order the chunks are
+#: computed in.
+DISC_FLOOR_HZ = 20e3
+DISC_CONTINUOUS = 0.7
+#: A neighbour that makes a line a comb's tooth: within 30 dB of it.
+DISC_COMB_DB = 1e-3
+
 #: Bins between the samples the spectrum's floor is taken at.
 _FLOOR_STEP = 128
 
@@ -1460,3 +1490,203 @@ def _cut_by_the_sync(
     with np.errstate(divide="ignore", invalid="ignore"):
         lowest = np.where(mean > 0, level.min(axis=1) / mean, 1.0)
     return (mean > XTAL_CUT_SNR * noise) & (lowest < XTAL_CUT_FLOOR)
+
+
+def _line_index(lines: np.ndarray, linelen: float) -> np.ndarray:
+    """The line number of each located line, counted from the first: the
+    gaps between consecutive lines, rounded to whole lines."""
+    steps = np.rint(np.diff(lines) / linelen)
+    return np.concatenate(([0.0], np.cumsum(np.maximum(steps, 1.0))))
+
+
+def _disc_stretch(
+    read_fn: Callable[[int, int], np.ndarray],
+    fs: float,
+    ntsc: bool,
+    at: int,
+    n: int,
+    linelen: float,
+) -> Optional[tuple[np.ndarray, np.ndarray]]:
+    """``n`` samples of the capture from about ``at``, read on its own
+    located lines (the disc's timeline, at the nominal line length), and the
+    same span as it is.  None where too few lines are located."""
+    import scipy.ndimage
+
+    from .rf_sync import locate, system_for
+
+    span = int(n * 1.1 + 8 * linelen)
+
+    def read_at(s, count):
+        return read_fn(at + int(s), int(count))
+
+    found = [np.asarray(rec.lines, dtype=np.float64) + at
+             for rec in locate(read_at, fs, system_for(ntsc), length=span)]
+    lines = np.unique(np.concatenate(found)) if found else np.zeros(0)
+    if lines.shape[0] < 2 or (lines[-1] - lines[0]) < n + 4 * linelen:
+        return None
+    index = _line_index(lines, linelen)
+    disc = (index[0] + 2.0) * linelen + np.arange(n, dtype=np.float64)
+    pos = np.interp(disc / linelen, index, lines)
+    base = int(np.floor(pos[0])) - 8
+    raw_span = np.asarray(read_fn(base, int(np.ceil(pos[-1])) - base + 16), dtype=np.float64)
+    tbc = scipy.ndimage.map_coordinates(raw_span, [pos - base], order=3, mode="nearest")
+    raw = raw_span[int(pos[0]) - base : int(pos[0]) - base + n]
+    if raw.shape[0] < n:
+        raw = np.concatenate((raw, np.zeros(n - raw.shape[0])))
+    return tbc, raw
+
+
+def find_disc_lines(
+    read_fn: Callable[[int, int], np.ndarray],
+    fs: float,
+    *,
+    ntsc: bool,
+    line_hz: float,
+    length: int,
+    start: int = 0,
+) -> list[float]:
+    """The lines the disc itself carries (see `DISC_FLOOR_HZ`), in Hz on the
+    disc's timeline at the nominal line rate: what `subtract_disc_lines`
+    takes out of the read-time TBC's stream.  Usually none."""
+    lines_per_frame = 525 if ntsc else 625
+    frame_hz = line_hz / lines_per_frame
+    linelen = fs / line_hz
+    avail = max(2, int(length) - int(start))
+    n = 1 << int(math.ceil(math.log2(XTAL_CHECK_FRAMES * lines_per_frame / line_hz * fs)))
+    while n > 1 and n * 1.1 + 16 * linelen > avail:
+        n >>= 1
+    room = max(0, avail - int(n * 1.1 + 16 * linelen))
+    segments = XTAL_SEGMENTS
+    starts = [int(start) + room * s // max(1, segments - 1) for s in range(segments)]
+    win = 0.5 - 0.5 * np.cos(TAU * np.arange(n) / n)
+    bin_hz = fs / n
+    p_tbc, p_raw = [], []
+    for at in starts:
+        got = _disc_stretch(read_fn, fs, ntsc, at, n, linelen)
+        if got is None:
+            _logger.info("disc lines: too few lines located for the check; none taken")
+            return []
+        for x, acc in zip(got, (p_tbc, p_raw)):
+            spec = scipy.fft.rfft((x - x.mean()) * win)
+            acc.append((spec.real**2 + spec.imag**2).astype(np.float32))
+            del spec
+    total = np.sum(p_tbc, axis=0, dtype=np.float64)
+    width = max(64, int(DISC_FLOOR_HZ / bin_hz))
+    nb = total.shape[0] // width
+    if nb < 2:
+        return []
+    medians = np.median(total[: nb * width].reshape(nb, width), axis=1)
+    floor = np.interp(np.arange(total.shape[0]), np.arange(nb) * width + width / 2.0, medians)
+    lo = max(_SHARP_WIDE + 2, int(XTAL_LOW_HZ / bin_hz))
+    hi = min(int(min(XTAL_TOP_HZ, 0.49 * fs) / bin_hz), total.shape[0] - _SHARP_WIDE - 2)
+    if hi <= lo:
+        return []
+    seg = total[lo:hi]
+    wins = np.lib.stride_tricks.sliding_window_view(
+        np.pad(seg, _XTAL_PEAK_HALFWIDTH, mode="edge"), 2 * _XTAL_PEAK_HALFWIDTH + 1)
+    tall = (seg >= wins.max(axis=1)) & (seg >= XTAL_KEEP * floor[lo:hi])
+    bands = XTAL_SENSITIVE_HZ if ntsc else PAL_XTAL_SENSITIVE_HZ
+    raw_search = max(2, int(500.0 / bin_hz))
+
+    def narrow(p, k, w):
+        j = k - w + int(np.argmax(p[k - w : k + w + 1]))
+        if j - _SHARP_WIDE < 0 or j + _SHARP_WIDE + 1 > p.shape[0]:
+            return False
+        core = float(p[j - _SHARP_CORE : j + _SHARP_CORE + 1].sum())
+        wide = float(p[j - _SHARP_WIDE : j + _SHARP_WIDE + 1].sum())
+        return core >= XTAL_SHARP * wide
+
+    def neighbour(k, df):
+        # A peak of its own (a local maximum, within 30 dB of the line):
+        # a frame rate away is a few bins, where the line's own window
+        # still leaks.
+        for g in (k * bin_hz - df, k * bin_hz + df):
+            b = int(round(g / bin_hz))
+            if b < 2 or b + 3 > total.shape[0]:
+                continue
+            j = b - 1 + int(np.argmax(total[b - 1 : b + 2]))
+            if (total[j] >= XTAL_KEEP * floor[j] and total[j] >= DISC_COMB_DB * total[k]
+                    and total[j] >= total[j - 1] and total[j] >= total[j + 1]):
+                return True
+        return False
+
+    candidates = []
+    for k in lo + np.flatnonzero(tall):
+        k = int(k)
+        f = k * bin_hz
+        if any(a <= f <= b for a, b in bands):
+            continue
+        if not all(narrow(p, k, 1) for p in p_tbc):
+            continue
+        if any(narrow(p, k, raw_search) for p in p_raw):
+            continue
+        if any(neighbour(k, df) for df in (line_hz, frame_hz, 2.0 * frame_hz)):
+            continue
+        a, b, c = np.log(total[k - 1 : k + 2] + 1e-300)
+        d = a - 2.0 * b + c
+        off = 0.5 * (a - c) / d if d < 0 else 0.0
+        candidates.append((k + off) * bin_hz)
+    del p_raw, p_tbc
+    if not candidates:
+        _logger.info("disc lines: none found")
+        return []
+
+    # The fold, on the disc's timeline: the line must be shown continuous.
+    freqs = np.array(candidates)
+    nbins = XTAL_FOLD_BINS
+    w = max(1, int(round(XTAL_FOLD_WINDOW_S * fs)))
+    block = max(w, 1 << int(round(math.log2(XTAL_FOLD_BLOCK_S * fs))))
+    nw = block // w
+    kernel = np.exp(-2j * np.pi * np.outer(np.arange(w), freqs) / fs)
+    acc = np.zeros((freqs.shape[0], nbins), dtype=np.complex128)
+    folded_lines = 0
+    for at in starts:
+        got = _disc_stretch(read_fn, fs, ntsc, at, n, linelen)
+        if got is None:
+            continue
+        tbc = got[0]
+        folded_lines += int(n / linelen)
+        for b0 in range(0, n - nw * w + 1, block):
+            x = tbc[b0 : b0 + nw * w].reshape(nw, w)
+            n0 = b0 + np.arange(nw) * w
+            z = (x @ kernel) * np.exp(-2j * np.pi * np.outer(n0, freqs) / fs)
+            # The stretch starts on a line (two past the first located).
+            q = np.clip((((n0 + w / 2.0) / linelen) % 1.0 * nbins).astype(np.int64), 0, nbins - 1)
+            count = np.bincount(q, minlength=nbins).astype(np.float64)
+            folded = np.zeros_like(acc)
+            for j in range(nbins):
+                sel = q == j
+                if sel.any():
+                    folded[:, j] = z[sel].sum(axis=0)
+            tot = z.sum(axis=0)
+            turn = np.conj(tot) / np.maximum(np.abs(tot), 1e-30)
+            acc += folded * turn[:, None] / np.maximum(count, 1.0)[None, :]
+    found = []
+    if folded_lines >= lines_per_frame // 2:
+        level = acc.real
+        noise = np.sqrt(np.mean(acc.imag**2, axis=1)) + 1e-30
+        mean = level.mean(axis=1)
+        for i, f in enumerate(candidates):
+            if mean[i] > XTAL_CUT_SNR * noise[i] and level[i].min() >= DISC_CONTINUOUS * mean[i]:
+                found.append(float(f))
+    _logger.info("disc lines: %d candidate(s), %d shown continuous and taken%s",
+                 len(candidates), len(found),
+                 "".join(f"; {f / 1e6:.4f} MHz" for f in found))
+    return found
+
+
+def subtract_disc_lines(samples: np.ndarray, start: int, freqs: Sequence[float], fs: float) -> np.ndarray:
+    """Take the disc's lines (`find_disc_lines`) out of a chunk of the
+    read-time TBC's stream that starts at sample ``start``: each line's
+    phasor over the chunk, its phase referenced to the stream's first
+    sample, subtracted.  Returns a new float64 array."""
+    out = np.array(samples, dtype=np.float64, copy=True)
+    n = out.shape[0]
+    if n == 0 or not freqs:
+        return out
+    index = int(start) + np.arange(n, dtype=np.float64)
+    for f in freqs:
+        e = np.exp(1j * (TAU * float(f) / fs) * index)
+        a = (2.0 / n) * np.dot(out, np.conj(e))
+        out -= (a * e).real
+    return out

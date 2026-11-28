@@ -250,6 +250,38 @@ once, and the subtraction reuses the same tables of exponentials from one
 piece to the next. That is **177 Msamples/s** for the measurement and
 **17.5 Msamples/s** for the subtraction, on one core.
 
+### The disc's own lines: `--disc_lines`
+
+A clock that leaked into the signal at mastering is on the disc: it follows
+the disc's speed, spread in the capture's time and narrow on the disc's, and
+the clock lines above leave it (they take what is narrow in the capture's
+time). `--disc_lines` takes it out, with the read-time TBC only (an error with
+`resample`, which never reads the RF on the disc's timeline); it is off by
+default.
+
+It is found on the primary capture, read on its own located lines over four
+stretches of at least 8 frames (pass 0 run on each, so it needs no pass 0 over
+the whole capture), and a line is taken only on every count: narrow on the
+disc's timeline in every stretch and 10 dB over the floor; spread in the
+capture's time; outside the EFM's and the audio carriers' bands; no neighbour
+within 30 dB a line, frame or field rate away (the picture's combs); and,
+folded on the position in the line as above, **shown** continuous through the
+sync (in-phase amplitude 8 times the quadrature's, never below 70 % of its
+mean). A line too weak to be judged is left: what is taken from the disc's own
+signal must be shown not to be the picture. Each line is subtracted from each
+chunk of the combined stream, its phasor measured over the chunk with the
+phase referenced to the stream's first sample, so a sample gets the same
+value whatever order the chunks are computed in.
+
+Measured on three NTSC captures (a 20-minute side at 40 MHz, 60 s at 40 MHz,
+11 s at 75 MHz): the lines narrow on the disc's timeline were the captures'
+clocks, the picture's combs, the EFM and the audio carriers; none passed the
+tests (the log says "none found"), and the decode with `--disc_lines` (20
+frames, `--tbc_mode read`) is the same, byte for byte, as without. On a synthetic capture whose disc wanders by 1e-4, a 3.1 MHz clock
+leaked on the disc is found to 5 Hz and nothing else is, even with the comb
+test turned off (the video's 528 comb teeth are then candidates, and the fold
+leaves every one).
+
 ### The chroma leak
 
 On NTSC the composite chroma leaks into the RF baseband around the colour

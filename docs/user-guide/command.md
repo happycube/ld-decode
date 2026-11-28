@@ -174,6 +174,16 @@ before it is subtracted (narrow over stretches several frames long, outside
 the EFM's and the audio carriers' bands, not cut by the sync), so the disc's
 own signal is not taken for a clock.
 
+#### `--disc_lines`
+Also take out the clock lines the disc itself carries: a clock that leaked
+into the signal at mastering is on the disc, so it follows the disc's speed.
+With `--tbc_mode read` only (an error with `resample`, which never reads the
+RF on the disc's timeline). Off by default: a line is taken only where it is
+narrow on the disc's timeline, spread in the capture's, outside the EFM's
+and the audio carriers' bands, not one of the picture's combs, and shown
+continuous through the sync. No disc measured so far carries one; the log
+says what was found.
+
 #### `--no_chroma_leak`
 Leave the composite chroma that leaks into the RF baseband (NTSC; it makes
 the fine wavering vertical stripes of saturated areas). It is cancelled by

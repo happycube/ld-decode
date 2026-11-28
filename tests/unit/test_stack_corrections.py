@@ -814,3 +814,128 @@ def test_the_v4300d_satellites_go_with_their_master(with_master):
 
     assert kept == ([95, 96, 97] if with_master else [])
     assert reference == (96 if with_master else 0)
+
+
+# --- the disc's own lines (--disc_lines) -----------------------------------
+
+#: The fixture's rate and line length (PAL: 1280 samples a line at 20 MHz).
+DFS = 20e6
+DLINE = DFS / stack_corrections.PAL_LINE_HZ
+DN = 1 << 23
+
+
+class _Recording:
+    """A capture's reader that remembers where it was last asked to read."""
+
+    def __init__(self, samples):
+        self.samples = samples
+        self.last = 0
+
+    def __call__(self, start, count):
+        self.last = int(start)
+        start = max(0, int(start))
+        return self.samples[start : start + int(count)]
+
+
+def _mastered_capture(seed, with_clock):
+    """A PAL capture whose disc turns unevenly: the disc's time runs about
+    1e-4 off the capture's, wandering below 30 Hz.  On the disc: a clock
+    leaked at mastering (3.1 MHz, continuous) if asked, and a video line
+    (4.4 MHz) that the sync cuts every line.  In the capture: its own clock
+    (5.49 MHz).  Returns the reader and the capture position of each line."""
+    import scipy.signal
+
+    rng = np.random.default_rng(seed)
+    t = np.arange(DN, dtype=np.float64)
+    hold = 20000
+    slow = scipy.signal.lfilter(*scipy.signal.butter(2, 30 / 500), rng.normal(size=DN // hold + 202))
+    speed = 1.0 + 1e-4 * np.repeat(slow[200:] / slow[200:].std(), hold)[:DN]
+    disc = np.cumsum(speed) - speed[0]
+    lines = np.interp(np.arange(0.0, disc[-1], DLINE), disc, t)
+    capture = 0.01 * rng.normal(size=DN) + 0.3 * np.cos(TAU * 5.49e6 * t / DFS)
+    if with_clock:
+        capture += 0.3 * np.cos(TAU * 3.1e6 * disc / DFS)
+    on = (disc % DLINE) >= 10.5e-6 * DFS
+    capture += 0.3 * on * np.cos(TAU * 4.4e6 * disc / DFS)
+    return _Recording(capture), lines
+
+
+def _locate_on(monkeypatch, reader, lines):
+    """rf_sync.locate stood in by the capture's true lines, from where it is
+    asked to read, as field records of 312 lines."""
+
+    class _Field:
+        def __init__(self, positions):
+            self.lines = positions
+
+    def locate(read_fn, fs, system, stop=None, length=None):
+        read_fn(0, 1)
+        at = reader.last
+        mine = lines[(lines >= at) & (lines < at + (length or DN))] - at
+        for k in range(0, mine.shape[0], 312):
+            yield _Field(mine[k : k + 313])
+
+    from lddecode import rf_sync
+
+    monkeypatch.setattr(rf_sync, "locate", locate)
+
+
+@pytest.mark.parametrize("with_clock", [True, False])
+def test_a_clock_on_the_disc_is_found_and_nothing_else(monkeypatch, with_clock):
+    """A clock leaked on the disc follows the disc's speed: narrow on the
+    disc's timeline, spread in the capture's, and continuous through the
+    sync.  It is found; the capture's own clock (narrow in both) and the
+    video's line (cut by the sync, a comb) are not, and without the clock
+    nothing is."""
+    reader, lines = _mastered_capture(215, with_clock)
+    _locate_on(monkeypatch, reader, lines)
+
+    found = stack_corrections.find_disc_lines(
+        reader, DFS, ntsc=False, line_hz=stack_corrections.PAL_LINE_HZ, length=DN
+    )
+
+    if with_clock:
+        assert len(found) == 1
+        assert found[0] == pytest.approx(3.1e6, abs=5.0)
+    else:
+        assert found == []
+
+
+def test_the_discs_line_is_taken_out_of_a_chunk():
+    """subtract_disc_lines: a line steady on the stream's timeline is taken
+    out of a chunk, its phase referenced to the stream's first sample, and
+    the rest of the chunk is left."""
+    rng = np.random.default_rng(216)
+    n, start = 1 << 18, 5 * (1 << 18)
+    index = start + np.arange(n)
+    rest = rng.normal(size=n)
+    chunk = rest + 0.5 * np.cos(TAU * 3.1e6 * index / DFS + 0.7)
+
+    out = stack_corrections.subtract_disc_lines(chunk, start, [3.1e6], DFS)
+
+    assert _tone_amplitude(out, DFS, 3.1e6, 0, n) < 0.5 / 300
+    assert np.std(out - rest) < 0.01
+    np.testing.assert_array_equal(
+        stack_corrections.subtract_disc_lines(chunk, start, [], DFS), chunk)
+
+
+def test_without_the_comb_test_the_fold_still_leaves_the_video(monkeypatch, caplog):
+    """The video's line is a comb, which leaves it first; with that test
+    turned off it is a candidate, and the fold, which finds it cut by the
+    sync, still leaves it."""
+    import logging
+
+    monkeypatch.setattr(stack_corrections, "DISC_COMB_DB", math.inf)
+    reader, lines = _mastered_capture(215, True)
+    _locate_on(monkeypatch, reader, lines)
+
+    with caplog.at_level(logging.INFO, logger="lddecode.stack_corrections"):
+        found = stack_corrections.find_disc_lines(
+            reader, DFS, ntsc=False, line_hz=stack_corrections.PAL_LINE_HZ, length=DN
+        )
+
+    assert [round(f / 1e3) for f in found] == [3100]
+    # The video's comb teeth were candidates, and the fold left every one.
+    counts = [r.getMessage() for r in caplog.records if "candidate(s)" in r.getMessage()]
+    assert counts and int(counts[-1].split("disc lines: ")[1].split(" ")[0]) > 1
+    assert "1 shown continuous" in counts[-1]

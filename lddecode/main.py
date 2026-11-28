@@ -95,6 +95,15 @@ def build_parser():
              "(subtracted by default, in either --tbc_mode)",
     )
     parser.add_argument(
+        "--disc_lines",
+        "--disc-lines",
+        dest="disc_lines",
+        action="store_true",
+        help="also take out the clock lines the disc itself carries (a clock "
+             "that leaked into the signal at mastering), where they are shown "
+             "not to be the picture; --tbc_mode read only, off by default",
+    )
+    parser.add_argument(
         "--no_chroma_leak",
         "--no-chroma-leak",
         dest="no_chroma_leak",
@@ -918,6 +927,7 @@ def build_stacked_source(inputs, args, vid_standard):
             cancel_xtalk=not args.no_audio_carrier_cancel,
             cancel_xtal=not args.no_crystal_lines,
             cancel_leak=not args.no_chroma_leak,
+            cancel_disc_lines=bool(getattr(args, "disc_lines", False)),
             rf_out=args.rf_out,
             rf_out_dtype=capture_dtype(inputs[0]),
             device=args.device,
@@ -1044,6 +1054,12 @@ def main(args=None):
               "lines take the LD-V4300D's clock and its satellites out of the RF "
               "by default; it is left to them (--no_crystal_lines keeps it)",
               file=sys.stderr)
+    if args.disc_lines and tbc_mode != "read":
+        # The disc's lines are narrow only on the disc's timeline, which the
+        # resample path never reads the RF on.
+        print("ERROR: --disc_lines takes the disc's own lines out of the RF read "
+              "on the disc's timeline; it needs --tbc_mode read", file=sys.stderr)
+        sys.exit(1)
     if args.rf_out is not None and tbc_mode != "read":
         print("ERROR: --rf_out writes the read-time corrected RF; it needs "
               "--tbc_mode read", file=sys.stderr)

@@ -1783,6 +1783,11 @@ class StackedSource:
         Subtract the capture's crystal lines as it is read.
     cancel_leak : bool
         Cancel the chroma leak (NTSC only).
+    cancel_disc_lines : bool
+        Take out the lines the disc itself carries (a clock that leaked into
+        the signal at mastering), found on the primary capture and only where
+        shown not to be the picture (stack_corrections.find_disc_lines).  Off
+        by default: no disc measured so far carries one.
     rf_out : str | None
         Where to write the RF the decoder reads, as s16.
     device : str
@@ -1813,6 +1818,7 @@ class StackedSource:
         cancel_xtalk: bool = True,
         cancel_xtal: bool = True,
         cancel_leak: bool = True,
+        cancel_disc_lines: bool = False,
         rf_out: str | None = None,
         rf_out_dtype: str = "int16",
         device: str = "cpu",
@@ -1838,6 +1844,10 @@ class StackedSource:
         self.cancel_xtalk = bool(cancel_xtalk)
         self.cancel_xtal = bool(cancel_xtal)
         self.cancel_leak = bool(cancel_leak)
+        self.cancel_disc_lines = bool(cancel_disc_lines)
+        #: The disc's own lines, in Hz on the stream's timeline (see
+        #: cancel_disc_lines); found in _setup.
+        self._disc_lines: list[float] = []
         self.system = SYSTEM_NTSC if self.ntsc else SYSTEM_PAL
         self.line_us = NTSC_LINE_US if self.ntsc else PAL_LINE_US
         self.linelen = self.fs * self.line_us / 1e6
@@ -1916,6 +1926,18 @@ class StackedSource:
             _logger.info("stack: %s noise floor %.4e (weight %.4e)", inp.path, sigma2, 1.0 / sigma2)
             self.weight.append(1.0 / sigma2)
         self.afloor = [AMP_FLOOR * (gain / w) ** 0.5 for w in self.weight]
+
+        if self.cancel_disc_lines:
+            from .stack_corrections import find_disc_lines
+
+            self._disc_lines = find_disc_lines(
+                self._readers[0],
+                self.fs,
+                ntsc=self.ntsc,
+                line_hz=LINE_HZ_NTSC if self.ntsc else LINE_HZ_PAL,
+                length=self.inputs[0].length,
+                start=int(firsts[0]),
+            )
 
         self._gpu = None
         if self.device == "opencl":
@@ -2122,6 +2144,12 @@ class StackedSource:
 
     def _finish_chunk(self, s0: int, out: np.ndarray, combined: np.ndarray | None) -> np.ndarray:
         """The cancellations on a combined chunk, then the chunk as kept."""
+        disc_lines = getattr(self, "_disc_lines", None)
+        if disc_lines:
+            from .stack_corrections import subtract_disc_lines
+
+            # The lines are the disc's: in every copy, so in the combination.
+            out = subtract_disc_lines(out, s0, disc_lines, self.fs)
         if self._wants_band():
             self._cancel(out, combined)
         dc = getattr(self, "_dc", None)
