@@ -95,7 +95,9 @@ set(TESTDATA_DIR ${CMAKE_SOURCE_DIR}/testdata)
 # the cancellation moved its adoption from frame 2 to frame 5, out of the
 # averaged fields (2T 97.73 -> 97.41 IRE).  The tests gate rev 8's
 # calibration on the opening frames; the cancellations are tested by their own
-# unit tests (test_stack_corrections.py, test_stack.py).
+# unit tests (test_stack_corrections.py, test_stack.py), and the default
+# (cleaned) decode of the PAL radius cuts by its own lane, against its own
+# list (add_vits_cleaned_cut, below).
 set(VITS_DECODE_FLAGS --no_audio_carrier_cancel --no_crystal_lines --no_chroma_leak)
 
 # Every decode below writes here.  Created at configure time so that "ctest"
@@ -711,6 +713,55 @@ endforeach()
 
 foreach(cut IN LISTS VITS_RADIUS_NTSC_CUTS)
     add_vits_radius_cut(${cut} NTSC)
+endforeach()
+
+# The PAL radius cuts again, decoded as a user decodes them: the RF cleaned
+# (the clock lines and the analog audio carriers' crosstalk taken out, the
+# default; no VITS_DECODE_FLAGS).  The sweep above gates rev 8's decode of
+# the RF as it is; this gates what the default decode makes of the same
+# cuts, against its own list, analysis/vits_known_deviations_cleaned.toml.
+# Neither list stands in for the other: the cleaning moves readings both
+# ways (three --no_* deviations of domesday-ds2-community-north pass here,
+# and taking the LD-V4300D's clock out of industrial-lv-side1-inner moves a
+# 2T reading under its band, as rev 8's --V4300D_coherent_subtract does).
+# The manifest and the lists name a capture by its file's basename, so the
+# decodes go to testout/cleaned/ under the cut's own name.
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/testout/cleaned)
+
+function(add_vits_cleaned_cut label)
+    add_test(
+        NAME decode-${label}-cleaned-cvbs
+        COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
+            --cvbs --PAL --exact-speculation
+            ${TESTDATA_DIR}/radius/${label}.ldf
+            ${CMAKE_BINARY_DIR}/testout/cleaned/${label}
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    )
+    set_tests_properties(decode-${label}-cleaned-cvbs PROPERTIES
+        LABELS "functional;slow;vits"
+        FIXTURES_SETUP ${label}-cleaned-cvbs
+        TIMEOUT 1800
+    )
+
+    add_test(
+        NAME conformance-${label}-cleaned-vits
+        COMMAND ${Python3_EXECUTABLE} ${ANALYSIS_DIR}/vits_conformance.py
+            ${CMAKE_BINARY_DIR}/testout/cleaned/${label}.cvbs
+            --manifest ${TESTDATA_DIR}/vits-manifest.json
+            --known-deviations ${ANALYSIS_DIR}/vits_known_deviations_cleaned.toml
+            --json ${CMAKE_BINARY_DIR}/testout/cleaned/${label}.conformance.json
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    )
+    set_tests_properties(conformance-${label}-cleaned-vits PROPERTIES
+        LABELS "functional;vits"
+        FIXTURES_REQUIRED ${label}-cleaned-cvbs
+        PASS_REGULAR_EXPRESSION "VITS CONFORMANCE: (PASS|SKIPPED)"
+        TIMEOUT 600
+    )
+endfunction()
+
+foreach(cut IN LISTS VITS_RADIUS_PAL_CUTS)
+    add_vits_cleaned_cut(${cut})
 endforeach()
 
 # ---------------------------------------------------------------------------

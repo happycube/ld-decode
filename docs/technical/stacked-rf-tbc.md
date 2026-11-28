@@ -629,7 +629,15 @@ captures, and the functional lane's `ntsc-cvbs` and `pal-cvbs`) leaves the
 RF as it is (`--no_audio_carrier_cancel --no_crystal_lines --no_chroma_leak`,
 `VITS_DECODE_FLAGS` in `cmake_modules/LdDecodeTests.cmake`), as the decoder
 ran when its known deviations were recorded; the cancellations are tested by
-their own unit tests. A small correction moves rev 8's servos: on
+their own unit tests. The ten PAL radius cuts are also decoded with the
+default cleaning and judged against their own list
+(`analysis/vits_known_deviations_cleaned.toml`): against the RF as it is,
+seven read the same, two pass three of their recorded deviations
+(`domesday-ds2-community-north` inner and outer), and one has a 2T reading
+under its band (`industrial-lv-side1-inner`, field 2, 97.60 IRE against
+98.14) that rev 8's own `--V4300D_coherent_subtract` moves the same way
+(97.52): it is the player's clock taken out of the reading. A small
+correction moves rev 8's servos: on
 `ve-monitor` the decoder-level crosstalk model moved the multiburst's 2 MHz
 packet by 0.01 dB, the video EQ's estimate sits on its 0.3 dB dead-band
 there, and the EQ adopted at frame 5 instead of frame 2, so the opening

@@ -135,6 +135,18 @@ names, and judged against
 the same kind of list for those decodes; the two differ where the pass changes
 what a cut settles to.
 
+Every list above is recorded from decodes that leave the RF as it is
+(`--no_audio_carrier_cancel --no_crystal_lines --no_chroma_leak`). The ten PAL
+radius cuts are decoded a third time as a user decodes them, the RF cleaned
+(the default), into `testout/cleaned/`, and judged against
+[`analysis/vits_known_deviations_cleaned.toml`](https://github.com/happycube/ld-decode/blob/main/analysis/vits_known_deviations_cleaned.toml).
+Its entries keep the default list's owner and reason where that list has the
+same check; the cleaning moves readings both ways (three of
+`domesday-ds2-community-north`'s deviations pass with it), and the one fault
+only the cleaned decode has, a 2T reading of `industrial-lv-side1-inner`,
+carries its own reason: it is the LD-V4300D's clock taken out of that cut's
+RF, which rev 8's `--V4300D_coherent_subtract` moves the same way.
+
 The six-frame PAL clip the functional lane decodes (`decode-pal-cvbs`, judged by
 `conformance-pal-vits`) is carried in the default list too, under the name
 `pal-cvbs`. It is decoded with `-t 1`, so its readings do not depend on the
