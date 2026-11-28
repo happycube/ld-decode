@@ -83,28 +83,8 @@ def test_a_compressed_capture_reads_at_positions(tmp_path, name):
         capture.close()
 
 
-class _Stream:
-    """The decoder's reader, stood in by a stream of ``n`` samples."""
-
-    def __init__(self, n):
-        self.n = n
-
-    def read(self, infile, sample, readlen):
-        if sample + readlen > self.n:
-            return None
-        return np.ones(readlen)
-
-
-@pytest.mark.parametrize("actual", [40000, 100_000_007, 123])
-def test_a_compressed_captures_length_is_read_not_taken_from_its_header(tmp_path, actual):
-    """A FLAC's header can carry a count that is not the stream's (a file
-    encoded through a pipe): the length is where the stream ends when it is
-    read, as the decoder reads it, whatever the header says (here 40000)."""
+def _write_flac(path, samples):
     av = pytest.importorskip("av", reason="PyAV is required for the FLAC reader")
-    from lddecode.fileio import compressed_length
-
-    samples = np.zeros(40000, dtype=np.int16)
-    path = tmp_path / "capture.flac"
     with av.open(str(path), "w", format="flac") as out:
         stream = out.add_stream("flac", rate=40000, layout="mono")
         frame = av.AudioFrame.from_ndarray(samples.reshape(1, -1), format="s16", layout="mono")
@@ -114,4 +94,36 @@ def test_a_compressed_captures_length_is_read_not_taken_from_its_header(tmp_path
         for packet in stream.encode(None):
             out.mux(packet)
 
-    assert compressed_length(str(path), _Stream(actual)) == actual
+
+def _set_header_count(path, count):
+    """Write `count` into the FLAC header's total samples (STREAMINFO: the
+    low 36 bits of its bytes 10 to 17, after "fLaC" and the block header)."""
+    data = bytearray(path.read_bytes())
+    at = 8 + 10
+    field = int.from_bytes(data[at : at + 8], "big")
+    field = (field & ~((1 << 36) - 1)) | (count & ((1 << 36) - 1))
+    data[at : at + 8] = field.to_bytes(8, "big")
+    path.write_bytes(bytes(data))
+
+
+@pytest.mark.parametrize("header", [None, 1000, 0, 5_000_000])
+def test_a_compressed_captures_length_is_the_streams_not_its_headers(tmp_path, header):
+    """A FLAC's header can carry a count that is not the stream's (a file
+    encoded through a pipe): the length is where the stream ends, as the
+    decoder finds it reading, whatever the header says (right, too small,
+    unknown, too large)."""
+    from lddecode.fileio import compressed_length
+
+    samples = np.random.default_rng(4).integers(-2000, 2000, size=300_001).astype(np.int16)
+    path = tmp_path / "capture.flac"
+    _write_flac(path, samples)
+    if header is not None:
+        _set_header_count(path, header)
+
+    assert compressed_length(str(path)) == samples.size
+    capture = open_capture(str(path))
+    try:
+        assert capture.length == samples.size
+        np.testing.assert_array_equal(capture.read(samples.size - 500, 500), samples[-500:])
+    finally:
+        capture.close()

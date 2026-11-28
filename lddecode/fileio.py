@@ -266,57 +266,68 @@ class PackedCapture:
             self._file = None
 
 
-def compressed_length(filename, loader=None):
+def compressed_length(filename):
     """The number of samples in a compressed (.ldf/.flac) capture.
 
-    The container's count is where the search starts, not the answer: a FLAC
+    The header's count is where the search starts, not the answer: a FLAC
     whose header could not be rewritten once encoded (written through a
     pipe) can carry a count that is not the stream's - one 28 GB capture
-    says 16.8 s of a stream over 500 s long.  The decoder reads such a file
-    to its end, so the end is found the same way: by reading, through the
-    decoder's own reader (``loader``, or a LoadLDF of its own), one sample
-    at a time, doubling past the last one found and then halving.
+    says 16.8 s of a 20-minute stream.  The decoder reads such a file to its
+    end, so the end is found in the stream itself: a seek, then the first
+    frame decoded there and its position, doubling past the header's count
+    while the stream goes on, halving back, and the last stretch decoded to
+    the end.  (The decoder's own reader cannot be asked one sample at a
+    time near the end: it answers from what it holds.)
     """
     import av
 
-    claimed = None
     with av.open(filename) as container:
         stream = container.streams.audio[0]
-        if stream.duration is not None and stream.time_base is not None:
-            claimed = int(round(stream.duration * stream.time_base * stream.sample_rate))
-        elif container.duration is not None:
-            claimed = int(round(container.duration * stream.sample_rate / 1e6))
+        scale = stream.time_base * stream.sample_rate
 
-    own = loader is None
-    if own:
-        loader = LoadLDF(filename)
-    try:
-        def present(index):
-            data = loader.read(None, int(index), 1)
-            return data is not None and len(data) >= 1
+        def frame_at(sample):
+            """The frame a seek to `sample` lands on: (first sample, count),
+            or None past the end."""
+            try:
+                container.seek(int(sample / scale), stream=stream, any_frame=False, backward=True)
+            except av.error.FFmpegError:
+                return None
+            for frame in container.decode(stream):
+                if frame.pts is None:
+                    return None
+                return int(frame.pts * scale), frame.samples
+            return None
 
-        if not present(0):
-            return 0
-        # lo is a sample that is there, hi one that is not.
-        lo = 0
-        guess = max(1, claimed or 0)
-        if present(guess - 1):
-            lo = guess - 1
-        step = max(guess, 1 << 20)
-        while present(lo + step):
-            lo += step
-            step *= 2
-        hi = lo + step
-        while hi - lo > 1:
+        def inside(sample):
+            found = frame_at(sample)
+            return found is not None and found[0] + found[1] > sample
+
+        claimed = int(stream.duration * scale) if stream.duration is not None else 0
+        lo, guess = 0, max(claimed, 1 << 20)
+        if inside(guess):
+            lo, step = guess, guess
+            while inside(lo + step):
+                lo += step
+                step *= 2
+            hi = lo + step
+        else:
+            hi = guess
+        while hi - lo > 1 << 16:
             mid = (lo + hi) // 2
-            if present(mid):
+            if inside(mid):
                 lo = mid
             else:
                 hi = mid
-        return lo + 1
-    finally:
-        if own:
-            loader._close()
+        found = frame_at(lo)
+        if found is None:
+            return 0
+        container.seek(int(found[0] / scale), stream=stream, any_frame=False, backward=True)
+        end = found[0]
+        for frame in container.decode(stream):
+            if frame.pts is not None:
+                end = int(frame.pts * scale)
+            end += frame.samples
+        return end
 
 
 class CompressedCapture:
@@ -327,7 +338,7 @@ class CompressedCapture:
     def __init__(self, filename):
         self.filename = filename
         self._loader = LoadLDF(filename)
-        self._length = compressed_length(filename, self._loader)
+        self._length = compressed_length(filename)
 
     @property
     def length(self):
