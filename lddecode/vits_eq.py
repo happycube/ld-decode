@@ -70,8 +70,37 @@ KEEP_FIELDS = 32
 #: 0.5-5 MHz) a refit must show to be adopted.
 REFIT_FIELDS = 100
 ADOPT_DB = 0.25
+#: The guards' 2T is read on the median of at least this many ITS lines:
+#: noise lifts a single line's (upsampled) peak.
+MIN_GUARD_LINES = 4
+#: An adopted refit is reached over this many fields, on a straight line
+#: in log gain from the response in force, so the picture never steps
+#: between two EQs.  (The first EQ to come into force, like the first fit,
+#: is set at once.)
+RAMP_FIELDS = 50
 
 NFFT = 4096
+
+
+def band_taper(fq):
+    """The weight (1 in the picture band, raised-cosine to 0 over
+    TAPER_LO_HZ-TAPER_HI_HZ) the EQ's log gain is tapered by at fq."""
+    wt = np.clip((TAPER_HI_HZ - fq) / (TAPER_HI_HZ - TAPER_LO_HZ), 0, 1)
+    return 0.5 - 0.5 * np.cos(np.pi * wt)
+
+
+def follow_filters(log_gain, delta_log, fs_hz, max_boost=MAX_BOOST):
+    """A fitted response log_gain (rfft grid) re-derived for decode
+    filters whose own log gain has changed by delta_log since the fit:
+    the EQ gives back what the filters newly took, and takes back what
+    they newly gave, so the written picture's response stays the one the
+    fit made and guarded.  Tapered and clipped like the fit (never below
+    MIN_GAIN, never above max_boost)."""
+    fq = np.fft.rfftfreq(NFFT, 1.0 / fs_hz)
+    base = np.zeros_like(fq) if log_gain is None else log_gain
+    out = np.clip(base - band_taper(fq) * delta_log,
+                  np.log(MIN_GAIN), np.log(max_boost))
+    return out
 
 
 def _bar_steps(x, black=0.0, white=100.0):
@@ -275,6 +304,7 @@ def fit(readings, fs_hz, allow_boost=True):
     rep["t2"] = t2
     maxb = (MAX_BOOST if (allow_boost and t2 is not None
                           and t2 < T2_BOOST_BELOW) else 1.0)
+    rep["max_boost"] = maxb
 
     mbp = _pooled_multiburst(readings)
     deficit = None
@@ -304,8 +334,7 @@ def fit(readings, fs_hz, allow_boost=True):
     M = np.clip(M, MIN_GAIN / GT, maxb / GT)
     M[fq > TOP_ANCHOR_HZ] = np.interp(TOP_ANCHOR_HZ, fq, M)
     # taper the total gain back to 1 over the band edge (log gain)
-    wt = np.clip((TAPER_HI_HZ - fq) / (TAPER_HI_HZ - TAPER_LO_HZ), 0, 1)
-    wt = 0.5 - 0.5 * np.cos(np.pi * wt)
+    wt = band_taper(fq)
     T = np.exp(wt * np.log(np.maximum(GT * M, 1e-6)))   # total gain
 
     def taps_for(alpha):
@@ -352,21 +381,24 @@ def fit(readings, fs_hz, allow_boost=True):
                 rep["noisecap_alpha"] = a_cap
                 taps = taps_for(alpha)
             rep["noise_out"] = noise(taps)
+        log_gain = alpha * np.log(T)
     elif maxb > 1.0:
         # no ITS line to hold the 2T against: cut only
         taps = None
-    T_cut = np.minimum(T, 1.0)
+    else:
+        log_gain = 1.0 * np.log(T)
     if taps is None:
+        T_cut = np.minimum(T, 1.0)
         taps = _min_phase(T_cut, TOTAL_TAPS)
-    # the same fit with every boost taken out, for while its readings
-    # are stale (see LDdecode.checkVitsEQ)
-    rep["cut_taps"] = (None if np.max(np.abs(np.log(T_cut))) < IDENTITY_LOG
-                       else _min_phase(T_cut, TOTAL_TAPS))
+        log_gain = np.log(T_cut)
     H = np.abs(np.fft.rfft(taps, NFFT))
     if np.max(np.abs(np.log(np.maximum(H, 1e-9)))) < IDENTITY_LOG:
         rep["identity"] = True
         return None, rep
-    H = np.abs(np.fft.rfft(taps, NFFT))
+    # the response the taps realise (log |gain| on the rfft grid): what
+    # the decoder ramps towards and re-guards between fits (taps_for_log,
+    # guard_scale)
+    rep["log_gain"] = log_gain
     rep["gain"] = {f"{f:.2f}": float(np.interp(f * 1e6, fq, H))
                    for f in (0.5, 1, 2, 3, 4, 4.43, 4.8, 5.5, 6.2)}
     return taps, rep
@@ -379,6 +411,81 @@ def gain_db(taps, fs_hz, freqs_hz):
     fq = np.fft.rfftfreq(NFFT, 1.0 / fs_hz)
     H = np.abs(np.fft.rfft(np.asarray(taps), NFFT))
     return 20 * np.log10(np.maximum(np.interp(freqs_hz, fq, H), 1e-9))
+
+
+def taps_for_log(log_gain):
+    """The minimum-phase FIR realising log |gain| log_gain (rfft grid,
+    as fit reports it), or None when that is identity (log_gain None,
+    or a response within IDENTITY_LOG of unity)."""
+    if log_gain is None:
+        return None
+    taps = _min_phase(np.exp(log_gain), TOTAL_TAPS)
+    H = np.abs(np.fft.rfft(taps, NFFT))
+    if np.max(np.abs(np.log(np.maximum(H, 1e-9)))) < IDENTITY_LOG:
+        return None
+    return taps
+
+
+def guard_scale(log_gain, readings, fs_hz, noise_readings=None):
+    """The largest a in [0, 1] for which the response a * log_gain keeps
+    fit's guards on these readings: the conformance 2T of their median
+    ITS line after it at most T2_CAP, and their blank-line noise risen
+    by at most NOISE_RISE_IRE.  The decoder uses it to keep a response
+    fitted earlier within the guards on readings taken since (under
+    moved decode filters, or along a ramp).  A response that lifts no
+    frequency passes as it is.  None when there is a lift but fewer than
+    MIN_GUARD_LINES clean ITS lines among the readings to hold its 2T
+    against.  noise_readings,
+    when given, supply the blank lines instead of readings."""
+    if log_gain is None or np.max(log_gain) <= 0.0:
+        return 1.0
+    bars = []
+    for r in readings:
+        if r[0] is not None:
+            x = np.asarray(r[0], np.float64)
+            if _bar_steps(x) is not None:
+                bars.append(x)
+    if len(bars) < MIN_GUARD_LINES:
+        return None
+    its = np.median(np.array(bars), 0)
+    st = _bar_steps(its)
+    if st is None:
+        return None
+    bar = st[2]
+
+    def h_at(a):
+        return _min_phase(np.exp(a * log_gain), TOTAL_TAPS)
+
+    def t2_over(h):
+        t2 = conformance_2t(causal_filter(its, h)[0], fs_hz, bar)
+        return t2 is not None and t2 > T2_CAP
+
+    over = [t2_over]
+    blanks = [r[2] for r in (readings if noise_readings is None
+                             else noise_readings) if r[2] is not None]
+    if blanks:
+        rows = np.array(blanks, np.float64)
+        n0 = float(np.sqrt(np.mean(
+            (rows - rows.mean(1, keepdims=True))[:, 40:-40] ** 2)))
+
+        def noise_over(h):
+            y = np.array([causal_filter(r, h)[0] for r in rows])
+            y = (y - y.mean(1, keepdims=True))[:, 40:-40]
+            return float(np.sqrt(np.mean(y ** 2))) > n0 + NOISE_RISE_IRE
+        over.append(noise_over)
+    a = 1.0
+    for test in over:
+        if not test(h_at(a)):
+            continue
+        lo, hi = 0.0, a
+        for _ in range(12):
+            m = 0.5 * (lo + hi)
+            if test(h_at(m)):
+                hi = m
+            else:
+                lo = m
+        a = lo
+    return a
 
 
 class StreamEQ:

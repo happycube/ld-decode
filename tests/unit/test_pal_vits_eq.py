@@ -197,3 +197,220 @@ def test_no_boost_while_the_2t_servo_can_still_act():
                             FS, allow_boost=False)
     db = vits_eq.gain_db(taps, FS, np.linspace(0.1e6, 6e6, 60))
     assert np.all(db <= 0.02)
+
+
+# ---------------------------------------------------------------------------
+# The decoder's EQ over time (LDdecode.checkVitsEQ): steady across decode
+# filter moves and refits, within the same guards.
+
+import logging  # noqa: E402
+import types  # noqa: E402
+
+from lddecode import decoder as decoder_module  # noqa: E402
+from lddecode import utils_logging as logs  # noqa: E402
+from lddecode.decoder import LDdecode  # noqa: E402
+
+
+def _eq_decoder(monkeypatch, servo_room=False):
+    """An LDdecode carrying only what checkVitsEQ reads.  Each field
+    stub brings its own reading (field.reading) and decode filters
+    (field.decoded_mtf_level)."""
+    monkeypatch.setattr(logs, "logger", logging.getLogger("test-vits-eq"))
+    it = LDdecode.__new__(LDdecode)
+    it.pal_vits_eq = True
+    it.rf = types.SimpleNamespace(
+        SysParams={"outfreq": FS / 1e6, "FPS": 25}, DecoderParams={},
+        freq_hz_half=20e6)
+    it._vitseq_samples = []
+    it._vitseq_decided = False
+    it._vitseq_since_fit = 0
+    it._vitseq_fit_key = None
+    it._vitseq_stale = False
+    it._vitseq_seen_key = None
+    it._vitseq_delta = None
+    it._vitseq_mtf_moved = False
+    it._vitseq_max_boost = vits_eq.MAX_BOOST
+    it._vitseq_log = None
+    it._vitseq_target = None
+    it._vitseq_target_taps = None
+    it._vitseq_fit_readings = []
+    it._vitseq_ramp = None
+    it._vitseq_hold = 1.0
+    it._vitseq_applied = None
+    it._vits_measurement = lambda field, fn: None
+    it._vitseq_servo_has_room = lambda: servo_room
+    monkeypatch.setattr(decoder_module.vits_eq, "field_reading",
+                        lambda field, its_line, mb: field.reading)
+    return it
+
+
+class _Feed:
+    """Commits one field after another to the decoder stub."""
+
+    def __init__(self, it):
+        self.it, self.n = it, 0
+        self.params = types.SimpleNamespace(DecoderParams={"vsync_ire": -40})
+
+    def __call__(self, reading, level=0.0, veq=None, imtf=0.0):
+        f = types.SimpleNamespace(
+            dspicture=np.zeros(1), readloc=self.n, reading=reading,
+            decoded_mtf_level=level, decoded_imtf_strength=imtf,
+            decoded_video_eq=veq, rf=self.params)
+        self.n += 1
+        LDdecode.checkVitsEQ(self.it, f)
+        return self.it.rf.DecoderParams.get("vits_eq_taps")
+
+
+def _channel(db, c=0.15, tau=6.0, seed=0, n=1):
+    """n readings of a disc channel: a Gaussian loss db at 4 MHz and a
+    one-pole tail (c, tau)."""
+    rng = np.random.default_rng(seed)
+    its = _smear(_lowpass(_its_line(), db), c, tau)
+    return _readings(its, _packets(_gauss_gain(MB_F, db)), rng, n=n,
+                     noise=0.05)
+
+
+def _t2_after(taps, reading):
+    its = np.asarray(reading[0], np.float64)
+    st = vits_eq._bar_steps(its)
+    y = its if taps is None else vits_eq.causal_filter(its, taps)[0]
+    return vits_eq.conformance_2t(y, FS, st[2])
+
+
+def test_a_filter_move_keeps_the_boost(monkeypatch):
+    it = _eq_decoder(monkeypatch)
+    feed = _Feed(it)
+    for r in _channel(-3.0, n=vits_eq.MIN_FIELDS):
+        taps = feed(r)
+    assert taps is not None
+    boost = vits_eq.gain_db(taps, FS, np.array([3e6]))[0]
+    assert boost > 0.5
+    # the decode filters move; the channel the readings show does not
+    for r in _channel(-3.0, seed=1, n=vits_eq.MIN_FIELDS + 4):
+        held = feed(r, level=-0.5)
+        assert held is not None
+        db = vits_eq.gain_db(held, FS, np.array([3e6]))[0]
+        assert db > boost - 0.3
+        assert _t2_after(held, r) <= vits_eq.T2_CAP + 0.01
+
+
+def test_a_filter_move_to_a_sharper_channel_scales_the_boost_down(
+        monkeypatch):
+    it = _eq_decoder(monkeypatch)
+    feed = _Feed(it)
+    for r in _channel(-3.0, n=vits_eq.MIN_FIELDS):
+        taps = feed(r)
+    sharp = _channel(-1.0, c=0.05, seed=2, n=6)
+    st = vits_eq._bar_steps(np.asarray(sharp[0][0], np.float64))
+    # the fit's response would overshoot the new channel's 2T ...
+    assert _t2_after(taps, sharp[0]) > vits_eq.T2_CAP
+    held = []
+    for r in sharp:
+        held.append(feed(r, level=-0.5))
+    # ... so once MIN_GUARD_LINES ITS lines are read under the new
+    # filters, the response in force is cut back to the 2T cap, and the
+    # scale only falls while the readings are stale
+    med = np.median([np.asarray(r[0], np.float64) for r in sharp], 0)
+    for h in held[vits_eq.MIN_GUARD_LINES - 1:]:
+        assert h is not None
+        y = vits_eq.causal_filter(med, h)[0]
+        assert vits_eq.conformance_2t(y, FS, st[2]) <= vits_eq.T2_CAP + 0.01
+    g = [vits_eq.gain_db(h, FS, np.array([3e6]))[0] for h in held]
+    assert all(b <= a + 1e-9 for a, b in zip(g, g[1:]))
+
+
+def test_a_filter_move_while_the_servo_can_act_is_cut_only(monkeypatch):
+    it = _eq_decoder(monkeypatch)
+    feed = _Feed(it)
+    for r in _channel(-3.0, n=vits_eq.MIN_FIELDS):
+        feed(r)
+    it._vitseq_servo_has_room = lambda: True
+    held = feed(_channel(-3.0, seed=3)[0], level=-0.5)
+    db = vits_eq.gain_db(held, FS, np.linspace(0.1e6, 6e6, 60))
+    assert np.all(db <= 0.02)
+
+
+def test_a_refit_is_reached_gradually(monkeypatch):
+    it = _eq_decoder(monkeypatch)
+    feed = _Feed(it)
+    grid = np.linspace(0.5e6, 5e6, 19)
+    for r in _channel(-1.5, c=0.10, n=vits_eq.MIN_FIELDS):
+        feed(r)
+    start = vits_eq.gain_db(it.rf.DecoderParams.get("vits_eq_taps"), FS,
+                            grid)
+    # the channel changes under the same decode filters: the refit at
+    # REFIT_FIELDS adopts a larger response, reached over RAMP_FIELDS
+    later = _channel(-3.0, c=0.18, seed=4,
+                     n=vits_eq.REFIT_FIELDS + vits_eq.RAMP_FIELDS + 5)
+    trace = [vits_eq.gain_db(feed(r), FS, grid) for r in later]
+    final = trace[-1]
+    assert np.max(np.abs(final - start)) > 2 * vits_eq.ADOPT_DB - 0.1
+    steps = np.max(np.abs(np.diff(np.array([start] + trace), axis=0)), 1)
+    total = np.max(np.abs(final - start))
+    # the ramp's steps, and at most a small cut where a step met a guard
+    assert steps.max() <= 2.0 * total / vits_eq.RAMP_FIELDS + 0.05
+    assert np.median(steps[steps > 0]) <= 1.2 * total / vits_eq.RAMP_FIELDS
+    # it arrives at the refit's response (less any guard scale)
+    assert it._vitseq_ramp is None
+    target = vits_eq.gain_db(it._vitseq_target_taps, FS, grid)
+    assert np.max(np.abs(final - target)) <= 0.1
+
+
+def test_an_identity_fit_stays_identity(monkeypatch):
+    it = _eq_decoder(monkeypatch)
+    feed = _Feed(it)
+    flat = _readings(_lowpass(_its_line(), -0.01), _packets([1.0] * 6),
+                     np.random.default_rng(5), n=40)
+    for i, r in enumerate(flat):
+        assert feed(r, level=0.0 if i < 25 else -0.5) is None
+    assert it._vitseq_decided
+
+
+def test_a_video_eq_move_is_followed(monkeypatch):
+    it = _eq_decoder(monkeypatch)
+    feed = _Feed(it)
+    for r in _channel(-3.0, n=vits_eq.MIN_FIELDS):
+        taps = feed(r)
+    grid = np.array([1e6, 2e6, 3e6])
+    before = vits_eq.gain_db(taps, FS, grid)
+    # the multiburst video EQ (a known zero-phase filter in the decode)
+    # lifts 2 MHz by 0.5 dB: the EQ gives exactly that back at once, so
+    # the written picture's response is the one the fit guarded
+    veq = ((1e6, 0.0), (2e6, 0.5))
+    for i, r in enumerate(_channel(-3.0, seed=6, n=vits_eq.MIN_FIELDS - 1)):
+        held = feed(r, veq=veq)
+        after = vits_eq.gain_db(held, FS, grid)
+        np.testing.assert_allclose(after - before, [0.0, -0.5, 0.0],
+                                   atol=0.03)
+    assert it._vitseq_hold == 1.0
+
+
+def test_follow_filters_keeps_the_fits_limits():
+    fq = np.fft.rfftfreq(vits_eq.NFFT, 1 / FS)
+    lg = np.full(len(fq), np.log(1.1)) * vits_eq.band_taper(fq)
+    # the filters lost 3 dB: the EQ may give back only up to max_boost
+    out = vits_eq.follow_filters(lg, np.full(len(fq), -3 * np.log(10) / 20),
+                                 FS, max_boost=vits_eq.MAX_BOOST)
+    assert out.max() == pytest.approx(np.log(vits_eq.MAX_BOOST))
+    # a cut-only fit stays cut-only
+    out = vits_eq.follow_filters(-lg, np.full(len(fq), -0.2), FS,
+                                 max_boost=1.0)
+    assert out.max() <= 0.0
+    # nothing moves above the picture band
+    assert np.all(out[fq > vits_eq.TAPER_HI_HZ] == 0.0)
+
+
+def test_an_eq_coming_in_after_identity_is_set_at_once(monkeypatch):
+    it = _eq_decoder(monkeypatch)
+    feed = _Feed(it)
+    flat = _readings(_lowpass(_its_line(), -0.01), _packets([1.0] * 6),
+                     np.random.default_rng(7), n=vits_eq.MIN_FIELDS)
+    for r in flat:
+        assert feed(r) is None
+    # the channel softens under the same filters: the refit's EQ is in
+    # force at once, as a first fit is (nothing to ramp from)
+    for r in _channel(-3.0, seed=8, n=vits_eq.REFIT_FIELDS):
+        taps = feed(r)
+    assert taps is not None
+    np.testing.assert_array_equal(
+        taps, tuple(float(t) for t in it._vitseq_target_taps))
