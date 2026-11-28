@@ -1783,6 +1783,12 @@ class StackedSource:
         Subtract the capture's crystal lines as it is read.
     cancel_leak : bool
         Cancel the chroma leak (NTSC only).
+    decoder_filter : tuple | None
+        The decoder's view of the RF the crosstalk cancellation measures and
+        corrects through: the frequencies and the complex response of its
+        video filter times its readout compensation (main builds it, from
+        rev 8's own RFDecode, at the readout level measured on the
+        capture; see measure_readout_tilt).  None: a flat view.
     cancel_disc_lines : bool
         Take out the lines the disc itself carries (a clock that leaked into
         the signal at mastering), found on the primary capture and only where
@@ -1819,6 +1825,7 @@ class StackedSource:
         cancel_xtal: bool = True,
         cancel_leak: bool = True,
         cancel_disc_lines: bool = False,
+        decoder_filter: tuple | None = None,
         rf_out: str | None = None,
         rf_out_dtype: str = "int16",
         device: str = "cpu",
@@ -1845,6 +1852,10 @@ class StackedSource:
         self.cancel_xtal = bool(cancel_xtal)
         self.cancel_leak = bool(cancel_leak)
         self.cancel_disc_lines = bool(cancel_disc_lines)
+        self._decoder_filter = decoder_filter
+        #: The carriers whose crosstalk is corrected (steady_carriers, in
+        #: _setup); None: every one a chunk carries.
+        self._xtalk_kept: list[bool] | None = None
         #: The disc's own lines, in Hz on the stream's timeline (see
         #: cancel_disc_lines); found in _setup.
         self._disc_lines: list[float] = []
@@ -1926,6 +1937,11 @@ class StackedSource:
             _logger.info("stack: %s noise floor %.4e (weight %.4e)", inp.path, sigma2, 1.0 / sigma2)
             self.weight.append(1.0 / sigma2)
         self.afloor = [AMP_FLOOR * (gain / w) ** 0.5 for w in self.weight]
+
+        if self.cancel_xtalk:
+            self._xtalk_kept = _steady_carriers(
+                self._readers[0], self.inputs[0].length, self.fs, self.ntsc,
+                self._decoder_filter)
 
         if self.cancel_disc_lines:
             from .stack_corrections import find_disc_lines
@@ -2182,7 +2198,10 @@ class StackedSource:
 
                 carriers = AUDIO_CARRIERS_HZ if self.ntsc else PAL_AUDIO_CARRIERS_HZ
                 keep = XTALK_KEEP_HZ if self.ntsc else PAL_SPLIT_HZ
-                out[:] = cancel_crosstalk(out, band, self.fs, carriers, keep)
+                out[:] = cancel_crosstalk(out, self.fs, carriers, keep,
+                                          getattr(self, "_decoder_filter", None),
+                                          _blank_hz(self.ntsc),
+                                          getattr(self, "_xtalk_kept", None))
             except (ImportError, TypeError, ValueError) as exc:
                 _logger.warning("stack: the crosstalk cancellation does not fit: %s", exc)
                 self._xtalk_broken = True
@@ -2290,6 +2309,8 @@ def _clean_chunk(
     cancel_xtalk: bool,
     cancel_leak: bool,
     dc: float = 0.0,
+    decoder_filter: tuple | None = None,
+    xtalk_kept: list | None = None,
 ) -> np.ndarray:
     """The cleaned source's chunk of ``n`` samples from ``s0``: the capture
     read as it is, its clock lines subtracted, then the audio crosstalk and
@@ -2305,22 +2326,116 @@ def _clean_chunk(
         raw = crystal.clean(raw, s0 - pad)
     out = np.array(raw[pad : pad + n], dtype=np.float64)
     leak = cancel_leak and ntsc
-    if cancel_xtalk or leak:
+    if cancel_xtalk:
+        carriers = AUDIO_CARRIERS_HZ if ntsc else PAL_AUDIO_CARRIERS_HZ
+        keep = XTALK_KEEP_HZ if ntsc else PAL_SPLIT_HZ
+        out = cancel_crosstalk(out, fs, carriers, keep, decoder_filter, _blank_hz(ntsc),
+                               xtalk_kept)
+    if leak:
         # The stacked source's band at phase zero (_fir with the table's
         # first row): band[j] = sum_d h[d] raw[pad + j + d - (HI_TAPS/2 - 1)].
         # The filter is the same at every sample here, so it is one
         # convolution, by FFT.
         first = pad - (HI_TAPS // 2 - 1)
         band = scipy.signal.oaconvolve(raw, h0[::-1], mode="valid")[first : first + n]
-        if cancel_xtalk:
-            carriers = AUDIO_CARRIERS_HZ if ntsc else PAL_AUDIO_CARRIERS_HZ
-            keep = XTALK_KEEP_HZ if ntsc else PAL_SPLIT_HZ
-            out = cancel_crosstalk(out, band, fs, carriers, keep)
-        if leak:
-            out = cancel_chroma_leak(out, band, fs, LEAK_BAND_HZ)
+        out = cancel_chroma_leak(out, band, fs, LEAK_BAND_HZ)
     if dc:
         out = out + dc
     return out
+
+
+def _steady_carriers(read_fn, length, fs, ntsc, decoder_filter) -> list[bool]:
+    """The carriers whose crosstalk is corrected on this capture
+    (stack_corrections.steady_carriers), with the source's own carriers,
+    keep band and blanking level."""
+    from .stack_corrections import steady_carriers
+
+    carriers = AUDIO_CARRIERS_HZ if ntsc else PAL_AUDIO_CARRIERS_HZ
+    keep = XTALK_KEEP_HZ if ntsc else PAL_SPLIT_HZ
+    return steady_carriers(read_fn, length, fs, carriers, keep, decoder_filter, _blank_hz(ntsc))
+
+
+def _blank_hz(ntsc: bool) -> float:
+    """The blanking carrier (Hz): the zero of the level the crosstalk's
+    coupling follows."""
+    from .params import SysParams_NTSC, SysParams_PAL
+
+    return float((SysParams_NTSC if ntsc else SysParams_PAL)["ire0"])
+
+
+#: Where the readout's tilt is measured: this many stretches spread over
+#: the capture, each this long (seconds), the lines pass 0 locates in them,
+#: their lines 20 to 250 (decoder metrics' SIDEBAND_LINES), and the window
+#: trimmed this far inside the colour burst (us; SIDEBAND_TRIM_US).
+READOUT_STRETCHES = 4
+READOUT_STRETCH_S = 0.1
+READOUT_LINES = (20, 250)
+READOUT_TRIM_US = 0.2
+#: PAL's pilot burst on the sync tip, in us from the sync edge (decoder
+#: metrics' PILOT_WINDOW_US).
+READOUT_PILOT_US = (0.8, 4.3)
+
+
+def measure_readout_tilt(
+    read_fn: Callable[[int, int], np.ndarray],
+    fs: float,
+    *,
+    ntsc: bool,
+    length: int,
+) -> tuple[float, float, float, str] | None:
+    """The readout's tilt, measured on the capture as the decoder measures
+    it (decoder._readout_measurement): the channel passes f_lo `ratio`
+    times as strongly as f_hi, from a tone's two first FM sidebands on the
+    lines pass 0 locates (dsp.tone_sideband_powers) - PAL's pilot burst on
+    the sync tip first, else the colour burst on blanking - the median of
+    the fields' readings.  Returns (ratio, f_lo, f_hi, description), or None
+    where no field gives a reading."""
+    from .dsp import tone_sideband_powers
+    from .params import SysParams_NTSC, SysParams_PAL
+    from .rf_sync import locate, system_for
+
+    sp = SysParams_NTSC if ntsc else SysParams_PAL
+    blank = float(sp["ire0"])
+    tones = []
+    if not ntsc:
+        tip = blank + float(sp["hz_ire"]) * float(sp["vsync_ire"])
+        tones.append(("pilot", READOUT_PILOT_US, tip, float(sp["pilot_mhz"]) * 1e6))
+    b0, b1 = sp["colorBurstUS"]
+    tones.append(("burst", (b0 + READOUT_TRIM_US, b1 - READOUT_TRIM_US), blank,
+                  float(sp["fsc_mhz"]) * 1e6))
+    span = int(READOUT_STRETCH_S * fs)
+    room = max(0, int(length) - span)
+    fields = []
+    for k in range(READOUT_STRETCHES):
+        at = int(room * (0.05 + 0.9 * k / max(1, READOUT_STRETCHES - 1)))
+
+        def read_at(s, count, at=at):
+            return read_fn(at + int(s), int(count))
+
+        for rec in locate(read_at, fs, system_for(ntsc), length=span):
+            fields.append(np.asarray(rec.lines, dtype=np.float64) + at)
+    for name, (w0, w1), carrier, tone in tones:
+        ratios = []
+        n = int((w1 - w0) * 1e-6 * fs)
+        for lines in fields:
+            segs = []
+            for pos in lines[READOUT_LINES[0]:READOUT_LINES[1]]:
+                seg = np.asarray(read_fn(int(pos + w0 * 1e-6 * fs), n), dtype=np.float64)
+                if seg.shape[0] == n:
+                    segs.append(seg)
+            if not segs:
+                continue
+            powers = tone_sideband_powers(np.stack(segs), fs, carrier, tone)
+            if powers is None:
+                continue
+            lower, upper, lower_noise, upper_noise = powers
+            if lower < lower_noise or upper < upper_noise or upper <= 0:
+                continue
+            ratios.append(float(np.sqrt(lower / upper)))
+        if ratios:
+            ratio = float(np.median(ratios))
+            return ratio, carrier - tone, carrier + tone, f"{name} sidebands {ratio:.3f}"
+    return None
 
 
 #: A producer process's state (_clean_worker_init).
@@ -2328,7 +2443,7 @@ _CLEAN_WORKER: dict = {}
 
 
 def _clean_worker_init(open_reader, crystal_params, h0, fs, ntsc, cancel_xtalk, cancel_leak,
-                       dc=0.0):
+                       dc=0.0, decoder_filter=None, xtalk_kept=None):
     """A producer process: its own reader of the capture, and its own clock
     lines rebuilt on it."""
     read_fn = open_reader()
@@ -2337,13 +2452,15 @@ def _clean_worker_init(open_reader, crystal_params, h0, fs, ntsc, cancel_xtalk, 
         from .stack_corrections import CrystalLines
         crystal = CrystalLines(read_fn=read_fn, **crystal_params)
     _CLEAN_WORKER.update(read_fn=read_fn, crystal=crystal, h0=h0, fs=fs, ntsc=ntsc,
-                         cancel_xtalk=cancel_xtalk, cancel_leak=cancel_leak, dc=dc)
+                         cancel_xtalk=cancel_xtalk, cancel_leak=cancel_leak, dc=dc,
+                         decoder_filter=decoder_filter, xtalk_kept=xtalk_kept)
 
 
 def _clean_worker_chunk(s0: int, n: int) -> np.ndarray:
     w = _CLEAN_WORKER
     return _clean_chunk(w["read_fn"], w["crystal"], w["h0"], s0, n, w["fs"], w["ntsc"],
-                        w["cancel_xtalk"], w["cancel_leak"], w["dc"])
+                        w["cancel_xtalk"], w["cancel_leak"], w["dc"], w["decoder_filter"],
+                        w["xtalk_kept"])
 
 
 class CleanedSource(StackedSource):
@@ -2382,6 +2499,7 @@ class CleanedSource(StackedSource):
         cancel_leak: bool = True,
         path: str = "capture",
         open_reader: Callable[[], Callable[[int, int], np.ndarray]] | None = None,
+        decoder_filter: tuple | None = None,
     ) -> None:
         self.device = "cpu"
         self._gpu = None
@@ -2400,6 +2518,8 @@ class CleanedSource(StackedSource):
         self.cancel_xtalk = bool(cancel_xtalk)
         self.cancel_xtal = bool(cancel_xtal)
         self.cancel_leak = bool(cancel_leak)
+        self._decoder_filter = decoder_filter
+        self._xtalk_kept = None
         self.system = SYSTEM_NTSC if self.ntsc else SYSTEM_PAL
         self._rf_out = None
         self._xtalk_broken = False
@@ -2418,6 +2538,9 @@ class CleanedSource(StackedSource):
             if self.cancel_xtal:
                 probe = min(self._length // 4, max(self._length - CLEAN_PROBE_TAIL, 0))
                 self._crystal[0] = self._detect_crystal(0, probe)
+            if self.cancel_xtalk:
+                self._xtalk_kept = _steady_carriers(read_fn, self._length, self.fs, self.ntsc,
+                                                    self._decoder_filter)
             if open_reader is not None:
                 import concurrent.futures
                 import multiprocessing
@@ -2432,7 +2555,7 @@ class CleanedSource(StackedSource):
                     initializer=_clean_worker_init,
                     initargs=(open_reader, _crystal_params(self._crystal[0]), self._h0,
                               self.fs, self.ntsc, self.cancel_xtalk, self.cancel_leak,
-                              self._dc[0]),
+                              self._dc[0], self._decoder_filter, self._xtalk_kept),
                 )
                 self._cache = _ChunkCache(self._compute_chunk, ahead=CLEAN_AHEAD,
                                           workers=CLEAN_WORKERS)
@@ -2464,7 +2587,7 @@ class CleanedSource(StackedSource):
         else:
             out = _clean_chunk(self._readers[0], self._crystal[0], self._h0, s0, n,
                                self.fs, self.ntsc, self.cancel_xtalk, self.cancel_leak,
-                               self._dc[0])
+                               self._dc[0], self._decoder_filter, self._xtalk_kept)
         return out
 
     def close(self) -> None:

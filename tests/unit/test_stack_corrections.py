@@ -72,52 +72,84 @@ N = 65536
 F_VIDEO = 6.8e6
 
 
-def _crosstalk_chunk(gamma_rad):
+def _crosstalk_chunk(gamma_rad, carriers_on=True, n=N):
     """A chunk with a video carrier whose phase follows an audio carrier.
 
     `gamma_rad` is the amplitude of the phase error the crosstalk puts on
-    the video carrier (radians); the picture's own FM (a slow tone) is
-    there too, so the fit has something it must not follow.
+    the video carrier (radians), locked to the first audio carrier's own
+    phase (its FM included); the picture's own FM (a slow tone) is there
+    too, so the fit has something it must not follow.  Without
+    `carriers_on` the disc carries no analog audio.
     """
-    t = np.arange(N) / FS
-    theta = gamma_rad * np.sin(TAU * CARRIERS[0] * t + 0.7)
+    t = np.arange(n) / FS
+    rng = np.random.default_rng(220)
+    # The audio carriers, frequency-modulated by programme (+-50 kHz).
+    audio = [TAU * f * t + 0.3 * (i + 1) + 2.0 * np.sin(TAU * 25e3 * t + i)
+             for i, f in enumerate(CARRIERS)]
+    theta = gamma_rad * np.sin(audio[0] + 0.7)
     psi = 0.05 * np.sin(TAU * 50e3 * t)
-    video_band = np.exp(1j * (TAU * F_VIDEO * t + psi + theta))
-    carriers = sum(0.3 * np.cos(TAU * f * t + 0.3 * (i + 1)) for i, f in enumerate(CARRIERS))
-    clean = np.cos(TAU * F_VIDEO * t + psi) + carriers
-    rf = np.cos(TAU * F_VIDEO * t + psi + theta) + carriers
-    return rf, clean, video_band
+    noise = 1e-3 * rng.normal(size=n)
+    carriers = sum(0.3 * np.cos(ph) for ph in audio) if carriers_on else 0.0
+    clean = np.cos(TAU * F_VIDEO * t + psi) + carriers + noise
+    rf = np.cos(TAU * F_VIDEO * t + psi + theta) + carriers + noise
+    return rf, clean
 
 
-def test_crosstalk_cancellation_reduces_the_phase_error():
+def _phase_error(x, clean, response=None):
+    """The video carrier's phase error of `x` against `clean`, as a view of
+    the RF through `response` (positive half; None: flat) sees it."""
+    def view(y):
+        spec = np.fft.rfft(y)
+        if response is not None:
+            spec = spec * response
+        spec[np.fft.rfftfreq(len(y), 1.0 / FS) < 4.0e6] = 0.0
+        full = np.zeros(len(y), dtype=np.complex128)
+        full[: spec.shape[0]] = spec
+        return np.fft.ifft(full)
+
+    err = np.angle(view(x) * np.conj(view(clean)))
+    return float(np.std(err[4096:-4096]))
+
+
+def test_crosstalk_cancellation_takes_the_phase_error_out():
     """A chunk whose video phase follows an audio carrier comes back with
     most of that error taken out."""
-    rf, clean, video_band = _crosstalk_chunk(0.02)
+    rf, clean = _crosstalk_chunk(0.02)
 
-    out = stack_corrections.cancel_crosstalk(rf, video_band, FS, CARRIERS, KEEP)
+    out = stack_corrections.cancel_crosstalk(rf, FS, CARRIERS, KEEP)
 
-    before = np.std(rf - clean)
-    after = np.std(out - clean)
-    assert before > 1e-3
-    assert after < before / 3.0
+    before = _phase_error(rf, clean)
+    assert before > 5e-3
+    assert _phase_error(out, clean) < before / 3.0
 
 
 def test_crosstalk_cancellation_leaves_a_clean_chunk_alone():
-    """Without crosstalk there is nothing to take out: the picture's own
-    frequency does not follow the carriers, so no gain is fitted."""
-    rf, clean, video_band = _crosstalk_chunk(0.0)
+    """Without crosstalk there is nothing to take out: the line the fit
+    finds is no stronger than what it finds off frequency, so it backs off
+    and the chunk is left as it is."""
+    rf, clean = _crosstalk_chunk(0.0)
 
-    out = stack_corrections.cancel_crosstalk(rf, video_band, FS, CARRIERS, KEEP)
+    out = stack_corrections.cancel_crosstalk(rf, FS, CARRIERS, KEEP)
 
-    assert np.std(out - rf) < 1e-6 * np.std(rf)
+    assert np.std(out - rf) < 1e-4 * np.std(rf)
+
+
+def test_a_disc_without_analog_audio_is_left_alone():
+    """No carrier in the RF (a digital-only disc): nothing is fitted, even
+    where the video's phase happens to move."""
+    rf, clean = _crosstalk_chunk(0.02, carriers_on=False)
+
+    out = stack_corrections.cancel_crosstalk(rf, FS, CARRIERS, KEEP)
+
+    np.testing.assert_array_equal(out, rf)
 
 
 def test_crosstalk_correction_is_kept_above_the_keep_band_only():
-    """The correction is a high-pass: it must not move what lands on the
-    audio carriers (or the EFM) below the keep band."""
-    rf, clean, video_band = _crosstalk_chunk(0.02)
+    """The correction must not move what lands on the audio carriers (or
+    the EFM) below the keep band."""
+    rf, clean = _crosstalk_chunk(0.02)
 
-    out = stack_corrections.cancel_crosstalk(rf, video_band, FS, CARRIERS, KEEP)
+    out = stack_corrections.cancel_crosstalk(rf, FS, CARRIERS, KEEP)
 
     correction = out - rf
     for f in CARRIERS:
@@ -125,16 +157,80 @@ def test_crosstalk_correction_is_kept_above_the_keep_band_only():
         assert _tone_amplitude(correction, FS, f, 4096, N - 8192) < 1e-3 * np.std(correction)
 
 
-def test_crosstalk_cancellation_does_not_change_its_inputs():
-    rf, clean, video_band = _crosstalk_chunk(0.02)
-    rf_copy = rf.copy()
-    band_copy = video_band.copy()
+def test_crosstalk_is_taken_out_as_the_decoders_filter_sees_it():
+    """Through a tilted view (the decoder's readout compensation lifts the
+    upper sideband over the lower one), the error the view shows is what is
+    taken out: the correction is made on that view and taken back to the
+    RF through the filter's inverse."""
+    rf, clean = _crosstalk_chunk(0.02)
+    freqs = np.fft.rfftfreq(N, 1.0 / FS)
+    response = (1.0 + 0.15 * (freqs - F_VIDEO) / 1e6).astype(np.complex128)
+    response[freqs < 1e6] = 0.0
 
-    out = stack_corrections.cancel_crosstalk(rf, video_band, FS, CARRIERS, KEEP)
+    out = stack_corrections.cancel_crosstalk(rf, FS, CARRIERS, KEEP, (freqs, response))
+
+    before = _phase_error(rf, clean, response)
+    assert _phase_error(out, clean, response) < before / 3.0
+
+
+def test_crosstalk_cancellation_does_not_change_its_input():
+    rf, clean = _crosstalk_chunk(0.02)
+    rf_copy = rf.copy()
+
+    out = stack_corrections.cancel_crosstalk(rf, FS, CARRIERS, KEEP)
 
     np.testing.assert_array_equal(rf, rf_copy)
-    np.testing.assert_array_equal(video_band, band_copy)
     assert out is not rf
+
+
+def _coupled_capture(couplings, modulated=True, chunk=1 << 16):
+    """Two chunks in a row, each with a video carrier whose phase follows
+    the two audio carriers by couplings[k] = (gamma0, gamma1) (complex: the
+    phase of the coupling), the carriers modulated by programme or silent."""
+    n = 2 * chunk
+    t = np.arange(n) / FS
+    swing = 2.0 if modulated else 0.0
+    audio = [TAU * f * t + 0.3 * (i + 1) + swing * np.sin(TAU * 25e3 * t + i)
+             for i, f in enumerate(CARRIERS)]
+    theta = np.zeros(n)
+    for k, gammas in enumerate(couplings):
+        part = slice(k * chunk, (k + 1) * chunk)
+        for c, g in enumerate(gammas):
+            theta[part] += abs(g) * np.sin(audio[c][part] + np.angle(g))
+    psi = 0.05 * np.sin(TAU * 50e3 * t)
+    noise = 1e-3 * np.random.default_rng(221).normal(size=n)
+    return (np.cos(TAU * F_VIDEO * t + psi + theta)
+            + sum(0.3 * np.cos(ph) for ph in audio) + noise)
+
+
+def test_a_steady_coupling_is_corrected_and_a_wandering_one_left():
+    """The crosstalk is the disc's and the player's: its coupling is the
+    same all through a capture.  A carrier whose coupling turns from one
+    chunk to the next is the picture matching it by chance, and is left."""
+    rf = _coupled_capture([(0.02, 0.02), (0.02, -0.02j)])
+
+    kept = stack_corrections.steady_carriers(_reader(rf), rf.shape[0], FS, CARRIERS, KEEP)
+
+    assert kept == [True, False]
+
+
+def test_a_silent_carrier_is_left():
+    """A silent carrier is a pure tone, which a still picture's line can
+    match: its crosstalk is not corrected on its word alone."""
+    rf = _coupled_capture([(0.02, 0.02), (0.02, 0.02)], modulated=False)
+
+    kept = stack_corrections.steady_carriers(_reader(rf), rf.shape[0], FS, CARRIERS, KEEP)
+
+    assert kept == [False, False]
+
+
+def test_only_the_kept_carriers_are_corrected():
+    """cancel_crosstalk leaves a carrier steady_carriers did not keep."""
+    rf, clean = _crosstalk_chunk(0.02)
+
+    out = stack_corrections.cancel_crosstalk(rf, FS, CARRIERS, KEEP, kept=[False, True])
+
+    np.testing.assert_array_equal(out, rf)
 
 
 # --- cancel_chroma_leak --------------------------------------------------
@@ -579,30 +675,6 @@ def test_the_narrow_band_kernel_matches_the_reference():
     got = np.empty(want.shape[0], dtype=np.complex128)
     stack_kernels.narrow_band_kernel(out, w, 16, 320, 1024, got)
     np.testing.assert_allclose(got, want, rtol=1e-9, atol=1e-9)
-
-
-def test_the_crosstalk_correction_kernel_matches_the_reference():
-    """The compiled correction gives the vectorised reference's, the faded
-    edges and both branches of the small-turn series included."""
-    rng = np.random.default_rng(207)
-    n, dec, taper = 40000, 16, 1024
-    narrow = [
-        (rng.standard_normal(n // dec + 1) + 1j * rng.standard_normal(n // dec + 1)) * s
-        for s in (1.0, 400.0)
-    ]
-    ws = [-stack_corrections.TAU * f / FS for f in CARRIERS]
-    gains = np.array([30000.0 + 2000.0j, -1500.0 + 900.0j])
-    band = (rng.standard_normal(n) + 1j * rng.standard_normal(n)) * 3000.0
-    t = np.arange(n)
-    want = stack_corrections._crosstalk_correction_reference(
-        t, narrow, ws, gains, CARRIERS, dec, n, taper, band
-    )
-    got = np.empty(n, dtype=np.float64)
-    stack_kernels.crosstalk_correction_kernel(
-        narrow[0], narrow[1], np.asarray(ws), gains, np.asarray(CARRIERS, dtype=np.float64),
-        dec, taper, band, got,
-    )
-    np.testing.assert_allclose(got, want, rtol=1e-9, atol=1e-6)
 
 
 def test_the_line_phasor_kernel_matches_the_matrix_products(small_xtal):

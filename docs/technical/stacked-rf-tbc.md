@@ -168,17 +168,62 @@ the captures as they are.
 The analog audio carriers leak into the video carrier's phase. The leak is
 the same on every copy of a disc, so no amount of stacking removes it.
 
-Each carrier is taken out of the RF itself (mixed down to 0 Hz, narrowed
-with three boxcars, mixed back up), and the video band's instantaneous
-frequency is fitted on both by least squares: one complex gain each. The
-picture does not follow the carriers, so the fit measures the leak. The
-frequency error becomes a phase error, and the video band is turned back by
-it. The correction is kept above 3.0-3.6 MHz (NTSC), so the audio carriers
-and the EFM are left as they are.
+What shows in the picture is a line at each carrier's own frequency that
+follows the carrier's phase (rev 8's `--audio_carrier_cancel` model, which
+takes it out of the demodulated video). It is what the **decoder's** video
+filter and readout compensation make of the crosstalk's sidebands: the
+compensation lifts the upper sideband over the lower, and the pair, which
+the optics' roll-off had left as much amplitude as phase, demodulates as a
+line. So the RF is looked at through the decoder's own filter (built by rev
+8's `RFDecode`, with the decode's options), at the readout level measured on
+the capture as the decoder's MTF servo starts from it (the colour burst's,
+or PAL's pilot burst's, two first sidebands on the lines pass 0 locates,
+through the readout model to a cutoff and a level). On that view, per chunk:
 
-Measured on NTSC captures at 75 MHz: **+0.48 to +0.83 dB** weighted SNR
-over the reference's resampling. On PAL the audio carriers sit far below the
-video, and the correction is neutral.
+- each carrier the disc carries (its band 5 times the spectrum beside it;
+  a digital-only disc's EFM there is not chased) gives the phase
+  reference, its band cut out of the RF and reduced to a unit phasor -
+  provided the capture's coupling to it is steady (below);
+- the line locked to it is fitted on the demodulated video taken down
+  around the carrier (the picture elsewhere stays out of the fit), its
+  amplitude following the video level, and backed off when the same model
+  fitted off frequency explains as much (dsp.coherent_line_estimate);
+- the phase the lines integrate to is taken off the view, and the change
+  goes back to the RF through the filter's inverse, above 3.0-3.6 MHz
+  (NTSC; PAL its band split), so the decoder's compensation finds nothing
+  left to lift.
+
+Which carriers are corrected at all is decided once per capture. The
+crosstalk is the disc's and the player's, so its coupling is the same all
+through a capture; what the picture puts near a carrier by chance is not.
+The same fit is made on eight chunks spread over the capture, and a carrier
+is corrected when the coupling of the chunks where it is modulated spreads
+under 25 % of the pooled one (over at least two of them), and the pooled fit
+stands over its off-frequency controls. A silent carrier is a pure tone, which
+a still picture's line can match, so silent chunks are pooled but not judged,
+and a carrier silent throughout is left. On RF_Reference the couplings
+spread 2 and 4 %; on `ggv1011-side1-middle` (a test disc's still picture) the
+0.684 MHz carrier's spread 69 %, its phase turning from chunk to chunk, and
+correcting it chunk by chunk had raised the noise by 0.018 IRE (61 fields,
+paired: 13 standard errors); left, it is the RF as it is.
+
+Measured (blank-line noise in IRE; the lines in dB over the spectrum beside
+them), the RF as it is against the cancellation: RF_Reference (NTSC, 40
+MHz) 1.256 to 1.208, lines 1.7/5.2 to 0.1/0.7; an NTSC capture at 75 MHz
+1.112 to 1.023, lines 2.0/6.8 to 0.2/0.7; `ggv1069-side1-inner` 0.892 to
+0.885; `ggv1011-side1-middle` (PAL) 1.131 to 1.131 (no carrier steady);
+`ggv1011-side1-inner` 1.580 to 1.576; `industrial-lv-side1-outer` 3.268 to
+3.275 (its one steady carrier corrected: 0.007 IRE, the one loss). Rev 8's
+canceller on the same captures: 1.209, lines removed; 0.885; and, made to
+run on PAL, 1.168 and 1.594. The model this replaced (one gain per carrier
+fitted on the instantaneous frequency of the stack's own video band) took
+half the lines out and raised PAL's noise: 1.238, 0.936, 1.294, 1.677.
+
+It costs about 5 s on a 30-frame decode at 40 MHz (27 s to 32 s on
+`ggv1011-side1-inner`, `-t 1`): about 2 s once for the decoder's filter and
+the level, then 270 ms per 2 Mi-sample chunk (three transforms of the chunk
+and the fits), on each of the cleaning's four processes, which keep ahead of
+the decoder.
 
 ### The clock lines
 
@@ -546,7 +591,7 @@ crosstalk, and the V4300D's clock.
 
 | cancellation | rev 8 | this branch | the reference port |
 | --- | --- | --- | --- |
-| the audio carriers' crosstalk | `--audio_carrier_cancel`, on the demodulated spectrum (opt-in prototype; replaced) | on the RF, in both modes (NTSC and PAL; by default) | yes, in both modes |
+| the audio carriers' crosstalk | `--audio_carrier_cancel`, on the demodulated spectrum (opt-in prototype, NTSC; replaced) | its model, on the RF seen through the decoder's filter, in both modes (NTSC and PAL; by default) | yes, in both modes |
 | the clock lines | no | yes, in both modes | yes, in both modes |
 | the chroma leak | no | yes, in both modes | yes, in both modes |
 | the RF echo (the ghost) | yes (`--rf_echo_cancel`) | no | no |
@@ -558,36 +603,26 @@ crosstalk, and the V4300D's clock.
 **The crosstalk** is cancelled by default in both modes, by one model and
 one piece of code, `stack_corrections.cancel_crosstalk`, and
 `--no_audio_carrier_cancel` leaves it in either. On each chunk of the stream
-(2 Mi samples), each audio carrier's own waveform is cut out of the RF, the
-video carrier's instantaneous frequency is fitted on them (one complex gain
-per carrier), and the video band is turned back by the phase error that
-coupling makes, before the demodulator. With `--tbc_mode read` the stacked
+(2 Mi samples), the line each audio carrier puts in the demodulated video is
+fitted on the RF seen through the decoder's own filter and readout
+compensation, and its phase is taken off the RF before the demodulator (see
+the audio carriers' crosstalk, above). With `--tbc_mode read` the stacked
 source does it on the RF it hands over; with `--tbc_mode resample` the
 cleaned source does it on the capture's RF (below), as the reference
 implementation's `--tbc resample` does since it cleans the RF too.
 
-Rev 8's canceller, an opt-in prototype (`--audio_carrier_cancel`), fitted
-the lines on the demodulated spectrum, block by block, and subtracted them;
-on by default it failed the conformance lane (the 2T pulse of
-`ggv1069-side1-outer` at 103.0 IRE). Before the reference cleaned the RF in
-resample too, this branch ran the model inside the decoder on that path, on
-each block's analytic band with a coupling measured once on the first 256
-blocks. It is gone: one method, the stacked source's, in both modes. Two
-findings from it stay in the stacked source's fit:
-
-- The fit's half-sample lag is taken out of the gains: the instantaneous
-  frequency is a phase difference over the sample before, so it is the
-  frequency half a sample earlier, and left in, the phase the gains give
-  leads the crosstalk's by `pi f / fs` per sample of lag (0.18 rad at 2.3
-  MHz and 40 MHz), which leaves a fifth of the crosstalk behind.
-- A coupling fitted on too short a stretch follows the picture: over a
-  32768-sample block (13 lines) the picture's detail near the carriers
-  correlates with them by chance several times more than the coupling
-  itself. The stacked source fits on its 2 Mi-sample chunks.
-
-On `ggv1069-side1-outer` the cleaned resample takes the carriers' lines in
-the CVBS output from +0.99 to +0.15 dB over the floor beside them (2.30
-MHz), and from +0.25 to -0.95 dB (2.81 MHz).
+Rev 8's canceller, an opt-in prototype (`--audio_carrier_cancel`, NTSC),
+fitted the lines on each block's demodulated spectrum and subtracted them
+there. Its model is the one above; what changes is where it acts. In the RF,
+before the decoder's readout compensation, the correction is lifted with
+the crosstalk instead of after it, it is the same in both TBC modes (the
+decoder never sees the crosstalk), and it runs on PAL, where rev 8's could
+not (the slice it centres between PAL's carriers starts below 0 Hz). The
+earlier model of this branch, one gain per carrier fitted on the
+instantaneous frequency of the stack's own video band over the whole chunk,
+is gone: fitted on a flat band it measured the crosstalk's phase there, not
+what the decoder's compensation makes of it, and the picture across the
+band entered its fit.
 
 Every decode a VITS conformance test reads (the "vits" label's cuts and
 captures, and the functional lane's `ntsc-cvbs` and `pal-cvbs`) leaves the
@@ -756,9 +791,9 @@ the source serves one reader at a time.
 
 The pass 0 reads the capture once more (it runs alongside the decode, and
 stops where the decode stops), and
-the corrections run on every chunk. On a 2^21-sample chunk (28 ms of signal
-at 75 MHz, three captures) the two corrections that work on the video band
-take about 10.5 ms (crosstalk) and 8.5 ms (chroma leak) on the CPU pool.
+the corrections run on every chunk. On a 2^21-sample chunk the crosstalk's
+cancellation takes about 270 ms (three transforms of the chunk, through the
+decoder's filter, and the fits) and the chroma leak's about 8.5 ms.
 
 Measured on this machine (one core, NumPy 2.5, Numba 0.68), on synthetic NTSC
 captures, before the stages below were compiled:

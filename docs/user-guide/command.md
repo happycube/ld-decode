@@ -394,15 +394,25 @@ carriers leak into the video carrier's phase on the disc, and the
 demodulated video carries faint lines at the carriers' own frequencies
 (NTSC 2.30 and 2.81 MHz, in the luminance band; PAL 0.68 and 1.07 MHz). By
 default they are taken out of the RF before the decoder reads it, in either
-`--tbc_mode`, by the same code: on each chunk of 2 Mi samples, each
-carrier's own waveform is cut out of the RF, the video carrier's
-instantaneous frequency is fitted on it, and the video band is turned back
-by the phase error that coupling makes.
+`--tbc_mode`, by the same code. The lines are what the decoder's own video
+filter and readout compensation make of the crosstalk, so the RF is looked
+at through them, at the readout level measured on the capture the way the
+decoder's MTF servo starts (the colour burst's or PAL pilot's sideband
+ratio). A carrier is corrected only where its coupling is steady over the
+capture (measured once, on chunks where it is modulated: a silent carrier,
+or a test disc's still picture matching it by chance, is left). On each
+chunk of 2 Mi samples, each such carrier gives the phase reference (a
+digital-only disc's are left alone); the line locked
+to it is fitted on the demodulated video around it, its amplitude following
+the video level and backing off when it is too weak to tell from the
+picture (rev 8's `--audio_carrier_cancel` model); and the phase it makes is
+taken off the RF, through the inverse of the decoder's filter, so the
+decoder's compensation no longer lifts it.
 - **Default:** Disabled (the crosstalk is cancelled)
-- **Note:** The former rev 8 prototype, `--audio_carrier_cancel` (which
-  subtracted the lines from the demodulated spectrum, block by block, and
-  moved the VITS readings), is replaced by this, and the option is
-  removed.
+- **Note:** The former rev 8 prototype, `--audio_carrier_cancel` (NTSC,
+  on the demodulated spectrum), is replaced by this, and the option is
+  removed: its model is the one used here, in the RF and in both
+  standards.
 
 **Example:**
 ```bash

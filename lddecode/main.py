@@ -880,6 +880,67 @@ def spool_stdin_input(inputs):
     return [path if name == "-" else name for name in inputs]
 
 
+#: The decoder's readout level bound (decoder.LDdecode.READOUT_LEVEL_MAX).
+READOUT_LEVEL_MAX = 1.5
+
+
+def build_decoder_filter(read_fn, length, fs, vid_standard, args):
+    """The decoder's view of the RF, for the crosstalk cancellation: the
+    frequencies and the complex response (positive half) of rev 8's video
+    filter (RFVideo) times its readout compensation, built by rev 8's own
+    RFDecode with the decode's options, at the readout level measured on
+    the capture the way the decoder's MTF servo starts from it
+    (stack.measure_readout_tilt: a tone's sideband ratio, through the
+    readout model to a cutoff, to a level).  The decoder's compensation is
+    what turns the crosstalk's sidebands into the line seen in the picture,
+    so the cancellation sees the crosstalk through it; a level too high
+    would have it correct more than the decoder shows.  No reading: level
+    0, the RF video filter alone."""
+    import logging
+
+    from lddecode.dsp import readout_cutoff_from_tilt, readout_otf
+    from lddecode.params import resolve_block_length
+    from lddecode.rfdecode import RFDecode
+    from lddecode.stack import measure_readout_tilt
+
+    options = build_options(args)
+    rd = RFDecode(
+        inputfreq=fs / 1e6,
+        system=vid_standard,
+        extra_options=options["extra_options"],
+        decoder_params_override=options["decoder_params_override"],
+        blocklen=resolve_block_length(),
+    )
+    dp = rd.DecoderParams
+    measured = measure_readout_tilt(read_fn, fs, ntsc=(vid_standard != "PAL"), length=length)
+    if measured is None:
+        level, note = 0.0, "no tilt reading"
+    else:
+        ratio, f_lo, f_hi, note = measured
+        rim = dp["readout_rim_intensity"]
+        cutoff = readout_cutoff_from_tilt(ratio, f_lo, f_hi, rim)
+        if cutoff is None:
+            # As the decoder reads it: no tilt is no compensation, one
+            # steeper than any cutoff above f_hi gives is the most it allows.
+            limit = readout_otf(f_lo, f_hi * 1.0001, rim) / max(
+                readout_otf(f_hi, f_hi * 1.0001, rim), 1e-12)
+            level = READOUT_LEVEL_MAX if ratio > limit else 0.0
+        else:
+            level = float(np.clip(dp["readout_ref_cutoff_hz"] / cutoff, 0.0, READOUT_LEVEL_MAX))
+        # To a thousandth (the decoder's servo moves in steps of 0.03): the
+        # same disc in another sample format reads the same level.
+        level = round(level, 3)
+    response = np.asarray(rd.Filters["RFVideo_half"], dtype=np.complex128)
+    if level > 0.0:
+        response = response * np.asarray(
+            rd.mtf_response_at(rd.scaled_mtf_level(level)), dtype=np.complex128)
+    freqs = np.arange(response.shape[0]) * (rd.freq_hz / rd.blocklen)
+    logging.getLogger("lddecode").info(
+        "Audio crosstalk: seen through the decoder's video filter and readout "
+        "compensation at level %.3f (%s)", level, note)
+    return freqs, response
+
+
 def build_stacked_source(inputs, args, vid_standard):
     """The stacked, time-base-corrected RF source the decoder reads.
 
@@ -919,6 +980,10 @@ def build_stacked_source(inputs, args, vid_standard):
                     open_reader=functools.partial(open_capture_reader, path),
                 )
             )
+        decoder_filter = None
+        if not args.no_audio_carrier_cancel:
+            decoder_filter = build_decoder_filter(
+                captures[0].read_fn, captures[0].length, fs, vid_standard, args)
         source = StackedSource(
             captures,
             fs,
@@ -928,6 +993,7 @@ def build_stacked_source(inputs, args, vid_standard):
             cancel_xtal=not args.no_crystal_lines,
             cancel_leak=not args.no_chroma_leak,
             cancel_disc_lines=bool(getattr(args, "disc_lines", False)),
+            decoder_filter=decoder_filter,
             rf_out=args.rf_out,
             rf_out_dtype=capture_dtype(inputs[0]),
             device=args.device,
@@ -962,6 +1028,10 @@ def build_cleaned_loader(filename, args, vid_standard, fs):
 
     capture = open_capture(filename)
     try:
+        decoder_filter = None
+        if not args.no_audio_carrier_cancel:
+            decoder_filter = build_decoder_filter(
+                capture.read, capture.length, fs, vid_standard, args)
         source = CleanedSource(
             capture.read,
             capture.length,
@@ -972,6 +1042,7 @@ def build_cleaned_loader(filename, args, vid_standard, fs):
             cancel_leak=not args.no_chroma_leak,
             path=filename,
             open_reader=functools.partial(open_capture_reader, filename),
+            decoder_filter=decoder_filter,
         )
     except BaseException:
         capture.close()

@@ -38,8 +38,9 @@ import numpy as np
 import scipy.fft
 
 from .stack_kernels import (
-    crosstalk_correction_kernel,
+    crosstalk_phase_kernel,
     line_phasors_kernel,
+    turn_back_kernel,
     narrow_band_kernel,
     subtract_lines_kernel,
 )
@@ -91,8 +92,33 @@ PAL_XTALK_KEEP_HZ = (1.9e6, 2.4e6)
 #: The carriers, once at 0 Hz, are kept every this many samples.
 XTALK_DEC = 16
 
-#: The crosstalk gains are fitted on every this many samples of a chunk.
-XTALK_FIT_STRIDE = 20
+#: A carrier counts as present (the disc carries analog audio there) when
+#: its band (+-XTALK_HALFBAND_HZ) holds XTALK_MIN_SNR times the power of the
+#: spectrum beside it, on the side away from the other carrier (rev 8's
+#: --audio_carrier_cancel test).  An absent carrier is not fitted: a
+#: digital-only disc's EFM there would only be chased.
+XTALK_HALFBAND_HZ = 250e3
+XTALK_MIN_SNR = 5.0
+
+#: The demodulated video's level the coupling follows: the instantaneous
+#: frequency through two boxcars of this long (seconds).
+XTALK_LEVEL_S = 1e-6
+
+#: Which carriers are corrected at all: the crosstalk is a property of the
+#: disc and the player, so its coupling is the same all through a capture,
+#: while what the picture puts near a carrier by chance is not.  The line's
+#: fit (c0 + c1 level) is made on XTALK_STEADY_CHUNKS chunks spread over
+#: the capture; a carrier is corrected when the c0 of the chunks where it is
+#: modulated (its instantaneous frequency spread at least
+#: XTALK_SILENT_HZ: a silent carrier is a pure tone, which a still
+#: picture's line can match) spreads under XTALK_STEADY of their pooled c0,
+#: over at least two such chunks, and the pooled fit stands over its
+#: off-frequency controls.  A carrier silent throughout is left.
+XTALK_STEADY_CHUNKS = 8
+XTALK_STEADY = 0.25
+XTALK_SILENT_HZ = 3000.0
+#: The fit's off-frequency controls (dsp.coherent_line_estimate's).
+_XTALK_CONTROLS_HZ = (37e3, -53e3)
 
 #: FFT length of the correction's high-pass, and the context it takes on
 #: each side of each block (seconds).
@@ -390,33 +416,6 @@ def _carrier_interp(narrow: np.ndarray, dec: int, t: np.ndarray) -> np.ndarray:
     return np.where(k + 1 < narrow.shape[0], narrow[k] * (1.0 - a) + narrow[k1] * a, narrow[k])
 
 
-def _crosstalk_correction_reference(
-    t: np.ndarray,
-    narrow: Sequence[np.ndarray],
-    ws: Sequence[float],
-    gains: np.ndarray,
-    carriers: Sequence[float],
-    dec: int,
-    n: int,
-    taper: int,
-    band: np.ndarray,
-) -> np.ndarray:
-    """The crosstalk correction at the positions ``t``: the vectorised
-    reference the compiled kernel is checked against."""
-    theta = np.zeros(t.shape, dtype=np.float64)
-    for c in range(2):
-        car = 2.0 * _carrier_interp(narrow[c], dec, t) * np.exp(-1j * ws[c] * t)
-        theta += np.real(gains[c] * car / (1j * carriers[c]))
-    theta *= _edge_taper(t, n, taper)
-    small = np.abs(theta) < 0.05
-    th2 = theta * theta
-    # The turn is a few hundredths of a radian: its series, to the last bit
-    # that matters.
-    sn = np.where(small, theta * (1.0 - th2 / 6.0), np.sin(theta))
-    cm1 = np.where(small, th2 * (th2 / 24.0 - 0.5), np.cos(theta) - 1.0)
-    v = band[t]
-    return v.real * cm1 + v.imag * sn
-
 
 def _crosstalk_narrow(
     rf: np.ndarray, fs: float, carriers: Sequence[float]
@@ -438,140 +437,289 @@ def _crosstalk_narrow(
     return narrow, ws
 
 
-def _carrier_at(narrow: np.ndarray, w: float, t: np.ndarray) -> np.ndarray:
-    """The carrier at its own frequency again, at the positions `t`: the
-    narrow band mixed back up, with the factor two that makes it the
-    analytic signal."""
-    return 2.0 * _carrier_interp(narrow, XTALK_DEC, t) * np.exp(-1j * w * t)
+
+def _carriers_present(rf: np.ndarray, fs: float, carriers: Sequence[float]) -> list[bool]:
+    """Which of the analog audio carriers the chunk carries (see
+    `XTALK_HALFBAND_HZ`), from a Welch spectrum of 32768-sample pieces."""
+    seg = 1 << 15
+    n = rf.shape[0]
+    if n < seg:
+        return [False] * len(carriers)
+    win = 0.5 - 0.5 * np.cos(TAU * np.arange(seg) / seg)
+    power = np.zeros(seg // 2 + 1)
+    step = max(seg, (n - seg) // 16)
+    for a in range(0, n - seg + 1, step):
+        spec = scipy.fft.rfft(rf[a : a + seg] * win)
+        power += spec.real**2 + spec.imag**2
+    bin_hz = fs / seg
+
+    def band(f0, width):
+        lo, hi = int((f0 - width) / bin_hz), int((f0 + width) / bin_hz) + 1
+        lo, hi = max(lo, 0), min(hi, power.shape[0])
+        return power[lo:hi].mean() if hi > lo else 0.0
+
+    mid = sum(carriers) / len(carriers)
+    out = []
+    for fa in carriers:
+        side = fa + (-1.0 if fa < mid else 1.0) * (XTALK_HALFBAND_HZ + 150e3)
+        out.append(band(fa, XTALK_HALFBAND_HZ) >= XTALK_MIN_SNR * band(side, 75e3))
+    return out
 
 
-def _crosstalk_gains(
-    narrow: Sequence[np.ndarray],
-    ws: Sequence[float],
-    idx: np.ndarray,
-    y: np.ndarray,
-    lag: float,
-) -> Optional[np.ndarray]:
-    """The complex gain of each carrier on the video band's instantaneous
-    frequency `y` (Hz, at the samples `idx`): least squares on the carriers'
-    real and imaginary parts, means removed.  None when it is singular.
+def _boxcar_same(x: np.ndarray, length: int) -> np.ndarray:
+    """A centred moving average of `length` samples, the ends held."""
+    if length <= 1:
+        return np.array(x, dtype=np.float64, copy=True)
+    c = np.concatenate(([0.0], np.cumsum(x, dtype=np.float64)))
+    mean = (c[length:] - c[:-length]) / length
+    pad = length - 1
+    return np.concatenate((np.full(pad // 2, mean[0]), mean, np.full(pad - pad // 2, mean[-1])))
 
-    `y` is a phase difference over the `lag` samples before each `idx`, so
-    it is the frequency half of `lag` earlier: each gain is turned back by
-    that half, or the phase it gives would lead the crosstalk's by
-    `pi f lag / fs` (a tenth of a radian and more at 2.3 MHz, and a fifth
-    or a third of the crosstalk left behind).
-    """
-    cols = np.empty((idx.size, 2 * len(ws)), dtype=np.float64)
-    for c in range(len(ws)):
-        car = _carrier_at(narrow[c], ws[c], idx)
-        cols[:, 2 * c] = car.real
-        cols[:, 2 * c + 1] = car.imag
-    centred = cols - cols.mean(axis=0)
-    k = _solve_linear(centred.T @ centred, centred.T @ (y - y.mean()))
-    if k is None:
-        return None
-    return np.array([
-        complex(k[2 * c], -k[2 * c + 1]) * np.exp(-0.5j * ws[c] * lag)
-        for c in range(len(ws))
-    ])
+
+def _crosstalk_view(
+    rf64: np.ndarray,
+    fs: float,
+    carriers: Sequence[float],
+    keep_band: tuple[float, float],
+    decoder_filter: Optional[tuple[np.ndarray, np.ndarray]],
+    blank_hz: float,
+) -> dict:
+    """What the crosstalk's fit works on, for one chunk: the RF's spectrum
+    and the decoder's response on its bins, the analytic view of the RF
+    through that response (no DC), and, kept every `XTALK_DEC` samples,
+    each carrier's narrow band and the demodulated video's around it, the
+    video level, and the fit's span."""
+    n = rf64.shape[0]
+    taper = int(round(XTALK_TAPER_S * fs))
+    spec = scipy.fft.rfft(rf64)
+    freqs = np.arange(spec.shape[0]) * (fs / n)
+    if decoder_filter is None:
+        # The video band: the RF above the keep band.
+        response = _raised_cosine(freqs, keep_band[0], keep_band[1]).astype(np.complex128)
+    else:
+        fgrid, hgrid = decoder_filter
+        hgrid = np.asarray(hgrid, dtype=np.complex128)
+        response = np.interp(freqs, fgrid, hgrid.real) + 1j * np.interp(freqs, fgrid, hgrid.imag)
+    full = np.zeros(n, dtype=np.complex128)
+    full[: spec.shape[0]] = spec * response
+    # No DC: what is left of the capture's offset after centring is not the
+    # same from one sample format to another (a .r30 against a .s16).
+    full[0] = 0.0
+    view = scipy.fft.ifft(full)
+    # Its demodulated video, the level the coupling follows, and the rest
+    # (where the lines are) taken down around each carrier.
+    freq = np.empty(n, dtype=np.float64)
+    freq[1:] = np.angle(view[1:] * np.conj(view[:-1])) * (fs / TAU)
+    freq[0] = freq[1]
+    np.clip(freq, 1.5e6, 0.45 * fs, out=freq)
+    box = max(1, int(round(XTALK_LEVEL_S * fs)))
+    low = _boxcar_same(_boxcar_same(freq, box), box)
+    dec = XTALK_DEC
+    narrow_rf, ws = _crosstalk_narrow(rf64, fs, carriers)
+    narrow_video, _ = _crosstalk_narrow(freq - low, fs, carriers)
+    m = narrow_video[0].shape[0]
+    level = ((low - blank_hz) / 1e6)[::dec]
+    if level.shape[0] != m:
+        level = np.resize(level, m)
+    return {
+        "taper": taper, "spec": spec, "freqs": freqs, "response": response, "view": view,
+        "narrow_rf": narrow_rf, "narrow_video": narrow_video, "ws": ws, "level": level,
+        "fit": slice(-(-taper // dec), (n - taper) // dec),
+    }
+
+
+def steady_carriers(
+    read_fn: Callable[[int, int], np.ndarray],
+    length: int,
+    fs: float,
+    carriers: Sequence[float],
+    keep_band: tuple[float, float],
+    decoder_filter: Optional[tuple[np.ndarray, np.ndarray]] = None,
+    blank_hz: float = 0.0,
+) -> list[bool]:
+    """Which carriers' crosstalk is corrected on this capture (see
+    `XTALK_STEADY`): the line's fit on `XTALK_STEADY_CHUNKS` chunks spread
+    over it, through the same view as `cancel_crosstalk`'s.  Chunks of 2^21
+    samples, or of what a short capture holds in two (at least 2^15)."""
+    from .dsp import unit_phasor
+
+    length = int(length)
+    n = 1 << 21
+    while n > (1 << 15) and 2 * n > length:
+        n >>= 1
+    if length < n:
+        _logger.info("audio crosstalk: the capture is too short to measure the coupling; left")
+        return [False] * len(carriers)
+    count = max(2, min(XTALK_STEADY_CHUNKS, length // n))
+    room = length - n
+    dec = XTALK_DEC
+    lsfs = fs / dec
+    pooled = [None] * len(carriers)
+    per_chunk = [[] for _ in carriers]
+    for k in range(count):
+        at = room * k // (count - 1)
+        rf64 = np.asarray(read_fn(at, n), dtype=np.float64)
+        if rf64.shape[0] < n:
+            rf64 = np.concatenate((rf64, np.zeros(n - rf64.shape[0])))
+        present = _carriers_present(rf64, fs, carriers)
+        if not any(present):
+            continue
+        v = _crosstalk_view(rf64, fs, carriers, keep_band, decoder_filter, blank_hz)
+        a0, a1, _ = v["fit"].indices(v["level"].shape[0])
+        lv = v["level"][a0:a1]
+        idx = np.arange(a0, a1)
+        gram = np.array([[lv.size, lv.sum()], [lv.sum(), (lv * lv).sum()]])
+        for c in range(len(carriers)):
+            if not present[c]:
+                continue
+            phasor = unit_phasor(v["narrow_rf"][c])[a0:a1]
+            # The carrier's own modulation: its instantaneous frequency's
+            # spread.
+            modulation = float(np.std(np.angle(phasor[1:] * np.conj(phasor[:-1]))) * lsfs / TAU)
+            z = 2.0 * v["narrow_video"][c][a0:a1] * np.conj(phasor)
+            rhs = [np.array([zz.sum(), (zz * lv).sum()])
+                   for zz in [z] + [z * np.exp(-2j * np.pi * off * idx / lsfs)
+                                    for off in _XTALK_CONTROLS_HZ]]
+            if pooled[c] is None:
+                pooled[c] = [np.zeros((2, 2)), [np.zeros(2, dtype=np.complex128) for _ in rhs]]
+            pooled[c][0] += gram
+            for j, r in enumerate(rhs):
+                pooled[c][1][j] += r
+            if modulation < XTALK_SILENT_HZ:
+                continue
+            try:
+                per_chunk[c].append(complex(np.linalg.solve(gram, rhs[0])[0]))
+            except np.linalg.LinAlgError:
+                pass
+    kept = []
+    for c, fa in enumerate(carriers):
+        if pooled[c] is None:
+            _logger.info("audio crosstalk %.3f MHz: no carrier; left", fa / 1e6)
+            kept.append(False)
+            continue
+        gram, rhs = pooled[c]
+        try:
+            inv = np.linalg.inv(gram)
+        except np.linalg.LinAlgError:
+            kept.append(False)
+            continue
+
+        def power(b):
+            cc = inv @ b
+            m_, s1, s2 = gram[0, 0], gram[0, 1], gram[1, 1]
+            return cc, 0.5 * (abs(cc[0]) ** 2 * m_ + 2 * (cc[0] * np.conj(cc[1])).real * s1
+                              + abs(cc[1]) ** 2 * s2) / m_
+
+        cc, line_power = power(rhs[0])
+        control = float(np.mean([power(b)[1] for b in rhs[1:]]))
+        stands = line_power > 0 and control < line_power
+        c0s = np.array(per_chunk[c])
+        if c0s.shape[0] < 2:
+            _logger.info("audio crosstalk %.3f MHz: modulated in fewer than two of %d chunks; left",
+                         fa / 1e6, count)
+            kept.append(False)
+            continue
+        spread = float(np.sqrt(np.mean(np.abs(c0s - cc[0]) ** 2)) / max(abs(cc[0]), 1e-30))
+        keep = stands and spread < XTALK_STEADY
+        _logger.info("audio crosstalk %.3f MHz: coupling %.0f Hz, spread %.0f %% over %d modulated "
+                     "chunks; %s", fa / 1e6, abs(cc[0]), 100.0 * spread, c0s.shape[0],
+                     "corrected" if keep else "left")
+        kept.append(bool(keep))
+    return kept
 
 
 def cancel_crosstalk(
     out: np.ndarray,
-    video_band: np.ndarray,
     fs: float,
     carriers: tuple[float, float],
     keep_band: tuple[float, float],
+    decoder_filter: Optional[tuple[np.ndarray, np.ndarray]] = None,
+    blank_hz: float = 0.0,
+    kept: Optional[Sequence[bool]] = None,
 ) -> np.ndarray:
-    """Remove the analog audio carriers' crosstalk from the video.
+    """Remove the analog audio carriers' crosstalk from the RF.
 
-    The carriers leak into the video carrier's phase on the disc.  Each
-    carrier is taken out of the RF itself (mixed down, three boxcars, mixed
-    back up), and the video band's instantaneous frequency is fitted on both
-    by least squares (the picture does not follow the carriers): one complex
-    gain each.  That frequency error is a phase error
-    `theta = Re(C r / (j f))`, and the video band is turned back by it:
-    `out + Re(v (exp(-j theta) - 1))`, kept above `keep_band` so the low band
-    (audio, EFM) is left as it is.  Only this chunk's samples are used, so
-    the same correction is made wherever it is computed.
+    The disc's pits carry the video and audio FM carriers together, so the
+    video carrier picks up sidebands at the audio carriers' distance; what
+    the decoder sees of them, demodulated through its own video filter and
+    readout compensation, is a line at each audio carrier's frequency that
+    follows that carrier's phase, its amplitude moving with the video level
+    (rev 8's --audio_carrier_cancel, which takes it out of the demodulated
+    video).  Here it is taken out of the RF, before the decoder's
+    compensation lifts it:
 
-    Parameters:
-        out: the RF chunk (real, float32 or float64), length N.
-        video_band: the analytic video band of the SAME chunk (complex,
-            length N).
-        fs: the sample rate in Hz.
-        carriers: the two audio carrier frequencies in Hz.
-        keep_band: `(lo_hz, hi_hz)`; the correction is kept only above this
-            band.
+    - each carrier the chunk carries (`XTALK_MIN_SNR`; an absent one is
+      left) gives the phase reference, its band cut out of the RF;
+    - the RF is seen as the decoder sees it, through ``decoder_filter``
+      (the frequencies and the complex response of its video filter times
+      its readout compensation, on the positive half; None: the RF above
+      keep_band, flat), and its instantaneous frequency is taken down around each
+      carrier, so the picture elsewhere does not enter the fit;
+    - the line locked to the carrier is fitted with an amplitude that
+      follows the video level (``blank_hz`` is its zero) and backs off when
+      it is too weak to tell from what else is there
+      (dsp.coherent_line_estimate);
+    - the phase the lines integrate to is taken off that view of the RF,
+      and the change is taken back to the RF through the filter's inverse,
+      kept above ``keep_band`` (the audio carriers and the EFM below are
+      left alone), so that what the decoder's filter makes of the corrected
+      RF is the line taken out.
 
-    Returns:
-        A NEW array (a copy of `out`, same dtype) with the correction
-        applied.  Neither input is modified.
+    ``kept`` names the carriers corrected at all (`steady_carriers`, once
+    per capture; None: every one the chunk carries).  Beyond it only this
+    chunk's samples are used, so the same correction is made wherever it is
+    computed.  Returns a NEW array (`out`'s dtype); the input is not
+    modified.
     """
+    from .dsp import coherent_line_estimate, unit_phasor
+
     rf = np.asarray(out)
-    band = np.asarray(video_band)
     n = rf.shape[0]
     result = np.array(rf, copy=True)
-    if n == 0 or band.shape[0] < n:
-        return result
-
     taper = int(round(XTALK_TAPER_S * fs))
-    if n < 4 * taper:
+    if n == 0 or n < 4 * taper:
         return result
-
-    dec = XTALK_DEC
-    narrow, ws = _crosstalk_narrow(rf, fs, carriers)
-
-    # Least squares of the video band's instantaneous frequency on the
-    # carriers' real and imaginary parts, means removed.
-    idx = np.arange(taper, n - taper, XTALK_FIT_STRIDE)
-    # Only at the fit's samples (idx starts past the taper, so idx - 1 >= 0).
-    y = np.angle(band[idx] * np.conj(band[idx - 1])) * fs / TAU
-    gains = _crosstalk_gains(narrow, ws, idx, y, 1)
-    if gains is None:
+    rf64 = np.asarray(rf, dtype=np.float64)
+    present = _carriers_present(rf64, fs, carriers)
+    if kept is not None:
+        present = [p and bool(k) for p, k in zip(present, kept)]
+    if not any(present):
         return result
+    v = _crosstalk_view(rf64, fs, carriers, keep_band, decoder_filter, blank_hz)
+    view, response, freqs, spec = v["view"], v["response"], v["freqs"], v["spec"]
+    narrow_rf, narrow_video, ws = v["narrow_rf"], v["narrow_video"], v["ws"]
+    level, fit, dec = v["level"], v["fit"], XTALK_DEC
 
-    # The correction at every sample, in the compiled kernel (the same as
-    # _crosstalk_correction_reference).
-    corr = np.empty(n, dtype=np.float64)
-    crosstalk_correction_kernel(
-        narrow[0],
-        narrow[1],
-        np.asarray(ws, dtype=np.float64),
-        gains,
-        np.asarray(carriers, dtype=np.float64),
-        dec,
-        taper,
-        np.ascontiguousarray(band[:n], dtype=np.complex128),
-        corr,
-    )
+    lines, steps, turns = [], [], []
+    for c, fa in enumerate(carriers):
+        if not present[c]:
+            continue
+        line, gain = coherent_line_estimate(
+            2.0 * narrow_video[c], unit_phasor(narrow_rf[c]), level, fit, fs / dec)
+        if gain <= 0.0:
+            continue
+        lines.append(line)
+        steps.append(ws[c])
+        turns.append(float(fa))
+    if not lines:
+        return result
+    # The lines (Hz) integrate to a phase: over a turn of each carrier,
+    # Re(line exp(j w t)) / (j fa), faded at the chunk's edges.
+    theta = np.empty(n, dtype=np.float64)
+    crosstalk_phase_kernel(np.ascontiguousarray(np.array(lines, dtype=np.complex128)),
+                           np.asarray(steps, dtype=np.float64),
+                           np.asarray(turns, dtype=np.float64), dec, taper, theta)
 
-    # Only the part of the correction in the video band (`keep_band`, a
-    # raised-cosine edge) is kept: below, turning the video band also moves
-    # what lands on the audio carriers and the EFM, which the video never
-    # reads.  Overlap-save, by FFT.
-    size = XTALK_FFT_LEN
-    ov = min(max(int(round(XTALK_OV_S * fs)), 1), size // 4)
-    step = size - 2 * ov
-    half = np.arange(size // 2 + 1) * fs / size
-    gain = _raised_cosine(half, keep_band[0], keep_band[1])
-
-    for pair in range((n + 2 * step - 1) // (2 * step)):
-        s0 = 2 * pair * step - ov
-        for which in range(2):
-            start = s0 + which * step
-            block = np.zeros(size, dtype=np.float64)
-            lo = max(0, start)
-            hi = min(n, start + size)
-            if hi > lo:
-                block[lo - start : hi - start] = corr[lo:hi]
-            spec = scipy.fft.rfft(block) * gain
-            filtered = scipy.fft.irfft(spec, size)
-            out_lo = 2 * pair * step + which * step
-            cnt = min(step, n - out_lo)
-            if cnt > 0:
-                result[out_lo : out_lo + cnt] += filtered[ov : ov + cnt]
+    # The phase taken off the decoder's view, back through the filter's
+    # inverse to the RF, above the keep band.
+    turned = np.empty(n, dtype=np.complex128)
+    turn_back_kernel(view, theta, turned)
+    change = scipy.fft.fft(turned)[: spec.shape[0]]
+    mag = np.abs(response)
+    usable = mag > 1e-3 * mag.max()
+    correction = np.where(usable, change / np.where(usable, response, 1.0), 0.0)
+    correction *= _raised_cosine(freqs, keep_band[0], keep_band[1])
+    result += scipy.fft.irfft(correction, n).astype(result.dtype, copy=False)
     return result
 
 

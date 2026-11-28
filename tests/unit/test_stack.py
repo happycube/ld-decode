@@ -909,12 +909,15 @@ def test_the_read_kernel_matches_the_reference():
 
 def _xtalk_capture(gamma, n=65536, fs=40e6):
     """A video carrier whose phase follows the first NTSC audio carrier, with
-    both carriers in the RF; and the same without the crosstalk."""
+    both carriers in the RF, frequency-modulated by programme (a silent
+    carrier's crosstalk is not corrected); and the same without the
+    crosstalk."""
     t = np.arange(n) / fs
-    carriers = sum(0.3 * np.cos(2 * np.pi * f * t + 0.3 * (i + 1))
-                   for i, f in enumerate(stack.AUDIO_CARRIERS_HZ))
+    audio = [2 * np.pi * f * t + 0.3 * (i + 1) + 2.0 * np.sin(2 * np.pi * 25e3 * t + i)
+             for i, f in enumerate(stack.AUDIO_CARRIERS_HZ)]
+    carriers = sum(0.3 * np.cos(ph) for ph in audio)
     psi = 0.05 * np.sin(2 * np.pi * 50e3 * t)
-    theta = gamma * np.sin(2 * np.pi * stack.AUDIO_CARRIERS_HZ[0] * t + 0.7)
+    theta = gamma * np.sin(audio[0] + 0.7)
     rf = 8000.0 * (np.cos(2 * np.pi * 6.8e6 * t + psi + theta) + carriers)
     clean = 8000.0 * (np.cos(2 * np.pi * 6.8e6 * t + psi) + carriers)
     return rf, clean

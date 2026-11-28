@@ -36,8 +36,9 @@ __all__ = [
     "combine_secondary",
     "subtract_lines_kernel",
     "narrow_band_kernel",
-    "crosstalk_correction_kernel",
     "line_phasors_kernel",
+    "crosstalk_phase_kernel",
+    "turn_back_kernel",
 ]
 
 #: The order of the constants in ``params``.
@@ -430,48 +431,6 @@ def narrow_band_kernel(out, w, dec, boxl, box_span, first):
             first[k] = (sums[hi - lo0] - sums[lo - lo0]) / boxl
 
 
-@njit(cache=True, nogil=True, inline="always")
-def _narrow_at(narrow, dec, t):
-    """The narrow band at sample ``t``, linear between the kept samples."""
-    k = t // dec
-    a = (t % dec) / dec
-    if k + 1 < narrow.shape[0]:
-        return narrow[k] * (1.0 - a) + narrow[k + 1] * a
-    return narrow[k]
-
-
-@njit(cache=True, nogil=True, parallel=True)
-def crosstalk_correction_kernel(narrow0, narrow1, ws, gains, carriers, dec, taper, band, corr):
-    """The crosstalk correction at every sample of the chunk (in place).
-
-    Per sample ``t``: the phase error ``theta`` (the two carriers, mixed back
-    up from their narrow bands, through their fitted gains), faded at the
-    chunk's edges over ``taper`` samples, and the video band turned back by
-    it, ``Re(v (exp(-j theta) - 1))``, with the series for a small turn, as
-    ``stack_corrections`` computes it.
-    """
-    n = corr.shape[0]
-    for t in prange(n):
-        theta = 0.0
-        for c in range(2):
-            nb = narrow0 if c == 0 else narrow1
-            car = 2.0 * _narrow_at(nb, dec, t) * np.exp(-1j * ws[c] * t)
-            theta += (gains[c] * car / (1j * carriers[c])).real
-        if taper > 0:
-            e = min(t, n - 1 - t)
-            if e < taper:
-                theta *= 0.5 - 0.5 * np.cos(np.pi * e / taper)
-        th2 = theta * theta
-        if abs(theta) < 0.05:
-            sn = theta * (1.0 - th2 / 6.0)
-            cm1 = th2 * (th2 / 24.0 - 0.5)
-        else:
-            sn = np.sin(theta)
-            cm1 = np.cos(theta) - 1.0
-        v = band[t]
-        corr[t] = v.real * cm1 + v.imag * sn
-
-
 @njit(cache=True, nogil=True, parallel=True)
 def line_phasors_kernel(raw, block, tables, turns, out):
     """Every line's phasor on every block of a super-block (in place).
@@ -496,3 +455,41 @@ def line_phasors_kernel(raw, block, tables, turns, out):
                 im[line] += v * z.imag
         for line in range(nlines):
             out[line, b] = (2.0 / block) * complex(re[line], im[line]) * turns[line, b]
+
+
+@njit(cache=True, nogil=True, parallel=True)
+def crosstalk_phase_kernel(lines, ws, carriers, dec, taper, theta):
+    """The phase the crosstalk's lines integrate to, at every sample of the
+    chunk (in place): per line ``c``, its narrow band (kept every ``dec``
+    samples, linear between them) mixed back up by ``exp(-j ws[c] t)`` and
+    integrated over a turn of its carrier, ``Re(z / (j carriers[c]))``,
+    summed, and faded at the chunk's edges over ``taper`` samples (a raised
+    cosine).  One pass, the samples in parallel."""
+    n = theta.shape[0]
+    m = lines.shape[1]
+    for t in prange(n):
+        k = t // dec
+        a = (t % dec) / dec
+        acc = 0.0
+        for c in range(lines.shape[0]):
+            if k + 1 < m:
+                v = lines[c, k] * (1.0 - a) + lines[c, k + 1] * a
+            else:
+                v = lines[c, k]
+            ph = -ws[c] * t
+            # Re(v e^{j ph} / (j f)) = Im(v e^{j ph}) / f
+            acc += (v.real * np.sin(ph) + v.imag * np.cos(ph)) / carriers[c]
+        e = min(t, n - 1 - t)
+        if e < taper:
+            acc *= 0.5 - 0.5 * np.cos(np.pi * e / taper)
+        theta[t] = acc
+
+
+@njit(cache=True, nogil=True, parallel=True)
+def turn_back_kernel(view, theta, out):
+    """``view (exp(-j theta) - 1)`` at every sample (in place into ``out``):
+    the view turned back by the crosstalk's phase, less the view."""
+    for t in prange(view.shape[0]):
+        c = np.cos(theta[t])
+        s = np.sin(theta[t])
+        out[t] = view[t] * complex(c - 1.0, -s)
