@@ -54,13 +54,17 @@ def test_a_packed_capture_reads_at_positions_what_its_loader_reads(tmp_path):
         capture.close()
 
 
-def test_a_compressed_capture_reads_at_positions(tmp_path):
+# The reader goes by the name, the container by its content: every name
+# the decoder hands LoadLDF must open here too, ".raw.oga" (ld-compress
+# --oga) among them, whose suffix has two dots.
+@pytest.mark.parametrize("name", ["capture.flac", "capture.ldf", "capture.raw.oga"])
+def test_a_compressed_capture_reads_at_positions(tmp_path, name):
     """CompressedCapture reads a FLAC capture at any position, through the
     decoder's FLAC reader, and knows its length from the container."""
     av = pytest.importorskip("av", reason="PyAV is required for the FLAC reader")
     samples = np.random.default_rng(3).integers(-20000, 20000, size=40000).astype(np.int16)
-    path = tmp_path / "capture.flac"
-    with av.open(str(path), "w") as out:
+    path = tmp_path / name
+    with av.open(str(path), "w", format="flac") as out:
         stream = out.add_stream("flac", rate=40000, layout="mono")
         frame = av.AudioFrame.from_ndarray(samples.reshape(1, -1), format="s16", layout="mono")
         frame.sample_rate = 40000

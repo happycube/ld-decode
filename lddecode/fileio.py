@@ -131,7 +131,7 @@ def make_loader(filename, inputfreq=None, decode_threads=1):
 
 #: The fixed-width raw captures, and the sample layout each one holds.
 #: The read-time TBC path reads a capture at arbitrary positions, which only
-#: a fixed-width file can serve: a packed (.lds) or compressed (.ldf, .flac)
+#: a fixed-width file can serve: a packed (.lds) or compressed (.ldf, .raw.oga, .flac)
 #: capture cannot be read at an arbitrary offset.
 RAW_LAYOUTS = {
     ".s16": ("int16", 2),
@@ -221,8 +221,10 @@ class RawCapture:
 #: The packed captures: samples and bytes per group.
 PACKED_LAYOUTS = {".lds": (4, 5), ".r30": (3, 4)}
 
-#: The compressed captures, decoded by PyAV (LoadLDF).
-COMPRESSED_EXTENSIONS = (".ldf", ".flac")
+#: The compressed captures, decoded by PyAV (LoadLDF): every suffix
+#: make_loader sends to LoadLDF, so a capture the decoder reads as a stream
+#: can also be read at positions.
+COMPRESSED_EXTENSIONS = ("raw.oga", ".ldf", ".wav", ".flac", ".vhs")
 
 
 class PackedCapture:
@@ -279,7 +281,7 @@ def compressed_length(filename):
 
 
 class CompressedCapture:
-    """A compressed capture (.ldf, .flac), read at absolute sample positions
+    """A compressed capture (.ldf, .raw.oga, .flac, .wav, .vhs), read at absolute sample positions
     through the decoder's own FLAC reader (LoadLDF), which seeks in the
     container and decodes from there."""
 
@@ -322,11 +324,13 @@ def open_capture(filename):
     ext = os.path.splitext(filename)[1].lower()
     if ext in PACKED_LAYOUTS:
         return PackedCapture(filename)
-    if ext in COMPRESSED_EXTENSIONS:
+    # Matched on the name's end, not on splitext: ".raw.oga" has two dots.
+    if filename.lower().endswith(COMPRESSED_EXTENSIONS):
         return CompressedCapture(filename)
     raise ValueError(
         f"{filename}: a capture read at positions is raw (s16, raw, r16, u16, "
-        "r8, u8, s8, rf), packed (lds, r30) or compressed (ldf, flac)")
+        "r8, u8, s8, rf), packed (lds, r30) or compressed (ldf, raw.oga, "
+        "flac, wav, vhs)")
 
 
 def open_capture_reader(filename):

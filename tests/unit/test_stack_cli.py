@@ -185,7 +185,7 @@ def _args(**kwargs):
 
 
 def test_a_format_that_cannot_be_read_at_positions_is_refused():
-    """Raw, packed (.lds, .r30) and compressed (.ldf, .flac) captures are all
+    """Raw, packed (.lds, .r30) and compressed (.ldf, .raw.oga, .flac) captures are all
     read at positions; another format is refused, by its name, before any
     file is opened."""
     with pytest.raises(ValueError, match="packed"):
