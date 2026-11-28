@@ -591,6 +591,49 @@ def test_the_read_ahead_keeps_recent_chunks_whatever_their_position():
     assert computed.count(6) == 1
 
 
+def test_a_producer_ended_by_an_interrupt_fails_the_read_instead_of_hanging():
+    """A KeyboardInterrupt that ends a chunk's computation (a console's
+    Ctrl-C reaching a worker) is the reader's to see: the read fails with it
+    instead of waiting for that chunk for good."""
+    import threading
+
+    def compute(index, chunk):
+        raise KeyboardInterrupt
+
+    cache = stack._ChunkCache(compute, chunk=16, ahead=1, behind=0)
+    outcome = []
+
+    def read():
+        try:
+            cache.get(0)
+            outcome.append("returned")
+        except RuntimeError as exc:
+            outcome.append(str(exc))
+
+    reader = threading.Thread(target=read, daemon=True)
+    try:
+        reader.start()
+        reader.join(timeout=10.0)
+    finally:
+        cache.stop()
+    assert not reader.is_alive(), "the read waited for good"
+    assert outcome and "KeyboardInterrupt" in outcome[0]
+
+
+def test_the_processes_the_source_spawns_leave_ctrl_c_to_the_decoder():
+    """Pass 0's scans and the cleaning's producers ignore SIGINT, as the
+    decoder's demod workers do: a console's Ctrl-C is the decoder's to
+    handle, not a worker's to raise mid-chunk."""
+    import signal
+
+    before = signal.getsignal(signal.SIGINT)
+    try:
+        stack._ignore_sigint()
+        assert signal.getsignal(signal.SIGINT) == signal.SIG_IGN
+    finally:
+        signal.signal(signal.SIGINT, before)
+
+
 def test_the_stream_length_matches_the_primarys_coverage(monkeypatch):
     """The stream ends where the primary's capture ends."""
     rng = np.random.default_rng(8)

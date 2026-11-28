@@ -984,6 +984,7 @@ def _scan_process(
     the scan at its next chunk.  The reader is cut at ``length``, as the
     stacked source's own readers are.
     """
+    _ignore_sigint()
     try:
         reader = open_reader()
 
@@ -1659,9 +1660,12 @@ class _ChunkCache:
     def _produce(self) -> None:
         try:
             self._produce_loop()
-        except Exception as exc:  # noqa: BLE001 - reported to the reader
+        except BaseException as exc:  # noqa: BLE001 - reported to the reader
+            # Whatever ends a producer (a KeyboardInterrupt a worker sent
+            # back included) is the reader's to see: left unreported, the
+            # reader would wait for the chunk it was computing for good.
             with self._cv:
-                self._error = f"{exc}"
+                self._error = f"{type(exc).__name__}: {exc}"
                 self._cv.notify_all()
 
     def _produce_loop(self) -> None:
@@ -1682,10 +1686,10 @@ class _ChunkCache:
                     self._cv.wait()
             try:
                 data = self._compute(target, self._chunk)
-            except Exception as exc:  # noqa: BLE001 - reported to the reader
+            except BaseException as exc:  # noqa: BLE001 - reported to the reader
                 with self._cv:
                     self._busy.discard(target)
-                    self._error = f"{exc}"
+                    self._error = f"{type(exc).__name__}: {exc}"
                     self._cv.notify_all()
                 return
             with self._cv:
@@ -2438,6 +2442,23 @@ def measure_readout_tilt(
     return None
 
 
+def _ignore_sigint() -> None:
+    """In a process the source spawns (a pass 0 scan, a cleaning
+    producer): leave Ctrl-C to the decoder's own process, as the decoder's
+    demod workers do (parallel.py).  A console's Ctrl-C reaches every
+    process of its group; one raised in a producer came back to the
+    decoder as the chunk's result, killed the read-ahead thread waiting on
+    it, and left the decoder waiting for that chunk for good."""
+    import signal
+
+    try:
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+    except ValueError:
+        # Not the main thread of the process (a test calling in): nothing
+        # to leave to anyone.
+        pass
+
+
 #: A producer process's state (_clean_worker_init).
 _CLEAN_WORKER: dict = {}
 
@@ -2446,6 +2467,7 @@ def _clean_worker_init(open_reader, crystal_params, h0, fs, ntsc, cancel_xtalk, 
                        dc=0.0, decoder_filter=None, xtalk_kept=None):
     """A producer process: its own reader of the capture, and its own clock
     lines rebuilt on it."""
+    _ignore_sigint()
     read_fn = open_reader()
     crystal = None
     if crystal_params is not None:
