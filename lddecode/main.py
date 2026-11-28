@@ -385,6 +385,20 @@ def build_parser():
     )
 
     parser.add_argument(
+        "--pal_vits_eq",
+        dest="pal_vits_eq",
+        action="store_true",
+        default=False,
+        help="Equalise the written PAL picture with one causal FIR fitted "
+        "to the disc's own VITS: the ITS bar's low-frequency tail and the "
+        "multiburst's residual response after the decoder's own EQ, "
+        "boosting only while the ITS 2T pulse stays at or under 1.0 and "
+        "the blank-line noise rises by at most 0.08 IRE, and identity "
+        "when the VITS show nothing to correct.  Decoder servos and "
+        "metrics still read the unequalised signal.  PAL only.",
+    )
+
+    parser.add_argument(
         "--rf_echo_cancel",
         dest="rf_echo_cancel",
         action="store_true",
@@ -645,6 +659,9 @@ def build_options(args, core_count=None):
 
     if vid_standard == "NTSC" and args.audio_carrier_cancel:
         extra_options["AudioCarrierCancel"] = True
+
+    if vid_standard == "PAL" and args.pal_vits_eq:
+        extra_options["PALVitsEQ"] = True
 
     if vid_standard == "PAL" and args.AC3:
         print("ERROR: AC3 audio decoding is only supported for NTSC")

@@ -338,6 +338,12 @@ def test_the_audio_carrier_canceller_is_opt_in_and_ntsc_only():
     assert "AudioCarrierCancel" not in extra("-p", "--audio_carrier_cancel")
 
 
+def test_the_vits_eq_is_opt_in_and_pal_only():
+    assert "PALVitsEQ" not in extra("-p")
+    assert extra("-p", "--pal_vits_eq")["PALVitsEQ"] is True
+    assert "PALVitsEQ" not in extra("--pal_vits_eq")
+
+
 def test_the_vits_white_level_servo_is_opt_in():
     assert extra()["vits_white_level"] is False
     assert extra("--vits_white_level")["vits_white_level"] is True
