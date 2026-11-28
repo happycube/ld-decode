@@ -266,29 +266,68 @@ class PackedCapture:
             self._file = None
 
 
-def compressed_length(filename):
-    """The number of samples in a compressed (.ldf/.flac) capture, from its
-    container; decoded through to the end when the container does not say."""
+def compressed_length(filename, loader=None):
+    """The number of samples in a compressed (.ldf/.flac) capture.
+
+    The container's count is where the search starts, not the answer: a FLAC
+    whose header could not be rewritten once encoded (written through a
+    pipe) can carry a count that is not the stream's - one 28 GB capture
+    says 16.8 s of a stream over 500 s long.  The decoder reads such a file
+    to its end, so the end is found the same way: by reading, through the
+    decoder's own reader (``loader``, or a LoadLDF of its own), one sample
+    at a time, doubling past the last one found and then halving.
+    """
     import av
 
+    claimed = None
     with av.open(filename) as container:
         stream = container.streams.audio[0]
         if stream.duration is not None and stream.time_base is not None:
-            return int(round(stream.duration * stream.time_base * stream.sample_rate))
-        if container.duration is not None:
-            return int(round(container.duration * stream.sample_rate / 1e6))
-        return sum(frame.samples for frame in container.decode(audio=0))
+            claimed = int(round(stream.duration * stream.time_base * stream.sample_rate))
+        elif container.duration is not None:
+            claimed = int(round(container.duration * stream.sample_rate / 1e6))
+
+    own = loader is None
+    if own:
+        loader = LoadLDF(filename)
+    try:
+        def present(index):
+            data = loader.read(None, int(index), 1)
+            return data is not None and len(data) >= 1
+
+        if not present(0):
+            return 0
+        # lo is a sample that is there, hi one that is not.
+        lo = 0
+        guess = max(1, claimed or 0)
+        if present(guess - 1):
+            lo = guess - 1
+        step = max(guess, 1 << 20)
+        while present(lo + step):
+            lo += step
+            step *= 2
+        hi = lo + step
+        while hi - lo > 1:
+            mid = (lo + hi) // 2
+            if present(mid):
+                lo = mid
+            else:
+                hi = mid
+        return lo + 1
+    finally:
+        if own:
+            loader._close()
 
 
 class CompressedCapture:
-    """A compressed capture (.ldf, .raw.oga, .flac, .wav, .vhs), read at absolute sample positions
-    through the decoder's own FLAC reader (LoadLDF), which seeks in the
-    container and decodes from there."""
+    """A compressed capture (.ldf, .raw.oga, .flac, .wav, .vhs), read at
+    absolute sample positions through the decoder's own FLAC reader
+    (LoadLDF), which seeks in the container and decodes from there."""
 
     def __init__(self, filename):
         self.filename = filename
         self._loader = LoadLDF(filename)
-        self._length = compressed_length(filename)
+        self._length = compressed_length(filename, self._loader)
 
     @property
     def length(self):

@@ -81,3 +81,37 @@ def test_a_compressed_capture_reads_at_positions(tmp_path, name):
         assert not capture.read(samples.size, 10).any()
     finally:
         capture.close()
+
+
+class _Stream:
+    """The decoder's reader, stood in by a stream of ``n`` samples."""
+
+    def __init__(self, n):
+        self.n = n
+
+    def read(self, infile, sample, readlen):
+        if sample + readlen > self.n:
+            return None
+        return np.ones(readlen)
+
+
+@pytest.mark.parametrize("actual", [40000, 100_000_007, 123])
+def test_a_compressed_captures_length_is_read_not_taken_from_its_header(tmp_path, actual):
+    """A FLAC's header can carry a count that is not the stream's (a file
+    encoded through a pipe): the length is where the stream ends when it is
+    read, as the decoder reads it, whatever the header says (here 40000)."""
+    av = pytest.importorskip("av", reason="PyAV is required for the FLAC reader")
+    from lddecode.fileio import compressed_length
+
+    samples = np.zeros(40000, dtype=np.int16)
+    path = tmp_path / "capture.flac"
+    with av.open(str(path), "w", format="flac") as out:
+        stream = out.add_stream("flac", rate=40000, layout="mono")
+        frame = av.AudioFrame.from_ndarray(samples.reshape(1, -1), format="s16", layout="mono")
+        frame.sample_rate = 40000
+        for packet in stream.encode(frame):
+            out.mux(packet)
+        for packet in stream.encode(None):
+            out.mux(packet)
+
+    assert compressed_length(str(path), _Stream(actual)) == actual
