@@ -169,7 +169,10 @@ multiples (the LD-V4300D's 8.4672 MHz clock and its satellites among them),
 its 4fsc video clock, the capture board's clocks. They are subtracted by
 default, in either `--tbc_mode`. They are detected a quarter into the capture
 (at most 4 Mi samples from its end), where there is picture, with `resample`,
-and where the first line is found with `read`.
+and where the first line is found with `read`. Every line found is checked
+before it is subtracted (narrow over stretches several frames long, outside
+the EFM's and the audio carriers' bands, not cut by the sync), so the disc's
+own signal is not taken for a clock.
 
 #### `--no_chroma_leak`
 Leave the composite chroma that leaks into the RF baseband (NTSC; it makes

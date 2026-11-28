@@ -282,7 +282,8 @@ def test_a_clock_line_is_found_and_removed(small_xtal):
 
 def test_the_detection_starts_where_the_caller_says(small_xtal):
     """The stretches are spread from the capture's first located line to its
-    end: the reader is asked for them there, and nowhere else."""
+    end: the reader is asked for them there first (the check of the lines
+    found reads the capture again afterwards)."""
     rng = np.random.default_rng(206)
     capture = _capture(rng, [XLINE_HZ])
     asked: list[int] = []
@@ -301,12 +302,14 @@ def test_the_detection_starts_where_the_caller_says(small_xtal):
         start=start,
     )
 
-    assert len(asked) == stack_corrections.XTAL_SEGMENTS
+    found = asked[: stack_corrections.XTAL_SEGMENTS]
     # The first stretch starts at the given position, the last one at the end
     # of the capture.
-    assert asked[0] == start
-    assert asked[-1] == XN - stack_corrections.XTAL_FFT
-    assert asked == sorted(asked)
+    assert found[0] == start
+    assert found[-1] == XN - stack_corrections.XTAL_FFT
+    assert found == sorted(found)
+    # Nothing is read before the first located line.
+    assert min(asked) >= start
 
 
 def test_the_detection_reads_no_further_than_the_captures_length(small_xtal):
@@ -371,7 +374,8 @@ def test_cleaning_does_not_depend_on_the_chunking(small_xtal):
 
 def test_the_efm_decoder_crystal_is_found_and_its_lines_removed(small_xtal, monkeypatch):
     """The player's EFM decoder crystal: its lines are the multiples of its
-    192nd, and the drift of that 192nd is followed."""
+    192nd, and the drift of that 192nd is followed.  Those in the EFM's own
+    band are left: the disc's EFM is a continuous signal there."""
     monkeypatch.setattr(stack_corrections, "XTAL_TOP_HZ", 14.5e6)
     monkeypatch.setattr(stack_corrections, "XTAL_SUPER", 1 << 16)
     rng = np.random.default_rng(204)
@@ -399,9 +403,10 @@ def test_the_efm_decoder_crystal_is_found_and_its_lines_removed(small_xtal, monk
     assert lines.f0 == pytest.approx(f0, rel=1e-3)
     assert len(lines.ks) > 100
     assert not lines.others
+    assert min(lines.ks) * lines.f0 > 2.0e6
 
     cleaned = lines.clean(capture[: 1 << 16], 0)
-    for m in (10, 100):
+    for m in (50, 100):
         f = m * f0
         before = _tone_amplitude(capture, fs, f, 1 << 15, 1 << 14)
         after = _tone_amplitude(cleaned, fs, f, 1 << 15, 1 << 14)
@@ -662,3 +667,150 @@ def test_without_the_master_clock_weak_multiples_are_left(small_xtal, monkeypatc
         read_fn, fs, ntsc=True, line_hz=stack_corrections.NTSC_LINE_HZ
     )
     assert not [m for m in lines.ks if 90 <= m <= 100]
+
+
+# --- the check of the lines found ----------------------------------------
+
+#: A bin of the detection FFT near a frequency, in the small fixture.
+def _on_bin(f_hz):
+    bin_hz = XFS / (1 << 16)
+    return round(f_hz / bin_hz) * bin_hz
+
+
+def _detect(capture, ntsc=True):
+    line_hz = stack_corrections.NTSC_LINE_HZ if ntsc else stack_corrections.PAL_LINE_HZ
+    return stack_corrections.CrystalLines.detect(
+        _reader(capture), XFS, ntsc=ntsc, line_hz=line_hz, length=capture.shape[0]
+    )
+
+
+#: Long enough for the check's stretch to span several rotations.
+XW = 1 << 22
+
+
+def _disc_capture(rng):
+    """A clock at `XLINE_HZ`, and a line the disc carries: its frequency
+    follows the spindle's speed, which wanders by about 100 Hz rms below
+    30 Hz (made at 1 kHz and held)."""
+    import scipy.signal
+
+    t = np.arange(XW) / XFS
+    hold = 20000
+    slow = scipy.signal.lfilter(*scipy.signal.butter(2, 30 / 500), rng.normal(size=XW // hold + 202))
+    slow = 100.0 * slow[200:] / slow[200:].std()
+    swing = np.repeat(slow, hold)[:XW]
+    disc_hz = _on_bin(6.2e6)
+    capture = 0.01 * rng.normal(size=XW) + 0.5 * np.cos(TAU * XLINE_HZ * t)
+    capture += 0.5 * np.cos(TAU * disc_hz * t + TAU * np.cumsum(swing) / XFS)
+    return capture, disc_hz
+
+
+@pytest.mark.parametrize("check", [True, False])
+def test_a_line_the_disc_carries_is_left_and_a_clock_kept(small_xtal, monkeypatch, check):
+    """A line whose frequency follows the disc's speed is as narrow as a
+    clock over a short stretch, so it is found; over the long stretches it
+    is spread, and only the clock is kept.  Without the long stretches'
+    test, both are."""
+    if not check:
+        monkeypatch.setattr(stack_corrections, "XTAL_SHARP", 0.0)
+    capture, disc_hz = _disc_capture(np.random.default_rng(213))
+
+    lines = _detect(capture)
+
+    assert any(abs(f - XLINE_HZ) < 50 for f in lines.others)
+    assert any(abs(f - disc_hz) < 1000 for f in lines.others) == (not check)
+
+
+@pytest.mark.parametrize("bands", [None, ()])
+def test_a_line_in_the_efm_band_is_left(small_xtal, monkeypatch, bands):
+    """The EFM is a continuous signal of the disc's that the sync does not
+    interrupt: a line in its band is left (PAL), and taken without the
+    sensitive bands."""
+    if bands is not None:
+        monkeypatch.setattr(stack_corrections, "PAL_XTAL_SENSITIVE_HZ", bands)
+    rng = np.random.default_rng(211)
+    t = np.arange(XN) / XFS
+    efm_hz = _on_bin(1.5e6)
+    capture = 0.01 * rng.normal(size=XN) + 0.5 * np.cos(TAU * efm_hz * t)
+
+    lines = _detect(capture, ntsc=False)
+
+    taken = any(abs(f - efm_hz) < 50 for f in lines.others)
+    assert taken == (bands is not None)
+
+
+def _located_lines(monkeypatch, line_len, n):
+    """rf_sync.locate stood in by fields of lines `line_len` apart from the
+    start of what it is asked to read."""
+
+    class _Field:
+        def __init__(self, lines):
+            self.lines = lines
+
+    def locate(read_fn, fs, system, stop=None, length=None):
+        positions = np.arange(0.0, n - line_len, line_len)
+        for k in range(0, positions.shape[0] - 1, 312):
+            yield _Field(positions[k : k + 313])
+
+    from lddecode import rf_sync
+
+    monkeypatch.setattr(rf_sync, "locate", locate)
+
+
+@pytest.mark.parametrize("judge", [True, False])
+def test_a_line_cut_by_the_sync_is_the_videos(small_xtal, monkeypatch, judge):
+    """A clock runs through the sync and the blanking; a line the video
+    makes is interrupted every line.  Folded on the line's position over the
+    located lines, the first is kept and the second left; with the fold's
+    verdict turned off, both are kept."""
+    # The line comb's neighbours are what the short stretches would reject
+    # it on; turned off, the fold is what is tested.
+    monkeypatch.setattr(stack_corrections, "_is_comb", lambda *a: False)
+    if not judge:
+        monkeypatch.setattr(stack_corrections, "XTAL_CUT_SNR", math.inf)
+    line_len = XFS / stack_corrections.PAL_LINE_HZ
+    _located_lines(monkeypatch, line_len, XN)
+    rng = np.random.default_rng(212)
+    t = np.arange(XN) / XFS
+    video_hz = _on_bin(3.3e6)
+    # Off from the start of every line to the end of the back porch.
+    on = (np.arange(XN) % line_len) >= 10.5e-6 * XFS
+    capture = 0.01 * rng.normal(size=XN) + 0.5 * np.cos(TAU * XLINE_HZ * t)
+    capture += 0.5 * on * np.cos(TAU * video_hz * t)
+
+    lines = _detect(capture, ntsc=False)
+
+    assert any(abs(f - XLINE_HZ) < 50 for f in lines.others)
+    assert any(abs(f - video_hz) < 50 for f in lines.others) == (not judge)
+
+
+@pytest.mark.parametrize("with_master", [True, False])
+def test_the_v4300d_satellites_go_with_their_master(with_master):
+    """The LD-V4300D's satellites are sidebands of one modulated clock, less
+    narrow than its master line: they are kept with the master even when
+    spread over the long stretches, and left without it."""
+    import scipy.signal
+
+    fs, n = 40e6, 1 << 22
+    f0 = stack_corrections.EFM_XTAL_HZ / stack_corrections.XTAL_DIV
+    rng = np.random.default_rng(214)
+    t = np.arange(n) / fs
+    hold = 40000
+    slow = scipy.signal.lfilter(*scipy.signal.butter(2, 30 / 500), rng.normal(size=n // hold + 202))
+    swing = np.repeat(100.0 * slow[200:] / slow[200:].std(), hold)[:n]
+    spread = TAU * np.cumsum(swing) / fs
+    capture = 0.01 * rng.normal(size=n)
+    if with_master:
+        capture += 0.5 * np.cos(TAU * 96 * f0 * t)
+    for m in (95, 97):
+        capture += 0.5 * np.cos(TAU * m * f0 * t + spread)
+    ks = [95, 96, 97] if with_master else [95, 97]
+    # The detector follows the drift on the strongest line found.
+    strongest = 96 if with_master else 95
+
+    kept, _, reference = stack_corrections._check_lines(
+        _reader(capture), fs, True, stack_corrections.NTSC_LINE_HZ, n, 0, f0, ks, [], strongest
+    )
+
+    assert kept == ([95, 96, 97] if with_master else [])
+    assert reference == (96 if with_master else 0)

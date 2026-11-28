@@ -201,6 +201,45 @@ that high), and **any line with another one a line frequency away** - a
 still picture's RF is a comb, and without that guard a PAL still picture
 produced 183 false lines.
 
+**Every line found is then checked before it is subtracted.** A stretch of
+2^21 samples is about a field and a half: the disc's speed hardly moves
+there, so a line the disc itself carries looks as narrow as a clock, and on a
+short capture all four stretches fall in the same picture. On the ~1 s
+`testdata/radius` cuts the detection accepted 54 to 87 lines, most of them
+the picture's; subtracting them raised the blank-line noise of
+`ggv1011-side1-inner` from 1.68 to 2.18 IRE. The check, which needs no
+time-base correction and so is the same in both modes:
+
+- **Narrow over long stretches.** Four stretches of at least 8 frames (2^24
+  samples at 40 MHz, or what the capture holds). Over several rotations the
+  spindle's speed variations spread a line the disc carries, while a clock
+  stays narrow: the line's peak must hold 12 % of the power within 64 bins
+  of it in its three central bins, in every stretch. The disc's line at
+  0.97 MHz on `ggv1011-side1-inner` wanders by about ±500 Hz from one
+  stretch of 2^21 samples to the next, and holds 5 to 10 % over the long
+  ones; the clocks hold 16 to 94 %.
+- **Outside the disc's sensitive bands.** The EFM (up to 2 MHz) and the
+  analog audio carriers are continuous signals of the disc's that nothing in
+  the video interrupts: the lines in their bands are left.
+- **Not cut by the sync.** Each line's amplitude, in phase with it, is folded
+  on the position in the line and accumulated over the lines pass 0 locates
+  in the stretches (at least a field). A clock runs through the sync and the
+  blanking unchanged; what the video makes is interrupted every line. A
+  line is left only where the fold is clear (in-phase amplitude 8 times the
+  quadrature's, falling below 30 % of its mean somewhere in the line); one
+  too weak to judge is kept on the stretches' word.
+
+The LD-V4300D's satellites go with its master line, kept or left: they are
+the sidebands of one modulated clock, less narrow than the master, and the
+master subtracted without one of them raised the noise of
+`industrial-lv-side1-outer` from 3.25 to 3.46 IRE.
+
+Measured on four PAL cuts (blank-line noise, IRE: without the clock lines,
+before the check, with it): `ggv1011-side1-inner` 1.68, 2.18, 1.68;
+`ggv1011-side1-middle` 1.29, 1.62, 1.28; `domesday-ds2-community-north-inner`
+2.55, 2.56, 2.53; `industrial-lv-side1-outer` 3.25, 3.32, 3.26. The domesday
+cut's 69 lines kept of 75 are nearly all on the crystal's grid.
+
 Measured: **+0.09 dB** at 75 MHz, 37.41 to 37.55 dB at 40 MHz where more
 lines fold into the band, neutral in a stack (the captures' lines, at
 unrelated phases, already average down).
@@ -701,6 +740,12 @@ captures, before the stages below were compiled:
 On a real capture, which carries the clock lines to subtract, the read of the
 virtual stream runs at **0.54 M samples/s** instead (8 min 20 s for an hour
 of RF), and the build of the stack at 37 M samples/s.
+
+The check of the lines found, added since, reads four stretches of 2^24
+samples (at 40 MHz) and runs the line location over them, a few seconds per
+capture whatever its length. It pays for itself where it leaves lines: on
+`ggv1011-side1-inner` (`-t 1`) the default decode went from 41 to 28 s, 22
+lines subtracted instead of 87.
 
 ### On every core
 
