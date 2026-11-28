@@ -654,6 +654,21 @@ does, on any player and either system. That option is left out of the help:
 in either mode it warns and is left to the clock lines, unless
 `--no_crystal_lines` leaves them in (then it acts, on PAL).
 
+The option is the test the clock lines are held to: found on their own,
+they must do at least what it does on the player it was written for. On the
+three PAL cuts of `industrial-lv-side1` read on a V4300D (blank-line noise,
+IRE, the decoder's MTF and chroma servos held so that only the RF differs;
+paired change over 61 fields): inner 1.753, the option -0.285, the clock
+lines -0.373; middle 1.594, -0.027, -0.089; outer 2.511, -0.011, -0.039.
+With the servos running, on a 30-frame cut, the outer one read +0.315: the
+calibration had not settled when the input ended (its MTF level at -0.027
+against -0.111 without the lines), so the frames were decoded at another
+level; on a cut that short a servo's trajectory, not the RF, can make the
+difference.  Each line's phasor is measured block by block (2^16 samples):
+fitting one amplitude and a linear phase over each super-block instead
+gained a little on PAL and lost on the V4300D's modulated NTSC clock
+(`ggv1069-side1-ldv4300d-inner`, -0.081 to -0.069), so it is not done.
+
 ### Resample: the RF cleaned first
 
 As the reference implementation's `--tbc resample` does, `--tbc_mode
