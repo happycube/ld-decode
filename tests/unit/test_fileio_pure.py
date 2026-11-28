@@ -294,3 +294,13 @@ def test_unpack_round_trips_a_seeded_block(seeded_rng):
     # Bulk cover for the ordinary case: the hand-computed group above pins the
     # layout, this pins that it holds for every bit pattern in a seeded block.
     assert np.array_equal(unpacked, as_ddd_int16(samples[:-4]))
+
+
+# --- captures read at positions (open_capture) ---------------------------
+
+
+def test_a_format_that_cannot_be_read_at_positions_is_named():
+    from lddecode.fileio import open_capture
+
+    with pytest.raises(ValueError, match="compressed"):
+        open_capture("capture.mkv")

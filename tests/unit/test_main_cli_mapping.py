@@ -14,7 +14,7 @@ elsewhere, and which combinations are rejected outright.
 import pytest
 
 from lddecode import cut
-from lddecode.main import build_options, build_parser
+from lddecode.main import build_options, build_parser, resolve_io
 
 pytestmark = [pytest.mark.unit]
 
@@ -58,10 +58,18 @@ def test_an_unknown_flag_is_refused():
 
 
 def test_the_positionals_are_required():
-    with pytest.raises(SystemExit) as exit_info:
-        build_parser().parse_args(["capture.lds"])
+    """The positional form names both the capture and the output.
 
-    assert exit_info.value.code == 2
+    argparse cannot express "one of these two forms", so the positionals are
+    optional at the parser's level and the check happens in resolve_io();
+    see tests/unit/test_stack_cli.py.
+    """
+    args = build_parser().parse_args(["capture.lds"])
+    assert args.infile == "capture.lds"
+    assert args.outfile is None
+
+    with pytest.raises(ValueError, match="no output file name"):
+        resolve_io(args)
 
 
 @pytest.mark.parametrize("flag", ["--PAL", "-p", "--pal"])
@@ -308,15 +316,17 @@ def test_a_malformed_echo_tap_is_dropped_rather_than_crashing():
 def test_the_v4300d_options_apply_to_pal_only():
     """They exist for one PAL player's 8.4672 MHz clock spur; on NTSC the
     flags parse but must not reach the decoder."""
-    assert extra("-p", "--V4300D_coherent_subtract")["PAL_V4300D_CoherentSubtract"] is True
-    assert "PAL_V4300D_CoherentSubtract" not in extra("--V4300D_coherent_subtract")
+    assert extra("-p", "--no_crystal_lines",
+                 "--V4300D_coherent_subtract")["PAL_V4300D_CoherentSubtract"] is True
+    assert "PAL_V4300D_CoherentSubtract" not in extra("--no_crystal_lines",
+                                                      "--V4300D_coherent_subtract")
 
 
 def test_the_notch_switch_is_an_alias_for_the_coherent_subtract():
     """--V4300D_notch_filter/-V predates the coherent subtract; it now maps
     to the same (better) filter so existing command lines keep working."""
-    assert extra("-p", "-V")["PAL_V4300D_CoherentSubtract"] is True
-    assert "PAL_V4300D_CoherentSubtract" not in extra("-V")
+    assert extra("-p", "--no_crystal_lines", "-V")["PAL_V4300D_CoherentSubtract"] is True
+    assert "PAL_V4300D_CoherentSubtract" not in extra("--no_crystal_lines", "-V")
 
 
 def test_the_spur_filter_no_longer_defers():
@@ -332,10 +342,37 @@ def test_the_colour_notch_filter_applies_to_ntsc_only():
     assert "NTSC_ColorNotchFilter" not in extra("-p", "-N")
 
 
-def test_the_audio_carrier_canceller_is_opt_in_and_ntsc_only():
-    assert "AudioCarrierCancel" not in extra()
-    assert extra("--audio_carrier_cancel")["AudioCarrierCancel"] is True
-    assert "AudioCarrierCancel" not in extra("-p", "--audio_carrier_cancel")
+def test_the_decoder_does_not_cancel_the_crosstalk_itself():
+    """The crosstalk is taken out of the RF before the decoder reads it, in
+    either mode (the stacked source's model): the decoder has nothing of its
+    own to do, and no option for it."""
+    for argv in ((), ("-p",), ("--tbc_mode", "read")):
+        assert "AudioCarrierCancel" not in extra(*argv)
+
+
+def test_the_device_demodulates_in_either_mode():
+    """--device opencl runs the decoder's demodulation on the GPU, with the
+    resample TBC as with the read-time one; the CPU is the default."""
+    assert "DemodDevice" not in extra()
+    assert extra("--device", "opencl")["DemodDevice"] == "opencl"
+    assert extra("--device", "opencl", "--tbc_mode", "read")["DemodDevice"] == "opencl"
+
+
+def test_the_former_opt_in_is_gone():
+    """Rev 8's --audio_carrier_cancel is the default now: the option is
+    removed, so no one takes it for a switch that still does something."""
+    with pytest.raises(SystemExit):
+        extra("--audio_carrier_cancel")
+
+
+def test_the_clock_lines_take_the_v4300d_clock_in_either_mode():
+    """The clock lines take the V4300D's clock out by default, in either
+    mode; its own subtraction applies only where they are left in."""
+    for mode in ("resample", "read"):
+        assert "PAL_V4300D_CoherentSubtract" not in extra(
+            "-p", "--tbc_mode", mode, "--V4300D_coherent_subtract")
+        assert extra("-p", "--tbc_mode", mode, "--no_crystal_lines",
+                     "--V4300D_coherent_subtract")["PAL_V4300D_CoherentSubtract"] is True
 
 
 def test_the_vits_white_level_servo_is_opt_in():

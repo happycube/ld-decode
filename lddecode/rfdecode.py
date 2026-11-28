@@ -9,10 +9,12 @@ demodulates blocks of raw RF into video, analogue audio and EFM signals.
 Used by decoder.LDdecode, field.Field and the parallel field workers.
 """
 
+import collections
 import copy
 import os
 import threading
 import types
+import weakref
 
 import numpy as np
 import scipy.fft as npfft
@@ -31,6 +33,7 @@ from .params import (
     SysParams_PAL,
 )
 from .filters import (
+    block_cut_end,
     build_hilbert,
     calczc,
     emphasis_iir,
@@ -44,10 +47,6 @@ from .filters import (
     unwrap_hilbert,
 )
 from .dsp import (
-    band_baseband,
-    band_subtract,
-    coherent_line_estimate,
-    unit_phasor,
     compute_mtf,
     genwave,
     readout_compensation,
@@ -109,6 +108,41 @@ class _BlockScratch:
         self.centred = np.empty(demodlen, dtype=np.float32)
         # The video output stack: one filtered spectrum per channel.
         self.video_stack = np.empty((channels, ndemod), dtype=np.complex64)
+
+
+#: The OpenCL demodulator of each RFDecode with --device opencl, opened on
+#: first use (demodblocks); kept out of the object so that a copy or a
+#: pickle of it carries no device context.
+_DEVICE_DEMODS = weakref.WeakKeyDictionary()
+_DEVICE_LOCKS = collections.defaultdict(threading.Lock)
+_DEVICE_FAILED = set()
+
+
+def _device_demod(rf):
+    """rf's DemodOpenCL, opened on first call; None when it cannot be."""
+    if id(rf) in _DEVICE_FAILED:
+        return None
+    dev = _DEVICE_DEMODS.get(rf)
+    if dev is None:
+        try:
+            from .demod_opencl import DemodOpenCL
+            dev = DemodOpenCL(rf)
+        except Exception as error:
+            _device_failed(rf, error)
+            return None
+        _DEVICE_DEMODS[rf] = dev
+    return dev
+
+
+def _device_failed(rf, error):
+    """Give up the device for rf: its blocks go to the host from now on."""
+    import logging
+    if id(rf) not in _DEVICE_FAILED:
+        logging.getLogger("lddecode").warning(
+            "--device opencl: the GPU demodulator is not available (%s); "
+            "demodulating on the CPU", error)
+    _DEVICE_FAILED.add(id(rf))
+    _DEVICE_DEMODS.pop(rf, None)
 
 
 class RFDecode:
@@ -231,7 +265,9 @@ class RFDecode:
 
         self.NTSC_ColorNotchFilter = extra_options.get("NTSC_ColorNotchFilter", False)
         self.PAL_V4300D_CoherentSubtract = extra_options.get("PAL_V4300D_CoherentSubtract", False)
-        self.AudioCarrierCancel = extra_options.get("AudioCarrierCancel", False)
+        # --device opencl: demodblocks runs the blocks on the GPU
+        # (demod_opencl), opened on first use in each process.
+        self.demod_device = extra_options.get("DemodDevice", "cpu")
         # Cancel the capture/player multi-path reflection ("ghost").  Opt-in via
         # --rf_echo_cancel (auto-detect from the RF cepstrum, re-estimated across
         # the disc) or --rf_echo (manual taps); applies the correction only when
@@ -364,7 +400,9 @@ class RFDecode:
 
         # The 0.5mhz filter is rolled back to align with the data, so there
         # are a few unusable samples at the end.
-        self.blockcut_end = self.Filters["F05_offset"]
+        self.blockcut_end = block_cut_end(
+            self.Filters["F05_offset"], self.Filters.get("audio_fdiv", 1)
+        )
 
 
     def computefilters(self):
@@ -463,11 +501,13 @@ class RFDecode:
         # is built across self.blocklen bins, so a hard-coded length made the
         # EFM band-pass the one array that could not follow a changed block
         # length.  Identical at the shipped 32768.
-        # TODO: the Nyquist argument is still the 40 Msps literal; making it
-        # self.freq_hz_half would also correct a non-40 Msps input, which is a
-        # behaviour change and needs its own measurement.
+        # The Nyquist argument follows the input rate.  It was the 40 Msps
+        # literal (20 MHz), which put the band elsewhere at any other rate
+        # (37.5 kHz-3 MHz at 75 MHz); at 40 MHz the two are the same value,
+        # so the filter is unchanged bit for bit there.  The decoder runs at
+        # the capture's own rate in both TBC modes.
         self.Filters["Fefm"] *= gen_bpf_supergauss(
-            _sglow, _sghigh, _sgorder, 20000000, self.blocklen
+            _sglow, _sghigh, _sgorder, self.freq_hz_half, self.blocklen
         )
 
     def computeefmhalffilter(self):
@@ -1958,110 +1998,6 @@ class RFDecode:
         whole = self.v4300d_coherent_subtract(self.mirror_spectrum(indata_fft))
         return whole[: indata_fft.shape[0]]
 
-    #: Half-width of the RF band taken around each audio carrier for its
-    #: phase reference: NTSC's +-100 kHz deviation with room for the
-    #: sidebands of the loudest programme.
-    AUDIO_CANCEL_HALFBAND_HZ = 250e3
-    #: A carrier is used only when its band holds this many times the power
-    #: of the band beside it on the side away from the other carrier.
-    AUDIO_CANCEL_MIN_SNR = 5.0
-    #: Bins in the slice of the spectra the canceller works on, centred
-    #: between the carriers (+-1.25 MHz at NTSC's block length): room for
-    #: each carrier's phase band and the level's band on either side of
-    #: it, so that their product does not wrap.
-    AUDIO_CANCEL_SLICE = 2048
-    #: The level the coupling follows is the demod low-passed to here
-    #: (cos^2 taper, -6 dB at half this).
-    AUDIO_CANCEL_LEVEL_HZ = 500e3
-
-    def audio_carrier_cancel(self, indata_fft, spectrum, centre):
-        """Subtract the analog audio carriers' intermodulation lines from the
-        demodulated video's spectrum, in place.  Prototype, opt-in
-        (--audio_carrier_cancel).
-
-        The disc's pits carry the sum of the video and audio FM carriers,
-        hard-limited, so the video carrier picks up sidebands at fv +- fa
-        (and the readout's tilt turns any AM in them to PM).  Demodulated,
-        those land as lines at the audio carriers' own frequencies, with
-        the audio carriers' own phase: in NTSC at 2.30 and 2.81 MHz, inside
-        the luminance band.  Whatever mix of upper and lower sideband and of
-        AM and PM produces them, the line is Re(c * exp(j phi_a(t))) for one
-        complex c, phi_a being the carrier's phase in the RF; c moves with
-        the video level (the tilt the sidebands see depends on where the
-        carrier sits), so the model lets it follow the level linearly.  The
-        carrier is cut out of this block's RF and reduced to a unit phasor,
-        and the model is fitted over the block's kept span with a gain that
-        backs off for lines too weak to fit (see coherent_line_estimate).
-
-        All of it happens on slices of the spectra: spectrum is the rfft of
-        the demod less centre, indata_fft the RF block's.  The phase, the
-        demod around the carrier and the level are each a few thousand
-        bins, taken down to 0 Hz on a lattice every n/m samples
-        (band_baseband), and the fitted line goes back into spectrum's bins
-        the same way - no transform or product over the whole block.  So
-        the fit sees the demod as the video filters do, clipped to the
-        discriminator's range rather than to the video's, and demod_raw
-        (the dropout detector's) keeps its lines.
-
-        Only the phase reference is taken from the RF.  The RF below the
-        video band also carries a copy of the picture (the pits' duty
-        cycle), so regressing the video on the band's own signal, its
-        envelope included, would remove picture; the audio's phase is
-        independent of the picture.
-
-        Stateless per block, like v4300d_coherent_subtract.  A carrier the
-        disc does not carry (digital-only discs; AC3's QPSK right channel is
-        never used) is skipped, so the fit cannot chase noise.
-        """
-        SP = self.SysParams
-        bl = self.blocklen
-        n = 2 * (len(spectrum) - 1)
-        fpb = self.freq_hz / bl
-        hw = self.AUDIO_CANCEL_HALFBAND_HZ
-
-        def bandpower(f0, width):
-            lo, hi = int((f0 - width) / fpb), int((f0 + width) / fpb) + 1
-            return np.mean(sqsum(indata_fft[lo:hi]) ** 2)
-
-        carriers = [SP["audio_lfreq"]]
-        if not SP["AC3"]:
-            carriers.append(SP["audio_rfreq"])
-        mid = (SP["audio_lfreq"] + SP["audio_rfreq"]) / 2
-        # Against the flank away from the other carrier: a loud programme
-        # spreads each carrier +-150 kHz, into the gap between the two.
-        carriers = [
-            fa for fa in carriers
-            if bandpower(fa, hw) >= self.AUDIO_CANCEL_MIN_SNR * bandpower(
-                fa + (-1 if fa < mid else 1) * (hw + 150e3), 75e3)
-        ]
-        if not carriers:
-            return
-
-        # One slice holds both carriers, centred between them.  Its lattice:
-        # sample j is RF sample j*bl/m.
-        m = self.AUDIO_CANCEL_SLICE
-        lo = int(round(mid / fpb)) - m // 2
-        fit = slice(-(-self.blockcut * m // bl), (bl - self.blockcut_end) * m // bl)
-        fs = self.freq_hz * m / bl
-
-        # The level the coupling follows, 100 IRE = 1.
-        kl = int(self.AUDIO_CANCEL_LEVEL_HZ / fpb)
-        low = np.zeros(m // 2 + 1, dtype=np.complex128)
-        low[:kl] = spectrum[:kl] * np.cos(0.5 * np.pi * np.arange(kl) / kl) ** 2
-        level = ((npfft.irfft(low, m) * (m / n) + centre - SP["ire0"])
-                 / (100 * SP["hz_ire"]))
-
-        video = band_baseband(spectrum, lo, m, n)
-        lines = np.zeros(m, dtype=np.complex128)
-        for fa in carriers:
-            k, hwb = int(round(fa / fpb)) - lo, int(hw / fpb)
-            phasor = unit_phasor(
-                band_baseband(indata_fft, lo, m, bl, slice(k - hwb, k + hwb + 1)))
-            line, _ = coherent_line_estimate(video, phasor, level, fit, fs)
-            video -= line
-            lines += line
-        band_subtract(spectrum, lines, lo, n)
-
     def demodblock_sync(self, data=None, fftdata=None, cut=False):
         """Demodulate only the 0.5 MHz path used for vertical-sync detection.
 
@@ -2274,8 +2210,6 @@ class RFDecode:
         np.clip(demod, 1500000, self.freq_hz_demod * 0.75, out=demod)
         np.subtract(demod, centre, out=centred)
         spectrum = npfft.rfft(centred)
-        if self.AudioCarrierCancel and self.SysParams["analog_audio"]:
-            self.audio_carrier_cancel(indata_fft, spectrum, centre)
         video_results = npfft.irfft(
             np.multiply(
                 spectrum,
@@ -2315,35 +2249,64 @@ class RFDecode:
         # NOTE: AC3 RF is demodulated from the raw input samples at write time
         # (see LDdecode.AC3demodulate), not from the demod outputs here.
         if self.decode_analog_audio:
-            stage1_out = []
-            for channel in ['left', 'right']:
-                afilter = self.audio[channel]
-
-                # Apply first stage audio filter
-                a1 = npfft.ifft(afilter.slicer(indata_fft) * afilter.filt1)
-                # Demodulate and restore frequency after bin slicing
-                a1u = unwrap_hilbert(a1, afilter.a1_freq) + afilter.low_freq
-
-                stage1_out.append(a1u)
-
-            # Cast on assignment, as the video channels above do.
-            audio_out = np.recarray(
-                stage1_out[0].shape[0],
-                dtype=[("audio_left", np.float32), ("audio_right", np.float32)],
-            )
-            audio_out["audio_left"] = stage1_out[0]
-            audio_out["audio_right"] = stage1_out[1]
-
-            fdiv = video_out.shape[0] // audio_out.shape[0]
-            rv["audio"] = (
-                audio_out[self.blockcut // fdiv : -self.blockcut_end // fdiv]
-                if cut
-                else audio_out
-            )
+            rv["audio"] = self.audio_stage1(indata_fft, video_out.shape[0], cut)
 
         rv['setupcount'] = self.setupcount
 
         return rv
+
+    def uses_device_demod(self):
+        """Whether demodblocks runs on an OpenCL device (--device opencl,
+        and the device opened)."""
+        return self.demod_device == "opencl" and _device_demod(self) is not None
+
+    def demodblocks(self, blocks, mtf_level=0, cut=True):
+        """``[self.demodblock(data=b, mtf_level=mtf_level, cut=cut) for b in
+        blocks]``: on the OpenCL device, a batch at a time, with
+        --device opencl and a configuration it covers; otherwise, or should
+        the device fail, on the host."""
+        if self.demod_device == "opencl":
+            dev = _device_demod(self)
+            if dev is not None and dev.supported():
+                try:
+                    with _DEVICE_LOCKS[id(self)]:
+                        return dev.demod(list(blocks), mtf_level, cut)
+                except Exception as error:   # the device fell over: the host
+                    _device_failed(self, error)
+        return [self.demodblock(data=b, mtf_level=mtf_level, cut=cut)
+                for b in blocks]
+
+    def audio_stage1(self, indata_fft, video_len, cut):
+        """The analog audio's first stage of a block, from the positive half
+        of its spectrum: each carrier's bins sliced out, filtered,
+        demodulated and moved back to its frequency.  ``video_len`` is the
+        block's video length before the cut (the audio is decimated from
+        it).  The device demodulator (demod_opencl) calls it too."""
+        stage1_out = []
+        for channel in ['left', 'right']:
+            afilter = self.audio[channel]
+
+            # Apply first stage audio filter
+            a1 = npfft.ifft(afilter.slicer(indata_fft) * afilter.filt1)
+            # Demodulate and restore frequency after bin slicing
+            a1u = unwrap_hilbert(a1, afilter.a1_freq) + afilter.low_freq
+
+            stage1_out.append(a1u)
+
+        # Cast on assignment, as the video channels are.
+        audio_out = np.recarray(
+            stage1_out[0].shape[0],
+            dtype=[("audio_left", np.float32), ("audio_right", np.float32)],
+        )
+        audio_out["audio_left"] = stage1_out[0]
+        audio_out["audio_right"] = stage1_out[1]
+
+        fdiv = video_len // audio_out.shape[0]
+        return (
+            audio_out[self.blockcut // fdiv : -self.blockcut_end // fdiv]
+            if cut
+            else audio_out
+        )
 
     # Second phase audio filtering.  This works on a whole field's samples, since
     # the frequency has already been reduced.

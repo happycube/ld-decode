@@ -80,6 +80,26 @@
 set(ANALYSIS_DIR ${CMAKE_SOURCE_DIR}/analysis)
 set(TESTDATA_DIR ${CMAKE_SOURCE_DIR}/testdata)
 
+# Every decode a VITS conformance test reads - the radius cuts, the two whole
+# captures and the calibrated cuts of the "vits" label, and the functional
+# lane's ntsc-cvbs and pal-cvbs (with pal-cvbs-parallel, which is compared
+# with it byte for byte) - leaves the RF as it is: the analog audio
+# carriers' crosstalk, the clock lines and the chroma leak, which both TBC
+# modes take out by default (--no_audio_carrier_cancel --no_crystal_lines
+# --no_chroma_leak), as the decoder did when the known deviations were
+# recorded.  The cancellations' corrections are small, but these tests
+# average the opening fields, where rev 8's servos are still adopting: a
+# servo's first move after the calibration warm-up is not rate-limited, and
+# a correction of a few hundredths of a dB moves which frame it lands in.
+# On ve-monitor the video EQ's estimate sits on its 0.3 dB dead-band, and
+# the cancellation moved its adoption from frame 2 to frame 5, out of the
+# averaged fields (2T 97.73 -> 97.41 IRE).  The tests gate rev 8's
+# calibration on the opening frames; the cancellations are tested by their own
+# unit tests (test_stack_corrections.py, test_stack.py), and the default
+# (cleaned) decode of the PAL radius cuts by its own lane, against its own
+# list (add_vits_cleaned_cut, below).
+set(VITS_DECODE_FLAGS --no_audio_carrier_cancel --no_crystal_lines --no_chroma_leak)
+
 # Every decode below writes here.  Created at configure time so that "ctest"
 # in a fresh build directory works on its own; the CI workflows' "mkdir -p
 # build/testout" predates this and is now redundant rather than required.
@@ -280,7 +300,7 @@ set_tests_properties(analyze-ntsc-patterns PROPERTIES
 add_test(
     NAME decode-ntsc-cvbs
     COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
-        --cvbs -l 6
+        --cvbs -l 6 ${VITS_DECODE_FLAGS}
         ${TESTDATA_DIR}/ntsc/ve-snw-cut.ldf
         ${CMAKE_BINARY_DIR}/testout/ntsc-cvbs
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
@@ -312,7 +332,7 @@ set_tests_properties(verify-ntsc-cvbs PROPERTIES
 add_test(
     NAME decode-pal-cvbs
     COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
-        --cvbs --PAL -l 6 -t 1
+        --cvbs --PAL -l 6 -t 1 ${VITS_DECODE_FLAGS}
         ${TESTDATA_DIR}/pal/ggv-mb-1khz.ldf
         ${CMAKE_BINARY_DIR}/testout/pal-cvbs
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
@@ -346,7 +366,7 @@ set_tests_properties(verify-pal-cvbs PROPERTIES
 add_test(
     NAME decode-pal-cvbs-parallel
     COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
-        --cvbs --PAL -l 6 -t 8 --exact-speculation
+        --cvbs --PAL -l 6 -t 8 --exact-speculation ${VITS_DECODE_FLAGS}
         ${TESTDATA_DIR}/pal/ggv-mb-1khz.ldf
         ${CMAKE_BINARY_DIR}/testout/pal-cvbs-parallel
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
@@ -618,6 +638,8 @@ set_tests_properties(conformance-pal-vits PROPERTIES
 # Both halves carry the "vits" label, so "ctest -L vits" is the whole sweep
 # and "ctest -LE vits" is everything else - which is how the CI workflow runs
 # them as two jobs without decoding anything twice.
+#
+# Every decode here goes through VITS_DECODE_FLAGS (set at the top).
 
 function(add_vits_radius_cut label system)
     set(system_flag "")
@@ -628,7 +650,7 @@ function(add_vits_radius_cut label system)
     add_test(
         NAME decode-${label}-cvbs
         COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
-            --cvbs ${system_flag} --exact-speculation
+            --cvbs ${system_flag} --exact-speculation ${VITS_DECODE_FLAGS}
             ${TESTDATA_DIR}/radius/${label}.ldf
             ${CMAKE_BINARY_DIR}/testout/${label}
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
@@ -693,6 +715,55 @@ foreach(cut IN LISTS VITS_RADIUS_NTSC_CUTS)
     add_vits_radius_cut(${cut} NTSC)
 endforeach()
 
+# The PAL radius cuts again, decoded as a user decodes them: the RF cleaned
+# (the clock lines and the analog audio carriers' crosstalk taken out, the
+# default; no VITS_DECODE_FLAGS).  The sweep above gates rev 8's decode of
+# the RF as it is; this gates what the default decode makes of the same
+# cuts, against its own list, analysis/vits_known_deviations_cleaned.toml.
+# Neither list stands in for the other: the cleaning moves readings both
+# ways (three --no_* deviations of domesday-ds2-community-north pass here,
+# and taking the LD-V4300D's clock out of industrial-lv-side1-inner moves a
+# 2T reading under its band, as rev 8's --V4300D_coherent_subtract does).
+# The manifest and the lists name a capture by its file's basename, so the
+# decodes go to testout/cleaned/ under the cut's own name.
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/testout/cleaned)
+
+function(add_vits_cleaned_cut label)
+    add_test(
+        NAME decode-${label}-cleaned-cvbs
+        COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
+            --cvbs --PAL --exact-speculation
+            ${TESTDATA_DIR}/radius/${label}.ldf
+            ${CMAKE_BINARY_DIR}/testout/cleaned/${label}
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    )
+    set_tests_properties(decode-${label}-cleaned-cvbs PROPERTIES
+        LABELS "functional;slow;vits"
+        FIXTURES_SETUP ${label}-cleaned-cvbs
+        TIMEOUT 1800
+    )
+
+    add_test(
+        NAME conformance-${label}-cleaned-vits
+        COMMAND ${Python3_EXECUTABLE} ${ANALYSIS_DIR}/vits_conformance.py
+            ${CMAKE_BINARY_DIR}/testout/cleaned/${label}.cvbs
+            --manifest ${TESTDATA_DIR}/vits-manifest.json
+            --known-deviations ${ANALYSIS_DIR}/vits_known_deviations_cleaned.toml
+            --json ${CMAKE_BINARY_DIR}/testout/cleaned/${label}.conformance.json
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    )
+    set_tests_properties(conformance-${label}-cleaned-vits PROPERTIES
+        LABELS "functional;vits"
+        FIXTURES_REQUIRED ${label}-cleaned-cvbs
+        PASS_REGULAR_EXPRESSION "VITS CONFORMANCE: (PASS|SKIPPED)"
+        TIMEOUT 600
+    )
+endfunction()
+
+foreach(cut IN LISTS VITS_RADIUS_PAL_CUTS)
+    add_vits_cleaned_cut(${cut})
+endforeach()
+
 # ---------------------------------------------------------------------------
 # VITS conformance on whole captures
 # ---------------------------------------------------------------------------
@@ -723,7 +794,7 @@ function(add_vits_capture_conformance label system capture)
     add_test(
         NAME decode-${label}-cvbs
         COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
-            --cvbs ${system_flag} --exact-speculation
+            --cvbs ${system_flag} --exact-speculation ${VITS_DECODE_FLAGS}
             ${TESTDATA_DIR}/${capture}
             ${CMAKE_BINARY_DIR}/testout/${label}
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
@@ -785,7 +856,8 @@ function(add_vits_calibrated_cut label system)
     add_test(
         NAME decode-${label}-calibrated-cvbs
         COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
-            --cvbs ${system_flag} --exact-speculation --calibration_frames 10
+            --cvbs ${system_flag} --exact-speculation ${VITS_DECODE_FLAGS}
+            --calibration_frames 10
             ${TESTDATA_DIR}/radius/${label}.ldf
             ${CMAKE_BINARY_DIR}/testout/calibrated/${label}
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}

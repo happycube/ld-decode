@@ -44,7 +44,7 @@ from .metrics import (
     staircase_linearity,
 )
 from .dsp import (FieldInfo, concatenate_blocks, nb_abs, readout_cutoff_from_tilt,
-                  roundfloat, video_eq_db)
+                  readout_otf, roundfloat, video_eq_db)
 
 
 def applied_eq_db(applied_eq, freq_hz):
@@ -59,6 +59,24 @@ def applied_eq_db(applied_eq, freq_hz):
         return 0.0
     top = max(applied_eq[-1][0] + 1.0e6, freq_hz)
     return float(video_eq_db(applied_eq, freq_hz, top))
+
+
+def _device_demod_in_use(rf):
+    """Whether rf demodulates on the GPU (--device opencl); False for an rf
+    without that path (the tests' stand-ins)."""
+    uses = getattr(rf, "uses_device_demod", None)
+    return bool(uses()) if uses is not None else False
+
+
+def _demod_raw_blocks(decoder, raws, mtf_level):
+    """Demodulate a window's raw blocks: one by one on the host
+    (decoder._demod_raw_block), or as one batch on the GPU with
+    --device opencl (RFDecode.demodblocks)."""
+    if not raws:
+        return []
+    if _device_demod_in_use(decoder.rf):
+        return decoder.rf.demodblocks(raws, mtf_level, cut=True)
+    return [decoder._demod_raw_block(r, mtf_level) for r in raws]
 
 
 def pool_reading(pool, entry, keep):
@@ -439,7 +457,7 @@ class LDdecode:
                         eq_taps=_eq_taps,
                     )
                 else:
-                    self.efm_pll = efm_pll.EFM_PLL()
+                    self.efm_pll = efm_pll.EFM_PLL(float(inputfreq) * 1e6)
                     # Gear-shift / fast-reacquire PLL: ON by default.  While the loop
                     # is locked it runs bit-for-bit identical to the original fixed-gain
                     # loop, so clean discs are unchanged; it only speeds pull-in on cold
@@ -2429,10 +2447,16 @@ class LDdecode:
         cutoff = readout_cutoff_from_tilt(
             ratio, f_lo, f_hi, DP["readout_rim_intensity"])
         if cutoff is None:
-            # No tilt (or none to measure) is a cutoff far above the band;
-            # a tilt steeper than any cutoff above f_hi gives is the
-            # deepest compensation the bound allows.
-            return self.READOUT_LEVEL_MAX if ratio > 1.0 else 0.0
+            # No tilt (or none to measure), or less than a cutoff fifty
+            # times f_hi gives, is a cutoff far above the band; only a
+            # tilt steeper than any cutoff just above f_hi gives is the
+            # deepest compensation the bound allows.  (Reading the first
+            # case as the second took a PAL carrier tilt of 1.001 to a
+            # 7.3 MHz cutoff, under which no sync was found again.)
+            rim = DP["readout_rim_intensity"]
+            limit = readout_otf(f_lo, f_hi * 1.0001, rim) / max(
+                readout_otf(f_hi, f_hi * 1.0001, rim), 1e-12)
+            return self.READOUT_LEVEL_MAX if ratio > limit else 0.0
         return float(np.clip(DP["readout_ref_cutoff_hz"] / cutoff,
                              0.0, self.READOUT_LEVEL_MAX))
 
@@ -3045,10 +3069,13 @@ class LDdecode:
         blocksize = self.demod_blocksize
         brange = range(begin // blocksize, ((begin + length) // blocksize) + 1)
 
+        device = _device_demod_in_use(self.rf)
         if (self.block_cache is not None and self.pipeline_warm
-                and self._job_engine is None):
+                and self._job_engine is None and not device):
             # Blocks come from the prefetching thread pool; identical values
-            # to the inline path (same per-block computation).
+            # to the inline path (same per-block computation).  With
+            # --device opencl the window goes to the GPU as one batch
+            # instead, below.
             blockdata = self.block_cache.get_span(
                 brange, MTF,
                 self.rf.DecoderParams.get("inverse_mtf_strength", 0.0),
@@ -3067,21 +3094,20 @@ class LDdecode:
             if span is None or len(span) < span_len:
                 blockdata = None
             else:
-                blockdata = []
-                for b in brange:
-                    off = (b - brange.start) * blocksize
-                    rawinput = span[off : off + self.rf.blocklen]
-                    blockdata.append(
-                        (rawinput, self._demod_raw_block(rawinput, MTF))
-                    )
+                raws = [span[(b - brange.start) * blocksize:
+                             (b - brange.start) * blocksize + self.rf.blocklen]
+                        for b in brange]
+                blockdata = list(zip(raws, _demod_raw_blocks(self, raws, MTF)))
         else:
-            blockdata = []
+            raws = []
             for b in brange:
                 rawinput = self._read_raw_block(b)
                 if rawinput is None:
-                    blockdata = None
+                    raws = None
                     break
-                blockdata.append((rawinput, self._demod_raw_block(rawinput, MTF)))
+                raws.append(rawinput)
+            blockdata = (None if raws is None
+                         else list(zip(raws, _demod_raw_blocks(self, raws, MTF))))
 
         truncated = False
         if blockdata is None:
@@ -3123,7 +3149,7 @@ class LDdecode:
         vertical sync it needs, are all in the file.  Every path reads
         the tail here, block by block, so a serial and a threaded decode
         see the same window."""
-        blockdata = []
+        raws = []
         for b in brange:
             if self.block_cache is not None:
                 with self.block_cache.read_lock:
@@ -3132,7 +3158,8 @@ class LDdecode:
                 rawinput = self._read_raw_block(b)
             if rawinput is None:
                 break
-            blockdata.append((rawinput, self._demod_raw_block(rawinput, MTF)))
+            raws.append(rawinput)
+        blockdata = list(zip(raws, _demod_raw_blocks(self, raws, MTF)))
 
         if len(blockdata) * self.demod_blocksize < self.rf.linelen * self.output_lines:
             return None

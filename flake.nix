@@ -27,6 +27,17 @@
         # dirtyShortRev format is "abc1234-dirty", so replace "-" with "."
         fullVersion = "${version}+git.${builtins.replaceStrings ["-"] ["."] gitCommit}";
         
+        # --device opencl: the decoder's demodulation, and the stacked source's
+        # read and combination, on a GPU.
+        # pyopencl loads the vendor drivers through ocl-icd (on NixOS from
+        # /run/opengl-driver; elsewhere set OCL_ICD_VENDORS=/etc/OpenCL/vendors).
+        # Left out on a platform where nixpkgs does not build it, where the
+        # decode runs on the CPU and --device opencl says pyopencl is missing.
+        openclPackages = pkgs.lib.optionals
+          (pkgs.lib.meta.availableOn pkgs.stdenv.hostPlatform pythonPackages.pyopencl
+            && !(pythonPackages.pyopencl.meta.broken or false))
+          [ pythonPackages.pyopencl ];
+
         # External tools the installed commands shell out to at runtime.
         # These are prefixed onto PATH rather than replacing it, so anything
         # else the user has installed remains reachable.
@@ -71,7 +82,7 @@
             numba
             numpy
             scipy
-          ];
+          ] ++ openclPackages;
           
           # Write PEP-440 compliant version file with git info
           preBuild = ''
@@ -153,7 +164,7 @@
             pythonPackages.pytest
             pythonPackages.pytest-cov
             docsEnv
-          ];
+          ] ++ openclPackages;
           
           shellHook = ''
             echo "ld-decode development environment"

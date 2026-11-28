@@ -1,0 +1,1840 @@
+"""
+stack_corrections - signal corrections applied to a stacked RF capture
+
+SPDX-License-Identifier: GPL-3.0-or-later
+SPDX-FileCopyrightText: 2026 ld-decode contributors
+
+Three corrections the stacking pipeline applies to the RF it reads:
+
+- `cancel_crosstalk` takes out of the stream the part of the demodulated
+  video that follows the two analog audio carriers.  On the disc they leak
+  into the video carrier's phase; the leak is the same on every copy (one
+  soundtrack), so no stacking removes it.
+- `cancel_chroma_leak` takes out of the stream the composite chroma that
+  leaks into the RF baseband around the colour subcarrier: it beats with the
+  video carrier and makes the fine wavering vertical stripes of saturated
+  areas, the NTSC "colour wobble".
+- `CrystalLines` finds the narrow clock lines a capture carries (the
+  player's EFM decoder crystal and the capture board's clocks) and subtracts
+  them from the samples as they are read.
+
+This module is a layer 0/1 primitive: pure signal maths over NumPy arrays,
+with no file, network or clock access of its own.  The reader a caller
+supplies is the only way data enters it, so the module is hermetically
+testable.
+
+Ported from the Rust implementation in `crates/ld-decode-cli/src/stack.rs`
+of the ld-decode-rust project (branch `vrunk11_main`).
+"""
+
+from __future__ import annotations
+
+import logging
+import math
+from collections import OrderedDict
+from typing import Callable, Optional, Sequence
+
+import numpy as np
+import scipy.fft
+
+from .stack_kernels import (
+    crosstalk_phase_kernel,
+    line_phasors_kernel,
+    turn_back_kernel,
+    narrow_band_kernel,
+    subtract_lines_kernel,
+)
+
+_logger = logging.getLogger(__name__)
+
+__all__ = [
+    "cancel_crosstalk",
+    "cancel_chroma_leak",
+    "CrystalLines",
+    "AUDIO_CARRIERS_HZ",
+    "PAL_AUDIO_CARRIERS_HZ",
+    "XTALK_KEEP_HZ",
+    "PAL_XTALK_KEEP_HZ",
+    "LEAK_BAND_HZ",
+    "EFM_XTAL_HZ",
+    "XTAL_DIV",
+    "LINE_EXCLUDE_HZ",
+    "PAL_LINE_EXCLUDE_HZ",
+    "NTSC_LINE_HZ",
+    "PAL_LINE_HZ",
+]
+
+TAU = 2.0 * math.pi
+
+# --------------------------------------------------------------------------
+# Audio crosstalk cancellation
+# --------------------------------------------------------------------------
+
+#: The analog audio carriers (Hz), NTSC and PAL.
+AUDIO_CARRIERS_HZ = (2.301136e6, 2.8125e6)
+PAL_AUDIO_CARRIERS_HZ = (0.68359375e6, 1.06640625e6)
+
+#: Length of each of the three cascaded boxcars that take a carrier out of
+#: the RF (seconds): ~150 kHz around it, wide enough for its deviation.
+XTALK_BOX_S = 320.0 / 75.0e6
+
+#: The correction fades in and out over this much at each chunk's edges
+#: (seconds), where the boxcars run out of signal: so it is continuous from
+#: one chunk to the next.
+XTALK_TAPER_S = 1024.0 / 75.0e6
+
+#: The correction is kept above this raised-cosine edge (Hz, NTSC; PAL: its
+#: video band split): the video is demodulated from above it, the audio
+#: carriers and the EFM sit below.
+XTALK_KEEP_HZ = (3.0e6, 3.6e6)
+PAL_XTALK_KEEP_HZ = (1.9e6, 2.4e6)
+
+#: The carriers, once at 0 Hz, are kept every this many samples.
+XTALK_DEC = 16
+
+#: A carrier counts as present (the disc carries analog audio there) when
+#: its band (+-XTALK_HALFBAND_HZ) holds XTALK_MIN_SNR times the power of the
+#: spectrum beside it, on the side away from the other carrier (rev 8's
+#: --audio_carrier_cancel test).  An absent carrier is not fitted: a
+#: digital-only disc's EFM there would only be chased.
+XTALK_HALFBAND_HZ = 250e3
+XTALK_MIN_SNR = 5.0
+
+#: The demodulated video's level the coupling follows: the instantaneous
+#: frequency through two boxcars of this long (seconds).
+XTALK_LEVEL_S = 1e-6
+
+#: Which carriers are corrected at all: the crosstalk is a property of the
+#: disc and the player, so its coupling is the same all through a capture,
+#: while what the picture puts near a carrier by chance is not.  The line's
+#: fit (c0 + c1 level) is made on XTALK_STEADY_CHUNKS chunks spread over
+#: the capture; a carrier is corrected when the c0 of the chunks where it is
+#: modulated (its instantaneous frequency spread at least
+#: XTALK_SILENT_HZ: a silent carrier is a pure tone, which a still
+#: picture's line can match) spreads under XTALK_STEADY of their pooled c0,
+#: over at least two such chunks, and the pooled fit stands over its
+#: off-frequency controls.  A carrier silent throughout is left.
+XTALK_STEADY_CHUNKS = 8
+XTALK_STEADY = 0.25
+XTALK_SILENT_HZ = 3000.0
+#: The fit's off-frequency controls (dsp.coherent_line_estimate's).
+_XTALK_CONTROLS_HZ = (37e3, -53e3)
+
+#: FFT length of the correction's high-pass, and the context it takes on
+#: each side of each block (seconds).
+XTALK_FFT_LEN = 1 << 15
+XTALK_OV_S = 2048.0 / 75.0e6
+
+#: Kept samples per span of running sums of the full-rate boxcar.
+XTALK_BOX_SPAN = 1024
+
+# --------------------------------------------------------------------------
+# Chroma leak cancellation (NTSC)
+# --------------------------------------------------------------------------
+
+#: The band the leak is fitted in (rising and falling raised-cosine edges,
+#: Hz: the chroma, 3.58 MHz +- 0.6), the lags of its fit (`LEAK_TAPS` lags
+#: `LEAK_STEP` samples apart, centred), and the fit's sample stride.
+LEAK_BAND_HZ = ((2.9e6, 3.1e6), (4.1e6, 4.3e6))
+LEAK_TAPS = 13
+LEAK_STEP = 2
+LEAK_FIT_STRIDE = 7
+
+#: A chunk is corrected only where the leak explains at least this share of
+#: the RF's chroma band (a disc or a stretch with no leak is left untouched).
+LEAK_MIN_SHARE = 0.05
+
+#: FFT length of the band filter (overlap-save blocks: enough of them to
+#: share out over the cores).
+LEAK_FFT_LEN = 1 << 15
+
+#: Fit samples per parallel span of the normal equations.
+LEAK_FIT_SPAN = 1 << 12
+
+# --------------------------------------------------------------------------
+# Crystal lines
+# --------------------------------------------------------------------------
+
+#: A player's EFM decoder crystal (384 x 44.1 kHz) and the divisor its lines
+#: in the RF are multiples of (its 192nd, 88.2 kHz).
+EFM_XTAL_HZ = 16.9344e6
+XTAL_DIV = 192.0
+
+#: The crystal is looked for within this fraction of `EFM_XTAL_HZ`.
+XTAL_SEARCH = 2e-3
+
+#: Detection spectrum: FFT length, stretches of the capture (spread over it;
+#: a steady line is in all), and the span around a bin its floor is the
+#: median of (Hz).
+XTAL_FFT = 1 << 21
+XTAL_SEGMENTS = 4
+XTAL_FLOOR_HZ = 20e3
+
+#: Power over the floor for the crystal itself to count as found, and for a
+#: multiple to be subtracted (10 dB both: a power ratio of ten).
+XTAL_FIND = 10.0
+XTAL_KEEP = 10.0
+
+#: Lines above this are left: nothing the decoder reads reaches that high
+#: (its video band ends at 13.8 MHz); nor below `XTAL_LOW_HZ`.
+XTAL_TOP_HZ = 14.5e6
+#: The LD-V4300D's digital-audio master clock is the crystal's 96th multiple
+#: (192 x 44.1 kHz = 8.4672 MHz), modulated: its satellites sit 88.2 and
+#: 176.4 kHz either side, the 94th to the 98th multiples but the 96th (rev 8
+#: observed the 95th, 97th and 98th on PAL; the GGV1069 capture read on a
+#: V4300D, NTSC, carries the 94th and 95th at 9.6 and 5.3 times the floor,
+#: against 2.1 and 2.6 on another player).  They stand below XTAL_KEEP.
+#: Where the master clock is found, they are kept from XTAL_SATELLITE_KEEP
+#: (rev 8's V4300D_SAT_MIN_MED), unless they are a still picture's comb.
+#: The reference keeps none of them.
+V4300D_MASTER_MULTIPLE = 96
+V4300D_SATELLITE_MULTIPLES = (94, 95, 97, 98)
+XTAL_SATELLITE_KEEP = 3.0
+XTAL_LOW_HZ = 0.3e6
+
+#: Where the disc's own signal makes steady lines, left out of the other
+#: lines (Hz, NTSC then PAL): the analog audio carriers (a pure tone in
+#: silence), the chroma leak's band, and the video carrier's swing (its
+#: blanking and sync levels repeat line after line).
+LINE_EXCLUDE_HZ = ((2.1e6, 2.5e6), (2.6e6, 3.0e6), (3.2e6, 4.0e6), (7.3e6, 9.6e6))
+PAL_LINE_EXCLUDE_HZ = ((0.48e6, 0.88e6), (0.86e6, 1.27e6), (4.0e6, 4.9e6), (6.4e6, 8.3e6))
+
+#: The line frequency of the picture (Hz, NTSC then PAL): a still picture's
+#: RF is a comb of lines this far apart, which must not be taken for a
+#: clock line.
+NTSC_LINE_HZ = 15734.264
+PAL_LINE_HZ = 15625.0
+
+#: Samples a line's amplitude and phase are measured over, and the
+#: super-blocks the crystal's drift is followed on (aligned on the capture,
+#: so every read of a sample cleans it alike); super-blocks kept measured.
+XTAL_BLOCK = 1 << 16
+XTAL_SUPER = 1 << 22
+XTAL_CACHE = 16
+
+#: Samples between the exact seeds of a line's phasor in `clean`.
+XTAL_SEED = 1024
+
+#: The check of the lines found, before any is subtracted.  A short stretch
+#: (`XTAL_FFT`) cannot tell a clock from the disc's own steady signal: over
+#: a few fields the disc's speed hardly moves, so a line it carries looks as
+#: narrow there as a clock, and a still picture's lines are in every
+#: stretch.  So every line found is looked at again:
+#:
+#: - over stretches at least `XTAL_CHECK_FRAMES` frames long (a power of
+#:   two, or what the capture holds), where the spindle's speed variations
+#:   spread a line the disc carries while a clock stays narrow: in every
+#:   stretch the line's peak must hold `XTAL_SHARP` of the power within
+#:   `_SHARP_WIDE` bins of it in its `_SHARP_CORE` bins either side (white
+#:   noise: 3 / 129), within `XTAL_DRIFT` of where it was found (a
+#:   crystal's slow drift over a long capture);
+#: - outside the bands the disc's continuous signals occupy (the EFM, the
+#:   analog audio carriers), which nothing in the video interrupts;
+#: - not cut by the sync: the line's amplitude, folded on the position in
+#:   the line (`XTAL_FOLD_BINS` bins, windows of `XTAL_FOLD_WINDOW_S`, its
+#:   phase taken per `XTAL_FOLD_BLOCK_S`) and accumulated over the lines
+#:   located in the stretches, at least a field of them.  A clock runs
+#:   through the sync and the blanking unchanged; what the video makes is
+#:   interrupted every line.  A line is dropped only where the fold says so
+#:   clearly: in-phase amplitude `XTAL_CUT_SNR` times the quadrature's, and
+#:   falling below `XTAL_CUT_FLOOR` of its mean somewhere in the line.  A
+#:   line too weak for the fold to judge is kept on the stretches' word.
+XTAL_CHECK_FRAMES = 8
+XTAL_SHARP = 0.12
+_SHARP_CORE = 1
+_SHARP_WIDE = 64
+XTAL_DRIFT = 20e-6
+XTAL_SENSITIVE_HZ = ((0.0, 2.0e6), (2.1e6, 2.5e6), (2.6e6, 3.0e6))
+PAL_XTAL_SENSITIVE_HZ = ((0.0, 2.0e6),)
+XTAL_FOLD_BINS = 16
+XTAL_FOLD_WINDOW_S = 1.6e-6
+XTAL_FOLD_BLOCK_S = 6.5e-3
+XTAL_CUT_SNR = 8.0
+XTAL_CUT_FLOOR = 0.3
+
+#: The lines the disc itself carries (an optional cleaning, ``--disc_lines``,
+#: read-time TBC only): a clock that leaked into the signal at mastering is
+#: on the disc, so it follows the disc's speed, spread in the capture's time
+#: and narrow on the disc's.  It is found on the primary capture's RF read on
+#: its own located lines over `XTAL_SEGMENTS` stretches of at least
+#: `XTAL_CHECK_FRAMES` frames, and taken only on every count:
+#:
+#: - narrow on the disc's timeline (`XTAL_SHARP` in every stretch), at least
+#:   `XTAL_KEEP` over the floor (the median within `DISC_FLOOR_HZ`);
+#: - spread in the capture's time (under `XTAL_SHARP` there; a line narrow in
+#:   both is a capture's clock, `CrystalLines`' work);
+#: - outside the sensitive bands (EFM, analog audio carriers);
+#: - no neighbour at a line, frame or field rate's distance (the picture's
+#:   combs);
+#: - continuous through the sync, and that confirmed: folded on the
+#:   position in the line as `_cut_by_the_sync` folds, on the disc's
+#:   timeline, the line's in-phase amplitude must be `XTAL_CUT_SNR` times
+#:   the quadrature's and never below `DISC_CONTINUOUS` of its mean.  A line
+#:   too weak to be judged is left: what is taken from the disc's own signal
+#:   must be shown not to be the picture.
+#:
+#: Each line is then subtracted from each chunk of the stream, its phasor
+#: measured over the chunk, the phase referenced to the stream's first
+#: sample, so a sample gets the same value whatever order the chunks are
+#: computed in.
+DISC_FLOOR_HZ = 20e3
+DISC_CONTINUOUS = 0.7
+#: A neighbour that makes a line a comb's tooth: within 30 dB of it.
+DISC_COMB_DB = 1e-3
+
+#: Bins between the samples the spectrum's floor is taken at.
+_FLOOR_STEP = 128
+
+#: Neighbouring bins a line must be a local maximum over to be a line.
+_XTAL_PEAK_HALFWIDTH = 3
+
+
+# --------------------------------------------------------------------------
+# Small shared helpers
+# --------------------------------------------------------------------------
+
+
+def _raised_cosine(f: np.ndarray, lo: float, hi: float) -> np.ndarray:
+    """A raised-cosine edge: 0 at and below `lo`, 1 at and above `hi` (Hz)."""
+    f = np.asarray(f, dtype=np.float64)
+    if hi <= lo:
+        return (f >= hi).astype(np.float64)
+    g = np.zeros(f.shape, dtype=np.float64)
+    mid = (f > lo) & (f < hi)
+    g[f >= hi] = 1.0
+    g[mid] = 0.5 - 0.5 * np.cos(math.pi * (f[mid] - lo) / (hi - lo))
+    return g
+
+
+def _boxcar(x: np.ndarray, length: int) -> np.ndarray:
+    """A centred moving average of `x` over `length` samples.
+
+    The window runs from `i - length // 2` to `i - length // 2 + length`,
+    clipped to the array at both ends (the start is zero-padded, the end
+    truncated), and the sum is divided by `length`.
+    """
+    m = x.shape[0]
+    if m == 0:
+        return x.copy()
+    c = np.concatenate((np.zeros(1, dtype=x.dtype), np.cumsum(x)))
+    idx = np.arange(m)
+    lo = np.maximum(0, idx - length // 2)
+    hi = np.minimum(lo + length, m)
+    return (c[hi] - c[lo]) / length
+
+
+def _solve_linear(a: np.ndarray, b: np.ndarray) -> Optional[np.ndarray]:
+    """Solve `a x = b` by Gaussian elimination with partial pivoting.
+
+    Returns None when the matrix is singular (the Rust's `solve_n`).
+    """
+    a = np.array(a, dtype=np.float64, copy=True)
+    b = np.array(b, dtype=np.float64, copy=True)
+    n = b.shape[0]
+    for c in range(n):
+        # The reference keeps the last of the equal maxima.
+        column = np.abs(a[c:, c])
+        p = c + int(len(column) - 1 - np.argmax(column[::-1]))
+        if not np.isfinite(a[p, c]) or abs(a[p, c]) < 1e-300:
+            return None
+        if p != c:
+            a[[c, p]] = a[[p, c]]
+            b[[c, p]] = b[[p, c]]
+        for r in range(c + 1, n):
+            f = a[r, c] / a[c, c]
+            a[r, c:] -= f * a[c, c:]
+            b[r] -= f * b[c]
+    x = np.zeros(n, dtype=np.float64)
+    for c in range(n - 1, -1, -1):
+        x[c] = (b[c] - a[c, c + 1 :] @ x[c + 1 :]) / a[c, c]
+    return x
+
+
+def _instant_frequency(video_band: np.ndarray, fs: float) -> np.ndarray:
+    """The video band's instantaneous frequency in Hz, one value per sample.
+
+    Sample 0 reads zero: the phase advance needs the previous sample.
+    """
+    out = np.zeros(video_band.shape[0], dtype=np.float64)
+    prod = video_band[1:] * np.conj(video_band[:-1])
+    out[1:] = np.angle(prod) * fs / TAU
+    return out
+
+
+def _edge_taper(t: np.ndarray, n: int, taper: int) -> np.ndarray:
+    """The raised-cosine fade at a chunk's edges (1 in the middle)."""
+    if taper <= 0:
+        return np.ones(t.shape, dtype=np.float64)
+    e = np.minimum(t, n - 1 - t)
+    g = np.ones(t.shape, dtype=np.float64)
+    edge = e < taper
+    g[edge] = 0.5 - 0.5 * np.cos(math.pi * e[edge] / taper)
+    return g
+
+
+# --------------------------------------------------------------------------
+# Audio crosstalk cancellation
+# --------------------------------------------------------------------------
+
+
+def _carrier_narrow_band(
+    out: np.ndarray, w: float, dec: int, boxl: int, box_span: int
+) -> np.ndarray:
+    """A carrier mixed down to 0 Hz, kept every `dec` samples.
+
+    `w` is the carrier's frequency as a negative phase step (-2 pi f / fs),
+    so the mixing down is by `exp(+j w t)`.  The narrow band is a boxcar of
+    `boxl` full-rate samples taken from running sums over spans of
+    `box_span` kept samples, so the memory used does not grow with the
+    chunk's length.
+    """
+    n = out.shape[0]
+    nd = -(-n // dec)
+    first = np.zeros(nd, dtype=np.complex128)
+    for k0 in range(0, nd, box_span):
+        k1 = min(k0 + box_span, nd)
+        lo0 = max(0, k0 * dec - boxl // 2)
+        hi1 = min(max(0, (k1 - 1) * dec - boxl // 2) + boxl, n)
+        if hi1 <= lo0:
+            continue
+        t = np.arange(lo0, hi1)
+        sums = np.concatenate(
+            (np.zeros(1, dtype=np.complex128), np.cumsum(out[lo0:hi1] * np.exp(1j * w * t)))
+        )
+        lo = np.maximum(0, np.arange(k0, k1) * dec - boxl // 2)
+        hi = np.minimum(lo + boxl, n)
+        first[k0:k1] = (sums[hi - lo0] - sums[lo - lo0]) / boxl
+    return first
+
+
+def _carrier_interp(narrow: np.ndarray, dec: int, t: np.ndarray) -> np.ndarray:
+    """The carrier's narrow band at the positions `t`, read back by linear
+    interpolation between the kept samples."""
+    k = t // dec
+    a = (t % dec) / dec
+    k1 = np.minimum(k + 1, narrow.shape[0] - 1)
+    return np.where(k + 1 < narrow.shape[0], narrow[k] * (1.0 - a) + narrow[k1] * a, narrow[k])
+
+
+
+def _crosstalk_narrow(
+    rf: np.ndarray, fs: float, carriers: Sequence[float]
+) -> tuple[list, list]:
+    """Each carrier mixed down to 0 Hz and through the three cascaded
+    boxcars (the first in the compiled kernel, as _carrier_narrow_band takes
+    it), kept every `XTALK_DEC` samples; and the carriers' phase steps."""
+    n = rf.shape[0]
+    dec = XTALK_DEC
+    boxl = max(int(round(XTALK_BOX_S * fs)), 1)
+    box_d = max(int(round(boxl / dec)), 1)
+    ws = [-TAU * f / fs for f in carriers]
+    narrow = []
+    rf64 = np.ascontiguousarray(rf, dtype=np.float64)
+    for w in ws:
+        first = np.empty(-(-n // dec), dtype=np.complex128)
+        narrow_band_kernel(rf64, w, dec, boxl, XTALK_BOX_SPAN, first)
+        narrow.append(_boxcar(_boxcar(first, box_d), box_d))
+    return narrow, ws
+
+
+
+def _carriers_present(rf: np.ndarray, fs: float, carriers: Sequence[float]) -> list[bool]:
+    """Which of the analog audio carriers the chunk carries (see
+    `XTALK_HALFBAND_HZ`), from a Welch spectrum of 32768-sample pieces."""
+    seg = 1 << 15
+    n = rf.shape[0]
+    if n < seg:
+        return [False] * len(carriers)
+    win = 0.5 - 0.5 * np.cos(TAU * np.arange(seg) / seg)
+    power = np.zeros(seg // 2 + 1)
+    step = max(seg, (n - seg) // 16)
+    for a in range(0, n - seg + 1, step):
+        spec = scipy.fft.rfft(rf[a : a + seg] * win)
+        power += spec.real**2 + spec.imag**2
+    bin_hz = fs / seg
+
+    def band(f0, width):
+        lo, hi = int((f0 - width) / bin_hz), int((f0 + width) / bin_hz) + 1
+        lo, hi = max(lo, 0), min(hi, power.shape[0])
+        return power[lo:hi].mean() if hi > lo else 0.0
+
+    mid = sum(carriers) / len(carriers)
+    out = []
+    for fa in carriers:
+        side = fa + (-1.0 if fa < mid else 1.0) * (XTALK_HALFBAND_HZ + 150e3)
+        out.append(band(fa, XTALK_HALFBAND_HZ) >= XTALK_MIN_SNR * band(side, 75e3))
+    return out
+
+
+def _boxcar_same(x: np.ndarray, length: int) -> np.ndarray:
+    """A centred moving average of `length` samples, the ends held."""
+    if length <= 1:
+        return np.array(x, dtype=np.float64, copy=True)
+    c = np.concatenate(([0.0], np.cumsum(x, dtype=np.float64)))
+    mean = (c[length:] - c[:-length]) / length
+    pad = length - 1
+    return np.concatenate((np.full(pad // 2, mean[0]), mean, np.full(pad - pad // 2, mean[-1])))
+
+
+def _crosstalk_view(
+    rf64: np.ndarray,
+    fs: float,
+    carriers: Sequence[float],
+    keep_band: tuple[float, float],
+    decoder_filter: Optional[tuple[np.ndarray, np.ndarray]],
+    blank_hz: float,
+) -> dict:
+    """What the crosstalk's fit works on, for one chunk: the RF's spectrum
+    and the decoder's response on its bins, the analytic view of the RF
+    through that response (no DC), and, kept every `XTALK_DEC` samples,
+    each carrier's narrow band and the demodulated video's around it, the
+    video level, and the fit's span."""
+    n = rf64.shape[0]
+    taper = int(round(XTALK_TAPER_S * fs))
+    spec = scipy.fft.rfft(rf64)
+    freqs = np.arange(spec.shape[0]) * (fs / n)
+    if decoder_filter is None:
+        # The video band: the RF above the keep band.
+        response = _raised_cosine(freqs, keep_band[0], keep_band[1]).astype(np.complex128)
+    else:
+        fgrid, hgrid = decoder_filter
+        hgrid = np.asarray(hgrid, dtype=np.complex128)
+        response = np.interp(freqs, fgrid, hgrid.real) + 1j * np.interp(freqs, fgrid, hgrid.imag)
+    full = np.zeros(n, dtype=np.complex128)
+    full[: spec.shape[0]] = spec * response
+    # No DC: what is left of the capture's offset after centring is not the
+    # same from one sample format to another (a .r30 against a .s16).
+    full[0] = 0.0
+    view = scipy.fft.ifft(full)
+    # Its demodulated video, the level the coupling follows, and the rest
+    # (where the lines are) taken down around each carrier.
+    freq = np.empty(n, dtype=np.float64)
+    freq[1:] = np.angle(view[1:] * np.conj(view[:-1])) * (fs / TAU)
+    freq[0] = freq[1]
+    np.clip(freq, 1.5e6, 0.45 * fs, out=freq)
+    box = max(1, int(round(XTALK_LEVEL_S * fs)))
+    low = _boxcar_same(_boxcar_same(freq, box), box)
+    dec = XTALK_DEC
+    narrow_rf, ws = _crosstalk_narrow(rf64, fs, carriers)
+    narrow_video, _ = _crosstalk_narrow(freq - low, fs, carriers)
+    m = narrow_video[0].shape[0]
+    level = ((low - blank_hz) / 1e6)[::dec]
+    if level.shape[0] != m:
+        level = np.resize(level, m)
+    return {
+        "taper": taper, "spec": spec, "freqs": freqs, "response": response, "view": view,
+        "narrow_rf": narrow_rf, "narrow_video": narrow_video, "ws": ws, "level": level,
+        "fit": slice(-(-taper // dec), (n - taper) // dec),
+    }
+
+
+def steady_carriers(
+    read_fn: Callable[[int, int], np.ndarray],
+    length: int,
+    fs: float,
+    carriers: Sequence[float],
+    keep_band: tuple[float, float],
+    decoder_filter: Optional[tuple[np.ndarray, np.ndarray]] = None,
+    blank_hz: float = 0.0,
+) -> list[bool]:
+    """Which carriers' crosstalk is corrected on this capture (see
+    `XTALK_STEADY`): the line's fit on `XTALK_STEADY_CHUNKS` chunks spread
+    over it, through the same view as `cancel_crosstalk`'s.  Chunks of 2^21
+    samples, or of what a short capture holds in two (at least 2^15)."""
+    from .dsp import unit_phasor
+
+    length = int(length)
+    n = 1 << 21
+    while n > (1 << 15) and 2 * n > length:
+        n >>= 1
+    if length < n:
+        _logger.info("audio crosstalk: the capture is too short to measure the coupling; left")
+        return [False] * len(carriers)
+    count = max(2, min(XTALK_STEADY_CHUNKS, length // n))
+    room = length - n
+    dec = XTALK_DEC
+    lsfs = fs / dec
+    pooled = [None] * len(carriers)
+    per_chunk = [[] for _ in carriers]
+    for k in range(count):
+        at = room * k // (count - 1)
+        rf64 = np.asarray(read_fn(at, n), dtype=np.float64)
+        if rf64.shape[0] < n:
+            rf64 = np.concatenate((rf64, np.zeros(n - rf64.shape[0])))
+        present = _carriers_present(rf64, fs, carriers)
+        if not any(present):
+            continue
+        v = _crosstalk_view(rf64, fs, carriers, keep_band, decoder_filter, blank_hz)
+        a0, a1, _ = v["fit"].indices(v["level"].shape[0])
+        lv = v["level"][a0:a1]
+        idx = np.arange(a0, a1)
+        gram = np.array([[lv.size, lv.sum()], [lv.sum(), (lv * lv).sum()]])
+        for c in range(len(carriers)):
+            if not present[c]:
+                continue
+            phasor = unit_phasor(v["narrow_rf"][c])[a0:a1]
+            # The carrier's own modulation: its instantaneous frequency's
+            # spread.
+            modulation = float(np.std(np.angle(phasor[1:] * np.conj(phasor[:-1]))) * lsfs / TAU)
+            z = 2.0 * v["narrow_video"][c][a0:a1] * np.conj(phasor)
+            rhs = [np.array([zz.sum(), (zz * lv).sum()])
+                   for zz in [z] + [z * np.exp(-2j * np.pi * off * idx / lsfs)
+                                    for off in _XTALK_CONTROLS_HZ]]
+            if pooled[c] is None:
+                pooled[c] = [np.zeros((2, 2)), [np.zeros(2, dtype=np.complex128) for _ in rhs]]
+            pooled[c][0] += gram
+            for j, r in enumerate(rhs):
+                pooled[c][1][j] += r
+            if modulation < XTALK_SILENT_HZ:
+                continue
+            try:
+                per_chunk[c].append(complex(np.linalg.solve(gram, rhs[0])[0]))
+            except np.linalg.LinAlgError:
+                pass
+    kept = []
+    for c, fa in enumerate(carriers):
+        if pooled[c] is None:
+            _logger.info("audio crosstalk %.3f MHz: no carrier; left", fa / 1e6)
+            kept.append(False)
+            continue
+        gram, rhs = pooled[c]
+        try:
+            inv = np.linalg.inv(gram)
+        except np.linalg.LinAlgError:
+            kept.append(False)
+            continue
+
+        def power(b):
+            cc = inv @ b
+            m_, s1, s2 = gram[0, 0], gram[0, 1], gram[1, 1]
+            return cc, 0.5 * (abs(cc[0]) ** 2 * m_ + 2 * (cc[0] * np.conj(cc[1])).real * s1
+                              + abs(cc[1]) ** 2 * s2) / m_
+
+        cc, line_power = power(rhs[0])
+        control = float(np.mean([power(b)[1] for b in rhs[1:]]))
+        stands = line_power > 0 and control < line_power
+        c0s = np.array(per_chunk[c])
+        if c0s.shape[0] < 2:
+            _logger.info("audio crosstalk %.3f MHz: modulated in fewer than two of %d chunks; left",
+                         fa / 1e6, count)
+            kept.append(False)
+            continue
+        spread = float(np.sqrt(np.mean(np.abs(c0s - cc[0]) ** 2)) / max(abs(cc[0]), 1e-30))
+        keep = stands and spread < XTALK_STEADY
+        _logger.info("audio crosstalk %.3f MHz: coupling %.0f Hz, spread %.0f %% over %d modulated "
+                     "chunks; %s", fa / 1e6, abs(cc[0]), 100.0 * spread, c0s.shape[0],
+                     "corrected" if keep else "left")
+        kept.append(bool(keep))
+    return kept
+
+
+def cancel_crosstalk(
+    out: np.ndarray,
+    fs: float,
+    carriers: tuple[float, float],
+    keep_band: tuple[float, float],
+    decoder_filter: Optional[tuple[np.ndarray, np.ndarray]] = None,
+    blank_hz: float = 0.0,
+    kept: Optional[Sequence[bool]] = None,
+) -> np.ndarray:
+    """Remove the analog audio carriers' crosstalk from the RF.
+
+    The disc's pits carry the video and audio FM carriers together, so the
+    video carrier picks up sidebands at the audio carriers' distance; what
+    the decoder sees of them, demodulated through its own video filter and
+    readout compensation, is a line at each audio carrier's frequency that
+    follows that carrier's phase, its amplitude moving with the video level
+    (rev 8's --audio_carrier_cancel, which takes it out of the demodulated
+    video).  Here it is taken out of the RF, before the decoder's
+    compensation lifts it:
+
+    - each carrier the chunk carries (`XTALK_MIN_SNR`; an absent one is
+      left) gives the phase reference, its band cut out of the RF;
+    - the RF is seen as the decoder sees it, through ``decoder_filter``
+      (the frequencies and the complex response of its video filter times
+      its readout compensation, on the positive half; None: the RF above
+      keep_band, flat), and its instantaneous frequency is taken down around each
+      carrier, so the picture elsewhere does not enter the fit;
+    - the line locked to the carrier is fitted with an amplitude that
+      follows the video level (``blank_hz`` is its zero) and backs off when
+      it is too weak to tell from what else is there
+      (dsp.coherent_line_estimate);
+    - the phase the lines integrate to is taken off that view of the RF,
+      and the change is taken back to the RF through the filter's inverse,
+      kept above ``keep_band`` (the audio carriers and the EFM below are
+      left alone), so that what the decoder's filter makes of the corrected
+      RF is the line taken out.
+
+    ``kept`` names the carriers corrected at all (`steady_carriers`, once
+    per capture; None: every one the chunk carries).  Beyond it only this
+    chunk's samples are used, so the same correction is made wherever it is
+    computed.  Returns a NEW array (`out`'s dtype); the input is not
+    modified.
+    """
+    from .dsp import coherent_line_estimate, unit_phasor
+
+    rf = np.asarray(out)
+    n = rf.shape[0]
+    result = np.array(rf, copy=True)
+    taper = int(round(XTALK_TAPER_S * fs))
+    if n == 0 or n < 4 * taper:
+        return result
+    rf64 = np.asarray(rf, dtype=np.float64)
+    present = _carriers_present(rf64, fs, carriers)
+    if kept is not None:
+        present = [p and bool(k) for p, k in zip(present, kept)]
+    if not any(present):
+        return result
+    v = _crosstalk_view(rf64, fs, carriers, keep_band, decoder_filter, blank_hz)
+    view, response, freqs, spec = v["view"], v["response"], v["freqs"], v["spec"]
+    narrow_rf, narrow_video, ws = v["narrow_rf"], v["narrow_video"], v["ws"]
+    level, fit, dec = v["level"], v["fit"], XTALK_DEC
+
+    lines, steps, turns = [], [], []
+    for c, fa in enumerate(carriers):
+        if not present[c]:
+            continue
+        line, gain = coherent_line_estimate(
+            2.0 * narrow_video[c], unit_phasor(narrow_rf[c]), level, fit, fs / dec)
+        if gain <= 0.0:
+            continue
+        lines.append(line)
+        steps.append(ws[c])
+        turns.append(float(fa))
+    if not lines:
+        return result
+    # The lines (Hz) integrate to a phase: over a turn of each carrier,
+    # Re(line exp(j w t)) / (j fa), faded at the chunk's edges.
+    theta = np.empty(n, dtype=np.float64)
+    crosstalk_phase_kernel(np.ascontiguousarray(np.array(lines, dtype=np.complex128)),
+                           np.asarray(steps, dtype=np.float64),
+                           np.asarray(turns, dtype=np.float64), dec, taper, theta)
+
+    # The phase taken off the decoder's view, back through the filter's
+    # inverse to the RF, above the keep band.
+    turned = np.empty(n, dtype=np.complex128)
+    turn_back_kernel(view, theta, turned)
+    change = scipy.fft.fft(turned)[: spec.shape[0]]
+    mag = np.abs(response)
+    usable = mag > 1e-3 * mag.max()
+    correction = np.where(usable, change / np.where(usable, response, 1.0), 0.0)
+    correction *= _raised_cosine(freqs, keep_band[0], keep_band[1])
+    result += scipy.fft.irfft(correction, n).astype(result.dtype, copy=False)
+    return result
+
+
+# --------------------------------------------------------------------------
+# Chroma leak cancellation
+# --------------------------------------------------------------------------
+
+
+def _leak_bands(
+    video_band: np.ndarray,
+    x: np.ndarray,
+    fs: float,
+    rise: tuple[float, float],
+    fall: tuple[float, float],
+) -> tuple[np.ndarray, np.ndarray]:
+    """The two signals through a band of raised-cosine edges.
+
+    Returns the video band's instantaneous frequency (Hz) and the RF, both
+    through the band (rising edge `rise`, falling edge `fall`), by
+    overlap-save FFT blocks, each signal through a real FFT of its own (the
+    reference carries the pair in one complex FFT, which ties the RF's
+    rounding to the frequency's magnitude).
+    """
+    n = x.shape[0]
+    size = LEAK_FFT_LEN
+    ov = min(max(int(round(XTALK_OV_S * fs)), 1), size // 4)
+    step = size - 2 * ov
+    # The gain is real and even, so it is the same for both halves of the
+    # spectrum: the bin's frequency is its distance from DC.
+    bins = np.arange(size)
+    freq = np.minimum(bins, size - bins) * fs / size
+    gain = _raised_cosine(freq, rise[0], rise[1]) * (1.0 - _raised_cosine(freq, fall[0], fall[1]))
+    half_gain = gain[: size // 2 + 1]
+
+    inst = _instant_frequency(video_band, fs)
+    oc = np.zeros(n, dtype=np.float32)
+    orr = np.zeros(n, dtype=np.float32)
+    for blk in range((n + step - 1) // step):
+        s0 = blk * step
+        t = np.arange(s0 - ov, s0 - ov + size)
+        inside = (t >= 0) & (t < n)
+        tc = np.clip(t, 0, max(n - 1, 0))
+        re = np.where(inside & (t >= 1), inst[tc], 0.0)
+        im = np.where(inside, x[tc], 0.0)
+        # Each through its own transform: carried as the real and imaginary
+        # parts of one, the RF's rounding error followed the frequency's
+        # magnitude (some 1e7 Hz), not its own, so the same disc was cleaned
+        # otherwise at another scale (a .r30 against the same samples in a
+        # .s16).
+        yc = scipy.fft.irfft(scipy.fft.rfft(re) * half_gain, n=size)
+        yr = scipy.fft.irfft(scipy.fft.rfft(im) * half_gain, n=size)
+        cnt = min(step, n - s0)
+        oc[s0 : s0 + cnt] = yc[ov : ov + cnt]
+        orr[s0 : s0 + cnt] = yr[ov : ov + cnt]
+    return oc, orr
+
+
+def _subtract_leak(out: np.ndarray, leak: np.ndarray) -> None:
+    """The leak is taken out of the RF in place, in double precision.
+
+    The difference is computed in double precision and rounded once, as the
+    reference does: rounding the leak first would round it twice.
+    """
+    out[...] = (out.astype(np.float64) - leak).astype(out.dtype)
+
+
+def cancel_chroma_leak(
+    out: np.ndarray,
+    video_band: np.ndarray,
+    fs: float,
+    band: tuple[tuple[float, float], tuple[float, float]],
+) -> np.ndarray:
+    """Remove the composite chroma that leaks into the RF baseband (NTSC).
+
+    The chroma beats with the video carrier (carrier minus 3.58 MHz) and
+    makes the fine wavering vertical stripes of saturated areas.  The chroma
+    is the demodulated video band's instantaneous frequency through the
+    band; the RF's same band is fitted on it, shifted by `LEAK_TAPS` lags
+    `LEAK_STEP` apart (least squares, every `LEAK_FIT_STRIDE`-th sample:
+    the picture's own RF there does not follow it), and the fit subtracted,
+    fading in and out at the chunk's edges.  Only this chunk's samples are
+    used, so the same correction is made wherever it is computed.
+
+    Parameters:
+        out: the RF chunk (real, float32 or float64), length N.
+        video_band: the analytic video band of the SAME chunk (complex,
+            length N).
+        fs: the sample rate in Hz.
+        band: `((rise_lo, rise_hi), (fall_lo, fall_hi))`, the pass band's
+            edges in Hz.
+
+    Returns:
+        A NEW array (a copy of `out`, same dtype) with the leak taken out.
+        When the leak explains less than `LEAK_MIN_SHARE` of the RF's
+        chroma band, the chunk is returned byte for byte as it was.
+        Neither input is modified.
+    """
+    rf = np.asarray(out)
+    v = np.asarray(video_band)
+    n = rf.shape[0]
+    result = np.array(rf, copy=True)
+    if n == 0 or v.shape[0] < n:
+        return result
+
+    taper = int(round(XTALK_TAPER_S * fs))
+    half = LEAK_TAPS // 2 * LEAK_STEP
+    if n < 4 * taper + 2 * half:
+        return result
+
+    c, r = _leak_bands(v, rf, fs, band[0], band[1])
+    lags = np.arange(LEAK_TAPS) * LEAK_STEP - half
+
+    # The normal equations, summed over fixed spans and the spans added in
+    # order: the same sums whatever the thread count.  Only the upper
+    # triangle is accumulated, and the matrix is symmetrised afterwards, as
+    # the reference does.
+    fit = np.arange(taper + half, n - taper - half, LEAK_FIT_STRIDE)
+    if fit.size < LEAK_TAPS:
+        return result
+    ata = np.zeros((LEAK_TAPS, LEAK_TAPS), dtype=np.float64)
+    aty = np.zeros(LEAK_TAPS, dtype=np.float64)
+    yy = 0.0
+    for a in range(0, fit.size, LEAK_FIT_SPAN):
+        ts = fit[a : a + LEAK_FIT_SPAN]
+        rows = c[ts[:, None] + lags[None, :]].astype(np.float64)
+        target = r[ts].astype(np.float64)
+        upper = np.triu(rows.T @ rows)
+        ata += upper
+        aty += rows.T @ target
+        yy += float(target @ target)
+    ata = ata + np.triu(ata, 1).T
+
+    h = _solve_linear(ata, aty)
+    if h is None:
+        return result
+
+    # Share of the RF's chroma band the leak explains: below LEAK_MIN_SHARE
+    # there is no leak to speak of, and the chunk is left as it is.
+    share = float(h @ aty) / max(yy, 1e-300)
+    if not (share >= LEAK_MIN_SHARE):
+        return result
+
+    # The predicted leak, taken out of the RF, faded in and out at the edges.
+    # The subtraction is done in double precision and rounded once, as the
+    # reference does.
+    span = 1 << 14
+    for a in range(half, n - half, span):
+        b = min(a + span, n - half)
+        t = np.arange(a, b)
+        leak = c[t[:, None] + lags[None, :]].astype(np.float64) @ h
+        leak *= _edge_taper(t, n, taper)
+        _subtract_leak(result[a:b], leak)
+    return result
+
+
+# --------------------------------------------------------------------------
+# Crystal lines
+# --------------------------------------------------------------------------
+
+
+def _capture_length(read_fn: Callable[[int, int], np.ndarray]) -> int:
+    """The capture's length in samples, found by probing `read_fn`.
+
+    `read_fn(start, count)` must return up to `count` samples, fewer only
+    at the end of the capture; a read past the end may also raise.  The
+    length is found with a doubling probe and a binary search, so no more
+    than a handful of samples are read.
+    """
+    try:
+        first = read_fn(0, 1)
+    except Exception:  # pragma: no cover - an unreadable capture
+        return 0
+    if len(first) == 0:
+        return 0
+
+    def present(at: int) -> bool:
+        try:
+            return len(read_fn(at, 1)) > 0
+        except Exception:
+            return False
+
+    hi = 1
+    while present(hi):
+        hi *= 2
+        if hi > 1 << 40:
+            break
+    lo = 0
+    while lo + 1 < hi:
+        mid = (lo + hi) // 2
+        if present(mid):
+            lo = mid
+        else:
+            hi = mid
+    return lo + 1
+
+
+def _spectrum_floor(p: np.ndarray, h: int, step: int) -> np.ndarray:
+    """The median of the spectrum within `h` bins, taken every `step` bins."""
+    m = p.shape[0]
+    n_out = (m + step - 1) // step
+    out = np.zeros(n_out, dtype=np.float64)
+    if m == 0:
+        return out
+    width = 2 * h
+    if width <= m:
+        wins = np.lib.stride_tricks.sliding_window_view(p, width)
+        for a in range(0, n_out, 64):
+            idx = np.arange(a, min(a + 64, n_out))
+            start = idx * step - h
+            ok = (start >= 0) & (start + width <= m)
+            if np.any(ok):
+                out[idx[ok]] = np.partition(wins[start[ok]], h, axis=1)[:, h]
+            for j in idx[~ok]:
+                lo = max(0, j * step - h)
+                hi = min(j * step + h, m)
+                w = np.sort(p[lo:hi])
+                out[j] = w[w.shape[0] // 2]
+    else:
+        for j in range(n_out):
+            lo = max(0, j * step - h)
+            hi = min(j * step + h, m)
+            w = np.sort(p[lo:hi])
+            out[j] = w[w.shape[0] // 2]
+    return out
+
+
+def _floor_lookup(floor_sum: np.ndarray, m: int, step: int) -> np.ndarray:
+    """The floor of every bin, from the medians taken every `step` bins."""
+    if floor_sum.shape[0] == 0:
+        return np.zeros(m, dtype=np.float64)
+    idx = np.minimum(np.arange(m) // step, floor_sum.shape[0] - 1)
+    return floor_sum[idx]
+
+
+def _parabolic_offset(p: np.ndarray, k: int) -> float:
+    """The offset of a spectral peak's bin from its parabolic vertex."""
+    if k + 1 >= p.shape[0]:
+        return 0.0
+    with np.errstate(divide="ignore", invalid="ignore"):
+        # The reference reads the bin before the peak, or the peak itself
+        # when it is the first one.
+        lg = np.log(p[[max(k - 1, 0), k, k + 1]])
+        d = lg[0] - 2.0 * lg[1] + lg[2]
+        off = 0.5 * (lg[0] - lg[2]) / d
+    if not np.isfinite(d) or d >= 0.0:
+        return 0.0
+    return float(off)
+
+
+def _peak(p: np.ndarray, b: int, w: int) -> tuple[int, float]:
+    """The highest bin within `w` bins of `b`, with its parabolic offset."""
+    lo = max(0, b - w)
+    hi = min(b + w, p.shape[0] - 2)
+    if hi < lo:
+        return b, 0.0
+    # The reference keeps the last of the equal maxima.
+    window = p[lo : hi + 1]
+    k = lo + int(len(window) - 1 - np.argmax(window[::-1]))
+    return k, _parabolic_offset(p, k)
+
+
+class _CrystalBlock:
+    """The lines over one super-block of the capture.
+
+    `XTAL_SUPER` samples from `k * XTAL_SUPER`: the EFM crystal's frequency
+    there, and every line's complex amplitude on each `XTAL_BLOCK` within
+    it (the EFM lines first, then the others).  The amplitudes are phasors
+    referenced to the super-block's first sample.
+    """
+
+    __slots__ = ("f0", "amps")
+
+    def __init__(self, f0: float, amps: list[np.ndarray]) -> None:
+        self.f0 = f0
+        self.amps = amps
+
+
+class CrystalLines:
+    """The narrow clock lines a capture carries, and their subtraction.
+
+    Two kinds: the player's EFM decoder crystal (found near
+    `EFM_XTAL_HZ`), whose lines are the multiples of its 192nd
+    (`XTAL_DIV`, 88.2 kHz) that stand out of the spectrum, its drift
+    followed as it goes; and any other line that stands out at one
+    frequency all through the capture (the player's 4fsc video clock, the
+    capture board's clocks, and at a low sample rate what of them folds
+    down), outside the bands where the disc's own signal makes steady
+    lines.
+
+    The class is not thread-safe: its measured-block cache is shared state.
+    """
+
+    def __init__(
+        self,
+        *,
+        read_fn: Callable[[int, int], np.ndarray],
+        fs: float,
+        f0: float,
+        ks: Sequence[int],
+        reference: int,
+        others: Sequence[float],
+        length: int,
+    ) -> None:
+        self._read_fn = read_fn
+        self.fs = float(fs)
+        #: The EFM crystal's 192nd (Hz).
+        self.f0 = float(f0)
+        #: The multiples of the 192nd that are subtracted.
+        self.ks = tuple(int(k) for k in ks)
+        #: The strongest of them: the drift is followed on it.
+        self.reference = int(reference)
+        #: The other lines (Hz).
+        self.others = tuple(float(f) for f in others)
+        #: The capture's length in samples.
+        self.length = int(length)
+        self._cache: OrderedDict[int, _CrystalBlock] = OrderedDict()
+
+    # -- properties -------------------------------------------------------
+
+    @property
+    def has_lines(self) -> bool:
+        """Whether any line was found (and so `clean` has work to do)."""
+        return bool(self.ks or self.others)
+
+    @property
+    def lines(self) -> tuple[float, ...]:
+        """Every line's frequency (Hz): the EFM multiples then the others."""
+        return tuple(m * self.f0 for m in self.ks) + tuple(self.others)
+
+    # -- detection --------------------------------------------------------
+
+    @classmethod
+    def detect(
+        cls,
+        read_fn: Callable[[int, int], np.ndarray],
+        fs: float,
+        *,
+        ntsc: bool,
+        line_hz: float,
+        length: Optional[int] = None,
+        start: int = 0,
+    ) -> "CrystalLines":
+        """Find the lines in a capture.
+
+        `XTAL_SEGMENTS` stretches spread over the capture are examined (a
+        line has to be in every one, at the same frequency).  A line with
+        another one a line period's frequency (`line_hz`) away is the
+        picture's (a still picture's RF is a comb of them) and is left.
+        Every line found is then checked before it is kept
+        (`XTAL_CHECK_FRAMES`): narrow over stretches several frames long,
+        outside the disc's sensitive bands, and not cut by the sync.
+
+        Parameters:
+            read_fn: `read_fn(start, count) -> np.ndarray` of RF samples;
+                it must return up to `count` samples, fewer only at the end
+                of the capture.
+            fs: the sample rate in Hz.
+            ntsc: True for NTSC (its excluded bands and line frequency),
+                False for PAL.
+            line_hz: the picture's line frequency (Hz).
+            length: the capture's length in samples.  It is found by probing
+                `read_fn` when it is not given, which needs a reader that
+                reports the end of the capture by returning fewer samples
+                than were asked for; a reader that pads with zeros past the
+                end never reports it.
+            start: where the stretches start, in samples.  It is the
+                capture's first located line: the stretches are spread from
+                there to the end of the capture, so the detection covers the
+                part of the capture that carries a picture.
+
+        Returns:
+            A `CrystalLines` holding the lines found (possibly none: its
+            `has_lines` is then False and `clean` leaves the samples
+            alone).
+        """
+        n = XTAL_FFT
+        segments = XTAL_SEGMENTS
+        total = int(length) if length is not None else _capture_length(read_fn)
+        start = max(0, int(start))
+        room = max(0, total - start - n)
+        exclude = LINE_EXCLUDE_HZ if ntsc else PAL_LINE_EXCLUDE_HZ
+
+        # The detection spectrum: Hann-windowed FFTs over the stretches.
+        win = 0.5 - 0.5 * np.cos(TAU * np.arange(n) / n)
+        seg_powers = []
+        for seg in range(segments):
+            at = start + room * seg // max(1, segments - 1)
+            raw = np.asarray(read_fn(at, n), dtype=np.float64)
+            if raw.shape[0] < n:
+                raw = np.concatenate((raw, np.zeros(n - raw.shape[0], dtype=np.float64)))
+            x = (raw - raw.mean()) * win
+            spec = scipy.fft.rfft(x)
+            seg_powers.append(spec.real**2 + spec.imag**2)
+        power = np.sum(seg_powers, axis=0)[: n // 2]
+        bin_hz = fs / n
+        h = max(1, int(XTAL_FLOOR_HZ / bin_hz))
+
+        floor_sum = _spectrum_floor(power, h, _FLOOR_STEP)
+        floor = _floor_lookup(floor_sum, power.shape[0], _FLOOR_STEP)
+        top = min(XTAL_TOP_HZ, 0.49 * fs)
+
+        # The EFM crystal and its multiples.
+        f0 = EFM_XTAL_HZ / XTAL_DIV
+        ks: list[int] = []
+        best = (0.0, 0)
+        lo = int(EFM_XTAL_HZ * (1.0 - XTAL_SEARCH) / bin_hz)
+        hi = int(EFM_XTAL_HZ * (1.0 + XTAL_SEARCH) / bin_hz)
+        if hi + 2 < power.shape[0]:
+            k, off = _peak(power, (lo + hi) // 2, (hi - lo) // 2)
+            if power[k] >= floor[k] * XTAL_FIND:
+                f0 = (k + off) * bin_hz / XTAL_DIV
+                for m in range(1, int(top / f0) + 1):
+                    kk, _ = _peak(power, int(round(m * f0 / bin_hz)), _XTAL_PEAK_HALFWIDTH)
+                    with np.errstate(divide="ignore", invalid="ignore"):
+                        ratio = power[kk] / floor[kk]
+                    if ratio >= XTAL_KEEP:
+                        ks.append(m)
+                        if ratio > best[0]:
+                            best = (float(ratio), m)
+                if V4300D_MASTER_MULTIPLE in ks:
+                    for m in V4300D_SATELLITE_MULTIPLES:
+                        if m in ks or m * f0 >= top:
+                            continue
+                        kk, off = _peak(power, int(round(m * f0 / bin_hz)), _XTAL_PEAK_HALFWIDTH)
+                        with np.errstate(divide="ignore", invalid="ignore"):
+                            ratio = power[kk] / floor[kk]
+                        if ratio >= XTAL_SATELLITE_KEEP and not _is_comb(
+                            power, floor, bin_hz, (kk + off) * bin_hz, line_hz
+                        ):
+                            ks.append(m)
+                    ks.sort()
+
+        # Every other line that stands out in each stretch, at one frequency.
+        others: list[float] = []
+        if power.shape[0] > 4 * _XTAL_PEAK_HALFWIDTH:
+            tall = []
+            for s, p in enumerate(seg_powers):
+                p = p[: n // 2]
+                seg_floor = _floor_lookup(
+                    _spectrum_floor(p, h, _FLOOR_STEP), p.shape[0], _FLOOR_STEP
+                )
+                tall.append((p >= seg_floor * XTAL_KEEP) & _local_max_mask(p, _XTAL_PEAK_HALFWIDTH))
+            near = [_dilate(t, 1) for t in tall]
+            cand = tall[0]
+            for s in range(1, segments):
+                cand &= near[s]
+            lo_bin = int(XTAL_LOW_HZ / bin_hz)
+            hi_bin = min(int(top / bin_hz), power.shape[0] - 2)
+            cand[:lo_bin] = False
+            cand[hi_bin:] = False
+            bins = np.flatnonzero(cand)
+            if bins.size:
+                # The peak of each candidate, and its frequency.
+                wins = np.lib.stride_tricks.sliding_window_view(power, 3)
+                k = bins - 1 + np.argmax(wins[bins - 1], axis=1)
+                offs = np.array([_parabolic_offset(power, int(kk)) for kk in k])
+                freqs = (k + offs) * bin_hz
+                # A line with another one a line period's frequency away is
+                # the picture's (a still picture's RF is a comb of them).
+                for f in freqs:
+                    if any(lo_a <= f <= hi_a for lo_a, hi_a in exclude):
+                        continue
+                    if any(abs(m * f0 - f) < 3.0 * bin_hz for m in ks):
+                        continue
+                    if _is_comb(power, floor, bin_hz, float(f), line_hz):
+                        continue
+                    if any(abs(g - f) < 3.0 * bin_hz for g in others):
+                        continue
+                    others.append(float(f))
+        ks, others, reference = _check_lines(
+            read_fn, fs, ntsc, line_hz, total, start, f0, ks, others, best[1]
+        )
+        return cls(
+            read_fn=read_fn,
+            fs=fs,
+            f0=f0,
+            ks=ks,
+            reference=reference,
+            others=others,
+            length=total,
+        )
+
+    # -- measurement ------------------------------------------------------
+
+    def _at(self, raw: np.ndarray, f: float, a: int) -> complex:
+        """The phasor of a line's frequency over a block of the capture.
+
+        The block starts at `a` (within `raw`, the super-block's samples).
+        The phasor is referenced to the super-block's first sample.
+
+        This is the reference of `_ats`, which measures the same phasors
+        over all the blocks at once.
+        """
+        w = TAU * f / self.fs
+        seg = raw[a : a + XTAL_BLOCK]
+        m = seg.shape[0]
+        if m == 0:
+            return 0j
+        acc = np.dot(seg, np.exp(-1j * w * np.arange(m)))
+        return complex((2.0 / m) * acc * np.exp(-1j * w * a))
+
+    def _ats(self, raw: np.ndarray, freqs: Sequence[float]) -> list[np.ndarray]:
+        """Every line's phasor on every block of a super-block.
+
+        The blocks are the rows of the super-block's samples, and the lines'
+        tables of exponentials are applied to all of them at once, in a
+        compiled kernel: one pass over the samples for all the lines, the
+        blocks in parallel.
+
+        Parameters
+        ----------
+        raw : numpy.ndarray
+            The super-block's samples (float64).
+        freqs : sequence of float
+            The lines' frequencies, in Hz.
+
+        Returns
+        -------
+        list of numpy.ndarray
+            One complex128 array per line, one phasor per block.
+        """
+        block = XTAL_BLOCK
+        nb = XTAL_SUPER // block
+        freqs = list(freqs)
+        if not freqs:
+            return []
+        w = TAU * np.asarray(freqs, dtype=np.float64) / self.fs
+        tables = np.exp(-1j * w[:, None] * np.arange(block)[None, :])
+        turns = np.exp(-1j * w[:, None] * (np.arange(nb, dtype=np.float64) * block)[None, :])
+        out = np.empty((len(freqs), nb), dtype=np.complex128)
+        line_phasors_kernel(
+            np.ascontiguousarray(raw[: nb * block], dtype=np.float64), block, tables, turns, out
+        )
+        return list(out)
+
+    def _ats_reference(self, raw: np.ndarray, freqs: Sequence[float]) -> list[np.ndarray]:
+        """`_ats` as matrix products: the reference the kernel is checked
+        against."""
+        block = XTAL_BLOCK
+        nb = XTAL_SUPER // block
+        blocks = raw[: nb * block].reshape(nb, block)
+        out = []
+        for f in freqs:
+            w = TAU * f / self.fs
+            table = np.exp(-1j * w * np.arange(block))
+            # The block's own turn, and the phasor's scale.
+            turn = np.exp(-1j * w * (np.arange(nb, dtype=np.float64) * block))
+            acc = blocks @ table.real + 1j * (blocks @ table.imag)
+            out.append((2.0 / block) * acc * turn)
+        return out
+
+    def _measure(self, raw: np.ndarray) -> _CrystalBlock:
+        """The lines over one super-block: the crystal's drift there from
+        its reference line's phase advance from block to block, then every
+        line's amplitude on every block."""
+        block = XTAL_BLOCK
+        nb = XTAL_SUPER // block
+        f0 = self.f0
+        if self.ks and nb > 1:
+            fr = self.reference * self.f0
+            phasors = np.array(self._ats(raw, [fr])[0], dtype=np.complex128)
+            phases = np.angle(phasors)
+            d = np.diff(phases)
+            # The phase advance is folded into (-pi, pi], rounded half away
+            # from zero, as the reference does.
+            ratio = d / TAU
+            d -= TAU * np.where(ratio >= 0.0, np.floor(ratio + 0.5), np.ceil(ratio - 0.5))
+            adv = float(d.sum())
+            df = adv / (nb - 1) / (TAU * block / self.fs)
+            f0 = self.f0 * (1.0 + df / fr)
+        freqs = [m * f0 for m in self.ks] + list(self.others)
+        amps = list(np.array(a, dtype=np.complex128) for a in self._ats(raw, freqs))
+        return _CrystalBlock(f0, amps)
+
+    def _block(self, k: int) -> _CrystalBlock:
+        """Super-block `k`, measured or from the cache."""
+        cached = self._cache.get(k)
+        if cached is not None:
+            self._cache.move_to_end(k)
+            return cached
+        raw = np.asarray(self._read_fn(k * XTAL_SUPER, XTAL_SUPER), dtype=np.float64)
+        if raw.shape[0] < XTAL_SUPER:
+            raw = np.concatenate((raw, np.zeros(XTAL_SUPER - raw.shape[0], dtype=np.float64)))
+        block = self._measure(raw)
+        self._cache[k] = block
+        if len(self._cache) > XTAL_CACHE:
+            self._cache.popitem(last=False)
+        return block
+
+    # -- subtraction ------------------------------------------------------
+
+    def clean(self, samples: np.ndarray, start: int) -> np.ndarray:
+        """Subtract the clock lines from `samples`, which start at absolute
+        sample `start`, on every core.
+
+        The same subtraction as `clean_reference` (the vectorised reference
+        it is checked against), piece by piece in a compiled kernel.
+
+        Returns:
+            A NEW float64 array with the lines subtracted.  The input is not
+            modified.
+        """
+        result = np.array(samples, dtype=np.float64, copy=True)
+        n = result.shape[0]
+        if n == 0 or not self.has_lines:
+            return result
+        sb = XTAL_SUPER
+        block = XTAL_BLOCK
+        t = max(start, 0)
+        end = min(start + n, self.length)
+        while t < end:
+            k = t // sb
+            b0 = k * sb
+            b1 = min((k + 1) * sb, end)
+            blk = self._block(k)
+            w = np.array(
+                [TAU * m * blk.f0 / self.fs for m in self.ks]
+                + [TAU * f / self.fs for f in self.others],
+                dtype=np.float64,
+            )
+            tables = np.exp(1j * w[:, None] * np.arange(XTAL_SEED)[None, :])
+            first = t - b0
+            count = b1 - t
+            head = min((XTAL_SEED - first % XTAL_SEED) % XTAL_SEED, count)
+            starts = np.arange(first + head, first + count, XTAL_SEED, dtype=np.int64)
+            counts = np.minimum(XTAL_SEED, first + count - starts)
+            if head > 0:
+                starts = np.concatenate((np.array([first], dtype=np.int64), starts))
+                counts = np.concatenate((np.array([head], dtype=np.int64), counts))
+            subtract_lines_kernel(
+                result[t - start : b1 - start],
+                first,
+                starts,
+                counts.astype(np.int64),
+                block,
+                np.ascontiguousarray(np.array(blk.amps, dtype=np.complex128)),
+                w,
+                tables,
+            )
+            t = b1
+        return result
+
+    def clean_reference(self, samples: np.ndarray, start: int) -> np.ndarray:
+        """Subtract the clock lines from `samples`, which start at absolute
+        sample `start`.
+
+        Each line's complex amplitude is interpolated linearly between the
+        two neighbouring block centres, and the phasor is made exact at
+        every `XTAL_SEED`-th sample of the super-block, so a sample gets
+        the same value whatever read it is in: the subtraction is
+        reproducible across chunk boundaries.
+
+        Parameters:
+            samples: the RF samples (real), starting at absolute sample
+                `start`.
+            start: the absolute sample number `samples[0]` is at.
+
+        Returns:
+            A NEW array (a copy of `samples`, same dtype) with the lines
+            subtracted.  The input is not modified.
+        """
+        raw = np.asarray(samples)
+        result = np.array(raw, copy=True)
+        n = raw.shape[0]
+        if n == 0 or not self.has_lines:
+            return result
+
+        sb = XTAL_SUPER
+        block = XTAL_BLOCK
+        nb = sb // block
+        t = max(start, 0)
+        end = min(start + n, self.length)
+        while t < end:
+            k = t // sb
+            b0 = k * sb
+            b1 = min((k + 1) * sb, end)
+            blk = self._block(k)
+            w = [TAU * m * blk.f0 / self.fs for m in self.ks]
+            w += [TAU * f / self.fs for f in self.others]
+            # The phasor of a line over a seed: the same table for every
+            # piece of the super-block, each piece turning it by its own
+            # position.
+            tables = [np.exp(1j * wl * np.arange(XTAL_SEED)) for wl in w]
+            lo = t - start
+            hi = b1 - start
+            span = result[lo:hi]
+            first = t - b0
+            # Pieces aligned on every XTAL_SEED-th sample of the
+            # super-block (the first one up to the next): each line's
+            # phasor is exact at that sample and turned by one step from
+            # there (a read that starts between turns up to it), so a
+            # sample gets the same value whatever read it is in.  A piece
+            # lies between two block centres, so every line's amplitude is
+            # one straight segment over it.
+            head = min((XTAL_SEED - first % XTAL_SEED) % XTAL_SEED, span.shape[0])
+            bounds = [(first, head)]
+            pos = first + head
+            while pos < first + span.shape[0]:
+                cnt = min(XTAL_SEED, first + span.shape[0] - pos)
+                bounds.append((pos, cnt))
+                pos += XTAL_SEED
+            for a, cnt in bounds:
+                if cnt <= 0:
+                    continue
+                at = a - a % XTAL_SEED
+                u0 = (at + 0.5) / block - 0.5
+                j = int(min(max(math.floor(u0), 0.0), nb - 1))
+                pos = np.arange(a, a + cnt)
+                s = np.clip((pos + 0.5) / block - 0.5 - j, 0.0, 1.0)
+                piece = span[a - first : a - first + cnt].astype(np.float64)
+                for idx, wl in enumerate(w):
+                    amp = blk.amps[idx]
+                    if j + 1 < nb:
+                        g0 = amp[j]
+                        dg = amp[j + 1] - amp[j]
+                    else:
+                        g0 = amp[j]
+                        dg = 0j
+                    phasor = np.exp(1j * wl * a) * tables[idx][:cnt]
+                    piece -= np.real((g0 + dg * s) * phasor)
+                span[a - first : a - first + cnt] = piece.astype(result.dtype, copy=False)
+            t = b1
+        return result
+
+
+def _local_max_mask(p: np.ndarray, w: int) -> np.ndarray:
+    """The bins where `p` is the maximum over itself and its `w` neighbours."""
+    m = p.shape[0]
+    out = np.zeros(m, dtype=bool)
+    if m < 2 * w + 1:
+        return out
+    wins = np.lib.stride_tricks.sliding_window_view(p, 2 * w + 1)
+    out[w : m - w] = wins.max(axis=1) <= wins[:, w]
+    return out
+
+
+def _dilate(mask: np.ndarray, w: int) -> np.ndarray:
+    """The mask with its `w` neighbours on each side folded in."""
+    out = mask.copy()
+    for k in range(1, w + 1):
+        out[k:] |= mask[:-k]
+        out[:-k] |= mask[k:]
+    return out
+
+
+def _is_comb(power: np.ndarray, floor: np.ndarray, bin_hz: float, f: float, line_hz: float) -> bool:
+    """Whether a line at `f` has another one a line period's frequency away.
+
+    A still picture's RF is a comb of lines a line frequency apart, which
+    must not be taken for a clock line.
+    """
+    for g in (f - line_hz, f + line_hz):
+        b = int(round(g / bin_hz))
+        if b < 1 or b + 1 >= power.shape[0]:
+            continue
+        k, _ = _peak(power, b, 2)
+        if power[k] >= floor[k] * XTAL_KEEP:
+            return True
+    return False
+
+
+def _check_lines(
+    read_fn: Callable[[int, int], np.ndarray],
+    fs: float,
+    ntsc: bool,
+    line_hz: float,
+    total: int,
+    start: int,
+    f0: float,
+    ks: Sequence[int],
+    others: Sequence[float],
+    reference: int,
+) -> tuple[list[int], list[float], int]:
+    """The lines found that are the capture's clocks, checked before any is
+    subtracted (see `XTAL_CHECK_FRAMES`): narrow over long stretches,
+    outside the disc's sensitive bands, and not cut by the sync.
+
+    Returns the EFM multiples and the other lines kept, and the multiple
+    the crystal's drift is followed on (the strongest kept; 0 without any).
+    """
+    freqs = [m * f0 for m in ks] + [float(f) for f in others]
+    if not freqs:
+        return list(ks), list(others), reference
+    lines_per_frame = 525 if ntsc else 625
+    avail = max(2, total - start)
+    n = 1 << int(math.ceil(math.log2(XTAL_CHECK_FRAMES * lines_per_frame / line_hz * fs)))
+    if n > avail:
+        # A short capture: the stretches it holds, overlapping.
+        n = 1 << int(math.floor(math.log2(avail)))
+    room = max(0, avail - n)
+    segments = XTAL_SEGMENTS
+    starts = [start + room * s // max(1, segments - 1) for s in range(segments)]
+    bin_hz = fs / n
+    win = 0.5 - 0.5 * np.cos(TAU * np.arange(n) / n)
+    nf = len(freqs)
+    sharp = np.ones(nf, dtype=bool)
+    at_hz = np.zeros((segments, nf))
+    power = np.zeros(nf)
+    for si, at in enumerate(starts):
+        raw = np.asarray(read_fn(at, n), dtype=np.float64)
+        if raw.shape[0] < n:
+            raw = np.concatenate((raw, np.zeros(n - raw.shape[0])))
+        spec = scipy.fft.rfft((raw - raw.mean()) * win)
+        del raw
+        p = spec.real**2 + spec.imag**2
+        del spec
+        for i, f in enumerate(freqs):
+            k = int(round(f / bin_hz))
+            j, off = _peak(p, k, max(2, int(math.ceil(XTAL_DRIFT * f / bin_hz))))
+            if j - _SHARP_WIDE < 0 or j + _SHARP_WIDE + 1 > p.shape[0]:
+                sharp[i] = False
+                continue
+            core = p[j - _SHARP_CORE : j + _SHARP_CORE + 1].sum()
+            wide = p[j - _SHARP_WIDE : j + _SHARP_WIDE + 1].sum()
+            if not core >= XTAL_SHARP * wide:
+                sharp[i] = False
+            at_hz[si, i] = (j + off) * bin_hz
+            power[i] += p[j]
+        del p
+    # The LD-V4300D's satellites are the sidebands of one modulated clock,
+    # less narrow than its master line: they go with it, kept or left.
+    # Left without them, the master's subtraction raises the noise.
+    ks = list(ks)
+    satellites = [i for i, m in enumerate(ks) if m in V4300D_SATELLITE_MULTIPLES]
+    master = ks.index(V4300D_MASTER_MULTIPLE) if V4300D_MASTER_MULTIPLE in ks else None
+    if master is not None:
+        sharp[satellites] = sharp[master]
+    bands = XTAL_SENSITIVE_HZ if ntsc else PAL_XTAL_SENSITIVE_HZ
+    sensitive = np.array([any(lo <= f <= hi for lo, hi in bands) for f in freqs])
+    alive = np.flatnonzero(sharp & ~sensitive)
+    cut = np.zeros(nf, dtype=bool)
+    if alive.size:
+        cut[alive] = _cut_by_the_sync(read_fn, fs, ntsc, starts, n, at_hz[:, alive])
+    if master is not None:
+        cut[satellites] = cut[master]
+    keep = sharp & ~sensitive & ~cut
+    kept_ks = [m for i, m in enumerate(ks) if keep[i]]
+    kept_others = [f for i, f in enumerate(others) if keep[len(ks) + i]]
+    if reference not in kept_ks:
+        reference = max(kept_ks, key=lambda m: power[list(ks).index(m)]) if kept_ks else 0
+    _logger.info(
+        "clock lines: %d found, %d kept (%d not narrow over %.2f s stretches, "
+        "%d in the disc's sensitive bands, %d cut by the sync)",
+        nf, int(keep.sum()), int((~sharp).sum()), n / fs,
+        int((sharp & sensitive).sum()), int(cut.sum()),
+    )
+    return kept_ks, kept_others, reference
+
+
+def _cut_by_the_sync(
+    read_fn: Callable[[int, int], np.ndarray],
+    fs: float,
+    ntsc: bool,
+    starts: Sequence[int],
+    n: int,
+    at_hz: np.ndarray,
+) -> np.ndarray:
+    """Which lines are clearly cut by the sync: each line's amplitude, in
+    phase with it, folded on the position in the line and accumulated over
+    the lines located in the stretches (`XTAL_FOLD_BINS`).
+
+    ``at_hz[s, i]`` is line ``i``'s frequency in stretch ``s``.  Without a
+    field of located lines, nothing is judged cut.
+    """
+    from .rf_sync import locate, system_for
+
+    nb = XTAL_FOLD_BINS
+    w = max(1, int(round(XTAL_FOLD_WINDOW_S * fs)))
+    block = max(w, 1 << int(round(math.log2(XTAL_FOLD_BLOCK_S * fs))))
+    nw = block // w
+    taps = np.arange(w)
+    nf = at_hz.shape[1]
+    acc = np.zeros((nf, nb), dtype=np.complex128)
+    located = 0
+    system = system_for(ntsc)
+    for si, at in enumerate(starts):
+        freqs = at_hz[si]
+        kernel = np.exp(-2j * np.pi * np.outer(taps, freqs) / fs)
+
+        def read_at(s, count, at=at):
+            return read_fn(at + int(s), int(count))
+
+        for rec in locate(read_at, fs, system, length=n):
+            lines = np.asarray(rec.lines, dtype=np.float64) + at
+            if lines.shape[0] < 2:
+                continue
+            located += lines.shape[0]
+            for b0 in range(int(lines[0]), int(lines[-1]) - block + 1, block):
+                x = np.asarray(read_fn(b0, nw * w), dtype=np.float64)
+                if x.shape[0] < nw * w:
+                    break
+                n0 = b0 + np.arange(nw) * w
+                z = (x.reshape(nw, w) @ kernel) * np.exp(
+                    -2j * np.pi * np.outer(n0, freqs) / fs
+                )
+                centre = n0 + w / 2.0
+                k = np.clip(np.searchsorted(lines, centre) - 1, 0, lines.shape[0] - 2)
+                frac = (centre - lines[k]) / (lines[k + 1] - lines[k])
+                q = np.clip((frac * nb).astype(np.int64), 0, nb - 1)
+                count = np.bincount(q, minlength=nb).astype(np.float64)
+                folded = np.zeros((nf, nb), dtype=np.complex128)
+                for j in range(nb):
+                    sel = q == j
+                    if sel.any():
+                        folded[:, j] = z[sel].sum(axis=0)
+                # The line's phase over this block: the clocks drift a few Hz
+                # from one 10 ms to the next, so it is taken block by block.
+                total = z.sum(axis=0)
+                turn = np.conj(total) / np.maximum(np.abs(total), 1e-30)
+                acc += folded * turn[:, None] / np.maximum(count, 1.0)[None, :]
+    if located < (525 if ntsc else 625) // 2:
+        return np.zeros(nf, dtype=bool)
+    level = acc.real
+    noise = np.sqrt(np.mean(acc.imag**2, axis=1)) + 1e-30
+    mean = level.mean(axis=1)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        lowest = np.where(mean > 0, level.min(axis=1) / mean, 1.0)
+    return (mean > XTAL_CUT_SNR * noise) & (lowest < XTAL_CUT_FLOOR)
+
+
+def _line_index(lines: np.ndarray, linelen: float) -> np.ndarray:
+    """The line number of each located line, counted from the first: the
+    gaps between consecutive lines, rounded to whole lines."""
+    steps = np.rint(np.diff(lines) / linelen)
+    return np.concatenate(([0.0], np.cumsum(np.maximum(steps, 1.0))))
+
+
+def _disc_stretch(
+    read_fn: Callable[[int, int], np.ndarray],
+    fs: float,
+    ntsc: bool,
+    at: int,
+    n: int,
+    linelen: float,
+) -> Optional[tuple[np.ndarray, np.ndarray]]:
+    """``n`` samples of the capture from about ``at``, read on its own
+    located lines (the disc's timeline, at the nominal line length), and the
+    same span as it is.  None where too few lines are located."""
+    import scipy.ndimage
+
+    from .rf_sync import locate, system_for
+
+    span = int(n * 1.1 + 8 * linelen)
+
+    def read_at(s, count):
+        return read_fn(at + int(s), int(count))
+
+    found = [np.asarray(rec.lines, dtype=np.float64) + at
+             for rec in locate(read_at, fs, system_for(ntsc), length=span)]
+    lines = np.unique(np.concatenate(found)) if found else np.zeros(0)
+    if lines.shape[0] < 2 or (lines[-1] - lines[0]) < n + 4 * linelen:
+        return None
+    index = _line_index(lines, linelen)
+    disc = (index[0] + 2.0) * linelen + np.arange(n, dtype=np.float64)
+    pos = np.interp(disc / linelen, index, lines)
+    base = int(np.floor(pos[0])) - 8
+    raw_span = np.asarray(read_fn(base, int(np.ceil(pos[-1])) - base + 16), dtype=np.float64)
+    tbc = scipy.ndimage.map_coordinates(raw_span, [pos - base], order=3, mode="nearest")
+    raw = raw_span[int(pos[0]) - base : int(pos[0]) - base + n]
+    if raw.shape[0] < n:
+        raw = np.concatenate((raw, np.zeros(n - raw.shape[0])))
+    return tbc, raw
+
+
+def find_disc_lines(
+    read_fn: Callable[[int, int], np.ndarray],
+    fs: float,
+    *,
+    ntsc: bool,
+    line_hz: float,
+    length: int,
+    start: int = 0,
+) -> list[float]:
+    """The lines the disc itself carries (see `DISC_FLOOR_HZ`), in Hz on the
+    disc's timeline at the nominal line rate: what `subtract_disc_lines`
+    takes out of the read-time TBC's stream.  Usually none."""
+    lines_per_frame = 525 if ntsc else 625
+    frame_hz = line_hz / lines_per_frame
+    linelen = fs / line_hz
+    avail = max(2, int(length) - int(start))
+    n = 1 << int(math.ceil(math.log2(XTAL_CHECK_FRAMES * lines_per_frame / line_hz * fs)))
+    while n > 1 and n * 1.1 + 16 * linelen > avail:
+        n >>= 1
+    room = max(0, avail - int(n * 1.1 + 16 * linelen))
+    segments = XTAL_SEGMENTS
+    starts = [int(start) + room * s // max(1, segments - 1) for s in range(segments)]
+    win = 0.5 - 0.5 * np.cos(TAU * np.arange(n) / n)
+    bin_hz = fs / n
+    p_tbc, p_raw = [], []
+    for at in starts:
+        got = _disc_stretch(read_fn, fs, ntsc, at, n, linelen)
+        if got is None:
+            _logger.info("disc lines: too few lines located for the check; none taken")
+            return []
+        for x, acc in zip(got, (p_tbc, p_raw)):
+            spec = scipy.fft.rfft((x - x.mean()) * win)
+            acc.append((spec.real**2 + spec.imag**2).astype(np.float32))
+            del spec
+    total = np.sum(p_tbc, axis=0, dtype=np.float64)
+    width = max(64, int(DISC_FLOOR_HZ / bin_hz))
+    nb = total.shape[0] // width
+    if nb < 2:
+        return []
+    medians = np.median(total[: nb * width].reshape(nb, width), axis=1)
+    floor = np.interp(np.arange(total.shape[0]), np.arange(nb) * width + width / 2.0, medians)
+    lo = max(_SHARP_WIDE + 2, int(XTAL_LOW_HZ / bin_hz))
+    hi = min(int(min(XTAL_TOP_HZ, 0.49 * fs) / bin_hz), total.shape[0] - _SHARP_WIDE - 2)
+    if hi <= lo:
+        return []
+    seg = total[lo:hi]
+    wins = np.lib.stride_tricks.sliding_window_view(
+        np.pad(seg, _XTAL_PEAK_HALFWIDTH, mode="edge"), 2 * _XTAL_PEAK_HALFWIDTH + 1)
+    tall = (seg >= wins.max(axis=1)) & (seg >= XTAL_KEEP * floor[lo:hi])
+    bands = XTAL_SENSITIVE_HZ if ntsc else PAL_XTAL_SENSITIVE_HZ
+    raw_search = max(2, int(500.0 / bin_hz))
+
+    def narrow(p, k, w):
+        j = k - w + int(np.argmax(p[k - w : k + w + 1]))
+        if j - _SHARP_WIDE < 0 or j + _SHARP_WIDE + 1 > p.shape[0]:
+            return False
+        core = float(p[j - _SHARP_CORE : j + _SHARP_CORE + 1].sum())
+        wide = float(p[j - _SHARP_WIDE : j + _SHARP_WIDE + 1].sum())
+        return core >= XTAL_SHARP * wide
+
+    def neighbour(k, df):
+        # A peak of its own (a local maximum, within 30 dB of the line):
+        # a frame rate away is a few bins, where the line's own window
+        # still leaks.
+        for g in (k * bin_hz - df, k * bin_hz + df):
+            b = int(round(g / bin_hz))
+            if b < 2 or b + 3 > total.shape[0]:
+                continue
+            j = b - 1 + int(np.argmax(total[b - 1 : b + 2]))
+            if (total[j] >= XTAL_KEEP * floor[j] and total[j] >= DISC_COMB_DB * total[k]
+                    and total[j] >= total[j - 1] and total[j] >= total[j + 1]):
+                return True
+        return False
+
+    candidates = []
+    for k in lo + np.flatnonzero(tall):
+        k = int(k)
+        f = k * bin_hz
+        if any(a <= f <= b for a, b in bands):
+            continue
+        if not all(narrow(p, k, 1) for p in p_tbc):
+            continue
+        if any(narrow(p, k, raw_search) for p in p_raw):
+            continue
+        if any(neighbour(k, df) for df in (line_hz, frame_hz, 2.0 * frame_hz)):
+            continue
+        a, b, c = np.log(total[k - 1 : k + 2] + 1e-300)
+        d = a - 2.0 * b + c
+        off = 0.5 * (a - c) / d if d < 0 else 0.0
+        candidates.append((k + off) * bin_hz)
+    del p_raw, p_tbc
+    if not candidates:
+        _logger.info("disc lines: none found")
+        return []
+
+    # The fold, on the disc's timeline: the line must be shown continuous.
+    freqs = np.array(candidates)
+    nbins = XTAL_FOLD_BINS
+    w = max(1, int(round(XTAL_FOLD_WINDOW_S * fs)))
+    block = max(w, 1 << int(round(math.log2(XTAL_FOLD_BLOCK_S * fs))))
+    nw = block // w
+    kernel = np.exp(-2j * np.pi * np.outer(np.arange(w), freqs) / fs)
+    acc = np.zeros((freqs.shape[0], nbins), dtype=np.complex128)
+    folded_lines = 0
+    for at in starts:
+        got = _disc_stretch(read_fn, fs, ntsc, at, n, linelen)
+        if got is None:
+            continue
+        tbc = got[0]
+        folded_lines += int(n / linelen)
+        for b0 in range(0, n - nw * w + 1, block):
+            x = tbc[b0 : b0 + nw * w].reshape(nw, w)
+            n0 = b0 + np.arange(nw) * w
+            z = (x @ kernel) * np.exp(-2j * np.pi * np.outer(n0, freqs) / fs)
+            # The stretch starts on a line (two past the first located).
+            q = np.clip((((n0 + w / 2.0) / linelen) % 1.0 * nbins).astype(np.int64), 0, nbins - 1)
+            count = np.bincount(q, minlength=nbins).astype(np.float64)
+            folded = np.zeros_like(acc)
+            for j in range(nbins):
+                sel = q == j
+                if sel.any():
+                    folded[:, j] = z[sel].sum(axis=0)
+            tot = z.sum(axis=0)
+            turn = np.conj(tot) / np.maximum(np.abs(tot), 1e-30)
+            acc += folded * turn[:, None] / np.maximum(count, 1.0)[None, :]
+    found = []
+    if folded_lines >= lines_per_frame // 2:
+        level = acc.real
+        noise = np.sqrt(np.mean(acc.imag**2, axis=1)) + 1e-30
+        mean = level.mean(axis=1)
+        for i, f in enumerate(candidates):
+            if mean[i] > XTAL_CUT_SNR * noise[i] and level[i].min() >= DISC_CONTINUOUS * mean[i]:
+                found.append(float(f))
+    _logger.info("disc lines: %d candidate(s), %d shown continuous and taken%s",
+                 len(candidates), len(found),
+                 "".join(f"; {f / 1e6:.4f} MHz" for f in found))
+    return found
+
+
+def subtract_disc_lines(samples: np.ndarray, start: int, freqs: Sequence[float], fs: float) -> np.ndarray:
+    """Take the disc's lines (`find_disc_lines`) out of a chunk of the
+    read-time TBC's stream that starts at sample ``start``: each line's
+    phasor over the chunk, its phase referenced to the stream's first
+    sample, subtracted.  Returns a new float64 array."""
+    out = np.array(samples, dtype=np.float64, copy=True)
+    n = out.shape[0]
+    if n == 0 or not freqs:
+        return out
+    index = int(start) + np.arange(n, dtype=np.float64)
+    for f in freqs:
+        e = np.exp(1j * (TAU * float(f) / fs) * index)
+        a = (2.0 / n) * np.dot(out, np.conj(e))
+        out -= (a * e).real
+    return out

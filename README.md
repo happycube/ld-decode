@@ -109,6 +109,43 @@ even across mid-run calibration changes.  Every speculation reject and
 parameter event is recorded with its cause in the `speculation_log`
 table of the `.tbc.db` (and as DEBUG lines in the decode log).
 
+## Multi-capture stacking and read-time TBC
+
+`ld-decode --tbc_mode read -i capture1.rf -i capture2.rf -o output` decodes several
+captures of the same disc at once: the captures are combined in the RF
+domain, before demodulation, so a pass that drops out gives way to the
+others. The fields are paired by their VBI frame code, every capture is
+phase-locked onto the primary's carrier, and each is weighed per sample by
+its carrier amplitude.
+
+The same path reads one capture the way the reference decoder does not: the
+lines are located straight from the RF (the pass 0 never demodulates, so it
+has no MTF calibration and no VITS) and the RF is read at the corrected
+positions before the demodulator sees it. On the way it takes three things
+out of the signal that no amount of stacking removes, because they are on
+the disc or in the player and are the same in every copy:
+
+- the analog audio carriers' crosstalk into the video carrier (+0.48 to
+  +0.83 dB of weighted SNR on NTSC captures at 75 MHz);
+- the clock lines the player's EFM decoder crystal, its video clock and the
+  capture board leave in the capture (+0.09 dB);
+- the composite chroma that leaks into the RF baseband on NTSC, the "colour
+  wobble" of the saturated areas.
+
+All three are taken out in both modes, by the same code: the default
+`--tbc_mode resample`, the reference decoder's way of correcting the time
+base, cleans the capture's RF the same way before the decoder reads it. Each
+can be switched off again, in either mode (`--no_audio_carrier_cancel`,
+`--no_crystal_lines`, `--no_chroma_leak`); with all three off, `resample`
+keeps the reference decoder's bytes on a 40 MHz capture. The decoder works at
+the capture's own rate in both modes (nothing is resampled to 40 MHz). The
+stacking itself needs
+`--tbc_mode read`. Any capture is read at positions (raw, packed `.lds`/`.r30`,
+compressed `.ldf`/`.flac`; stdin through a temporary file), and the stacked
+ones must share one sample rate; see [the command
+reference](docs/user-guide/command.md) and [the technical
+page](docs/technical/stacked-rf-tbc.md).
+
 ## CVBS output mode
 
 ld-decode writes CVBS output by default (see

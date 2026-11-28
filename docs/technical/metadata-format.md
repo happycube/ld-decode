@@ -229,10 +229,10 @@ Field-level metadata (one record per video field).
 | `field_id` | INTEGER | Zero-indexed unique sequential field number (original JSON `seqNo` was 1-indexed; this is `seqNo - 1`) |
 | `audio_samples` | INTEGER | The number of (stereo, signed 16-bit) audio samples corresponding to the video field |
 | `decode_faults` | INTEGER | Bit flags for decode faults: bit 1 = first-field detection failure, bit 2 = field phase ID mismatch, bit 3 = skipped field (likely a player skip) |
-| `disk_loc` | REAL | The location in the file (in fields) where the field is located |
+| `disk_loc` | REAL | The location in the file (in fields) where the field is located; with `--tbc_mode read`, in the virtual stream the decoder reads (see [stacked RF](stacked-rf-tbc.md)) |
 | `efm_t_values` | INTEGER | The number of .efm T-Values (in bytes) corresponding to the video field |
 | `field_phase_id` | INTEGER | The position of this field in the 4-field (NTSC) or 8-field (PAL) sequence |
-| `file_loc` | INTEGER | The sample number in the file where the field is located |
+| `file_loc` | INTEGER | The sample number in the file where the field is located; with `--tbc_mode read`, in the virtual stream, which starts at the primary capture's first located line |
 | `is_first_field` | INTEGER | Boolean: 1 if first field, 0 if second field |
 | `median_burst_ire` | REAL | The median point of the colour burst (in IRE) |
 | `pad` | INTEGER | Boolean: 1 if field is padded (contains no valid video data), 0 if normal field |

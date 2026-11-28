@@ -6,7 +6,7 @@ ld-decode's execution is largely controlled by a number of command line switches
 ld-decode [-h] [--start file-location] [--length frames] [--seek frame] [--PAL] [--NTSC] [--NTSCJ] [-m mtf]
                  [--MTF_offset mtf_offset] [--noAGC] [--noDOD] [--noEFM] [--preEFM] [--tbc_efm] [--efm_demod {pll,timing}] [--efm_conf {auto,on,off}] [--efm_eq_taps N] [--disable_analog_audio] [--AC3]
                  [--start_fileloc start_fileloc] [--ignoreleadout] [--verboseVITS] [--RF_TBC] [--lowband]
-                 [--NTSC_color_notch_filter] [--audio_carrier_cancel] [--V4300D_notch_filter] [--V4300D_coherent_subtract] [--V4300D_no_defer]
+                 [--NTSC_color_notch_filter] [--no_audio_carrier_cancel]
                  [--deemp_low deemp_low] [--deemp_high deemp_high]
                  [--deemp_strength deemp_str] [--no_auto_chroma] [--vits_white_level] [--no_mtf_servo] [--calibration_frames frames] [-t threads] [-f FREQ] [--analog_audio_frequency AFREQ]
                  [--video_bpf_low FREQ] [--video_bpf_high FREQ] [--video_lpf FREQ] [--video_lpf_order VLPF_ORDER]
@@ -88,6 +88,153 @@ Jump to a precise sample number in the file.
 **Example:**
 ```bash
 ld-decode --start_fileloc 10000000 input.ldf output
+```
+
+### Multi-Capture Stacking and Read-Time TBC
+
+These options let one decode read several captures of the same disc, or read
+one capture the way the reference decoder does not: with the time base
+corrected in the RF domain, before demodulation.
+
+#### `-i file`, `--input file`
+A source capture. Repeat it to stack several captures of the same disc; the
+first is the primary; stacking needs `--tbc_mode read`. The positional
+`infile` and `-i` are exclusive.
+- **Type:** String (path)
+- **Note:** The stacked captures are read at positions, whatever their
+  format: raw (`.s16`, `.raw`, `.r16`, `.u16`, `.r8`, `.u8`, `.s8`, `.rf`),
+  packed (`.lds`, `.r30`) or compressed (`.ldf`, `.flac`, through the FLAC
+  reader, which seeks in the stream); stdin is buffered to a temporary file
+  first, removed when the decode ends. They must share one sample rate.
+- **Note:** The sample rate comes from `-f`, or from the Domesday Duplicator
+  sidecar (a `.yaml` file with a `sample_rate_hz` key) next to the capture,
+  and is 40 MHz when neither gives it. The decoder then demodulates at that
+  rate: the virtual stream is not resampled to 40 MHz.
+
+**Example:**
+```bash
+ld-decode --tbc_mode read -i capture1.rf -i capture2.rf -i capture3.rf -o output
+```
+
+#### `-o base`, `--output base`
+The base name for the destination files. Needs `-i`.
+- **Type:** String (base name)
+
+#### `--tbc_mode read|resample`
+The time-base correction.
+- **Type:** `read` or `resample`
+- **Default:** `resample`, whatever the input
+- **Note:** `resample` resamples the demodulated video, the reference
+  decoder's way; `read` locates every line straight from the RF and reads the
+  RF at the corrected positions before demodulating. Stacking several `-i`
+  captures needs `read`.
+- **Note:** Both take the audio crosstalk, the clock lines and the chroma
+  leak out of the RF first, by the same code (see `--no_audio_carrier_cancel`,
+  `--no_crystal_lines`, `--no_chroma_leak`). With all three left in,
+  `resample` reads the capture as the reference decoder does, and keeps its
+  bytes for a 40 MHz capture (the reference resamples another rate to
+  40 MHz; this decoder demodulates at the capture's own rate).
+- **Note:** The cancellations read the capture at positions, so both modes
+  take any capture: raw, packed (`.lds`, `.r30`) or compressed (`.ldf`,
+  `.flac`); stdin is buffered to a temporary file first (unless `resample`
+  leaves all three in). There is no fallback between the modes: a capture
+  that cannot be read, a cleaning that cannot run, or a `read` that finds no
+  lines is an error, never a silent change of method.
+- **Note:** `--write-test-ldf` copies the capture at the positions the
+  decoder read, which only `resample` reads it at: it is refused with
+  `read`.
+
+**Example:**
+```bash
+ld-decode --tbc_mode read input.s16 output
+```
+
+#### `--stack_weight adaptive|fixed`
+How a stack weighs its captures.
+- **Type:** `adaptive` or `fixed`
+- **Default:** `adaptive`
+- **Note:** `adaptive` weighs each capture per sample, by its carrier
+  amplitude, with a guard that fades out a capture that is not aligned.
+  `fixed` gives each capture one weight for the whole run.
+
+The stacking's options are spelt with underscores, as rev 8's are
+(`--tbc_mode`, `--stack_weight`, `--rf_out`, `--device_precision`,
+`--no_crystal_lines`, ...); the spelling with dashes (`--tbc-mode`, ...) is
+accepted as well. The audio carriers' crosstalk is taken out by default in
+either mode: see `--no_audio_carrier_cancel`.
+
+#### `--no_crystal_lines`
+Leave the clock lines in the RF: the player's EFM decoder crystal and its
+multiples (the LD-V4300D's 8.4672 MHz clock and its satellites among them),
+its 4fsc video clock, the capture board's clocks. They are subtracted by
+default, in either `--tbc_mode`. They are detected a quarter into the capture
+(at most 4 Mi samples from its end), where there is picture, with `resample`,
+and where the first line is found with `read`. Every line found is checked
+before it is subtracted (narrow over stretches several frames long, outside
+the EFM's and the audio carriers' bands, not cut by the sync), so the disc's
+own signal is not taken for a clock.
+
+#### `--disc_lines`
+Also take out the clock lines the disc itself carries: a clock that leaked
+into the signal at mastering is on the disc, so it follows the disc's speed.
+With `--tbc_mode read` only (an error with `resample`, which never reads the
+RF on the disc's timeline). Off by default: a line is taken only where it is
+narrow on the disc's timeline, spread in the capture's, outside the EFM's
+and the audio carriers' bands, not one of the picture's combs, and shown
+continuous through the sync. No disc measured so far carries one; the log
+says what was found.
+
+#### `--no_chroma_leak`
+Leave the composite chroma that leaks into the RF baseband (NTSC; it makes
+the fine wavering vertical stripes of saturated areas). It is cancelled by
+default, in either `--tbc_mode`.
+
+#### `--device cpu|opencl`
+Where the decoder demodulates the RF, and where the read-time TBC reads and
+combines the captures.
+- **Default:** `cpu` (every core)
+- **Note:** `opencl` runs them on a GPU, as the reference implementation's
+  `--device opencl`, in either `--tbc_mode`. It needs pyopencl
+  (`pip install 'ld-decode[opencl]'`) and an OpenCL driver; the GPU with the
+  most compute units is used, or the one `PYOPENCL_CTX` names. Without them
+  the decode says so and demodulates on the CPU.
+- **Note:** The GPU's demodulation follows the CPU's precision (double for
+  the block's spectrum and the discriminator, single for the video
+  channels), not its arithmetic: the video channels agree to 1 Hz (a few in
+  ten thousand output samples differ by 1 LSB), the RF high-pass, the EFM and
+  the analog audio exactly. The opt-in `--rf_echo_cancel` and
+  `--V4300D_coherent_subtract` stay on the CPU.
+- **Note:** It frees the cores rather than speeding up a decode that already
+  has them all: on one thread the GPU decodes ve-monitor at 7.2 frames/s
+  against 3.8, about what the CPU reaches on 32 threads, where both stop at
+  8.1 (the writing of the fields is then the limit).
+
+#### `--device_precision single|double`
+The precision of `--device opencl`.
+- **Default:** `single`
+- **Note:** `single` is the faster one on a consumer GPU, whose double
+  precision is a small fraction of its single; its stream differs from the
+  host's by about 140 dB below the signal. `double` follows the host to
+  about 147 dB, and on such a GPU is no quicker than the host.
+
+**Example:**
+```bash
+ld-decode --device opencl input.ldf output
+ld-decode --tbc_mode read --device opencl -i a.s16 -i b.s16 -o output
+```
+
+#### `--rf_out file`
+Also write the RF the decoder reads: the stacked or time-base corrected
+stream, as signed 16-bit at the input rate.
+- **Type:** String (path)
+- **Note:** Needs `--tbc_mode read`.
+- **Note:** The file is rounded and limited to the signed 16-bit range (the
+  decoder itself reads the stream unrounded). An unsigned capture's offset is
+  taken out, so a `.u16` or `.u8` stream lands centred on zero.
+
+**Example:**
+```bash
+ld-decode --tbc_mode read -i capture1.rf -i capture2.rf -o output --rf_out stacked.s16
 ```
 
 ### Video Standard Options
@@ -241,21 +388,35 @@ Mitigate interference from analog audio in red colors in NTSC captures.
 ld-decode --NTSC --NTSC_color_notch_filter input.ldf output
 ```
 
-#### `--audio_carrier_cancel`
-Prototype. Subtract the analog audio carriers' intermodulation lines from
-NTSC video. The audio FM carriers mix with the video carrier on the disc, and
-the demodulated video carries faint lines at the carriers' own frequencies
-(2.30 and 2.81 MHz), in the luminance band. Each block's line is fitted to the
-carrier's own phase, taken from the RF, and subtracted; a carrier that is not
-on the disc (and AC3's right channel) is left alone.
-- **Default:** Disabled
-- **Note:** NTSC only. The lines are strongest towards the outer radius of
-  some discs, where removing them lowers the weighted luminance noise by up to
-  about 1.3 dB; on most captures the gain is 0.1-0.5 dB.
+#### `--no_audio_carrier_cancel`
+Leave the analog audio carriers' crosstalk in the video. The audio FM
+carriers leak into the video carrier's phase on the disc, and the
+demodulated video carries faint lines at the carriers' own frequencies
+(NTSC 2.30 and 2.81 MHz, in the luminance band; PAL 0.68 and 1.07 MHz). By
+default they are taken out of the RF before the decoder reads it, in either
+`--tbc_mode`, by the same code. The lines are what the decoder's own video
+filter and readout compensation make of the crosstalk, so the RF is looked
+at through them, at the readout level measured on the capture the way the
+decoder's MTF servo starts (the colour burst's or PAL pilot's sideband
+ratio). A carrier is corrected only where its coupling is steady over the
+capture (measured once, on chunks where it is modulated: a silent carrier,
+or a test disc's still picture matching it by chance, is left). On each
+chunk of 2 Mi samples, each such carrier gives the phase reference (a
+digital-only disc's are left alone); the line locked
+to it is fitted on the demodulated video around it, its amplitude following
+the video level and backing off when it is too weak to tell from the
+picture (rev 8's `--audio_carrier_cancel` model); and the phase it makes is
+taken off the RF, through the inverse of the decoder's filter, so the
+decoder's compensation no longer lifts it.
+- **Default:** Disabled (the crosstalk is cancelled)
+- **Note:** The former rev 8 prototype, `--audio_carrier_cancel` (NTSC,
+  on the demodulated spectrum), is replaced by this, and the option is
+  removed: its model is the one used here, in the RF and in both
+  standards.
 
 **Example:**
 ```bash
-ld-decode --NTSC --audio_carrier_cancel input.ldf output
+ld-decode --NTSC --no_audio_carrier_cancel input.ldf output
 ```
 
 ### PAL-Specific Video Options
@@ -267,6 +428,12 @@ The tone beats against the video FM carrier and shows up as a fine wavy
 pattern rolling through solid picture areas.
 
 #### `--V4300D_coherent_subtract`
+Not shown in the command's help: with `--tbc_mode read` the clock lines
+(`--no_crystal_lines` leaves them) take the LD-V4300D's clock and its
+satellites out of the RF by default, on NTSC as well as PAL, and this option
+then warns and is left to them. With `--tbc_mode resample` it still acts, on
+PAL.
+
 Remove the LD-V4300D spur by estimating the clock line (and its
 satellites) coherently and subtracting the fitted tones from the
 spectrum, without cutting holes in the video sidebands. Self-disabling
@@ -282,7 +449,7 @@ ld-decode --PAL --V4300D_coherent_subtract input.ldf output
 ```
 
 #### `--V4300D_notch_filter`, `-V`
-Legacy alias for `--V4300D_coherent_subtract` (which supersedes the
+Not shown in the command's help either. Legacy alias for `--V4300D_coherent_subtract` (which supersedes the
 original FFT-bin notch: it also removes the spur's leakage skirts and
 its satellites). Kept so existing command lines continue to work.
 
@@ -531,8 +698,12 @@ about 288,000 symbols (bytes) per second of decoded video.
 #### `-f FREQ`, `--frequency FREQ`
 RF sampling frequency of the source file.
 - **Type:** FREQ (see Frequency Format section)
-- **Default:** 40MHz
-- **Note:** If the source file has a different sample rate, specify it here; the decoder will resample to 40MHz internally
+- **Default:** the Domesday Duplicator sidecar's (a `.yaml` file with a
+  `sample_rate_hz` key next to the capture), else 40MHz
+- **Note:** The decoder demodulates at the capture's own rate, in either
+  `--tbc_mode`: nothing is resampled to 40 MHz. (The reference decoder
+  resamples to 40 MHz, so a capture at another rate no longer decodes to its
+  bytes.)
 
 **Example:**
 ```bash
@@ -704,8 +875,11 @@ ld-decode --NTSC --NTSC_color_notch_filter input.ldf output
 
 ### PAL V4300D Capture
 ```bash
-ld-decode --PAL --V4300D_coherent_subtract input.ldf output
+ld-decode --PAL --tbc_mode read input.s16 output
 ```
+The clock lines take the V4300D's clock out of the RF; with
+`--tbc_mode resample` (a compressed capture), `--V4300D_coherent_subtract`
+does instead.
 
 ### Video Only (No Audio)
 ```bash
@@ -779,7 +953,7 @@ ERROR: bug.ldf was not written: ffmpeg exited with status 1
 
 - **Default Video Standard**: If neither `--PAL` nor `--NTSC` is specified, NTSC is assumed.
 - **Thread Count**: The default (`-t 0`) picks the machine's physical cores minus 2, capped at 10; `-t 1` decodes serially.
-- **Sample Rate**: The decoder internally works at 40MHz; all other sample rates are resampled.
+- **Sample Rate**: The decoder works at the capture's own rate, in either `--tbc_mode` (`-f`, else the sidecar's, else 40 MHz); nothing is resampled to 40 MHz.
 - **Frame Counting**: Frames are counted as complete video frames; internally, the decoder processes fields (2 fields = 1 frame).
 - **Lead-out**: The lead-out section marks the end of valid disc content; decoding typically stops here unless `--ignoreleadout` is used.
 

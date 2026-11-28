@@ -109,6 +109,21 @@ def calczc(data, _start_offset, target, edge=0, count=16, reverse=False):
     return calczc_do(data, _start_offset, target, edge, count)
 
 
+def block_cut_end(fir_delay: int, audio_fdiv: int) -> int:
+    """Samples cut from the end of each demodulated block.
+
+    The post-demodulation FIR delay (``fir_delay``, samples) is the minimum.
+    It is rounded up to a multiple of the analog audio's decimation
+    (``audio_fdiv``, input samples per stage-1 audio sample): the audio is
+    cut by ``cut // audio_fdiv``, and unless that division is exact a block
+    is not a whole number of audio samples (495.5 at 75 MHz, where
+    ``audio_fdiv`` is 64), so the audio drifts against the video.  At
+    40 MHz both are 32 and the cut is the original 32.
+    """
+    step = max(int(audio_fdiv), 1)
+    return -(-int(fir_delay) // step) * step
+
+
 # copied from vhs-decode
 
 def gen_bpf_supergauss(freq_low, freq_high, order, nyquist_hz, block_len):

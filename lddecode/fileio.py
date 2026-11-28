@@ -4,6 +4,7 @@ Originally split out of utils.py, which now only re-exports it.
 """
 
 import logging
+import os
 import shlex
 import subprocess
 import threading
@@ -126,6 +127,351 @@ def make_loader(filename, inputfreq=None, decode_threads=1):
 
     # Fallback to LoadFFmpeg for other formats (with stdin input)
     return LoadFFmpeg()
+
+
+#: The fixed-width raw captures, and the sample layout each one holds.
+#: The read-time TBC path reads a capture at arbitrary positions, which only
+#: a fixed-width file can serve: a packed (.lds) or compressed (.ldf, .raw.oga, .flac)
+#: capture cannot be read at an arbitrary offset.
+RAW_LAYOUTS = {
+    ".s16": ("int16", 2),
+    ".raw": ("int16", 2),
+    ".r16": ("uint16", 2),
+    ".u16": ("uint16", 2),
+    ".r8": ("uint8", 1),
+    ".u8": ("uint8", 1),
+    ".s8": ("int8", 1),
+    ".rf": ("float32", 4),
+}
+
+
+def raw_layout(filename):
+    """The (sample dtype, bytes per sample) of a fixed-width raw capture.
+
+    Returns None for a capture that is not fixed-width (a packed .lds, a
+    compressed .ldf or .flac), which cannot be read at arbitrary positions.
+    """
+    name = filename.lower()
+    for ext, layout in RAW_LAYOUTS.items():
+        if name.endswith(ext):
+            return layout
+    return None
+
+
+class RawCapture:
+    """A fixed-width raw capture, read at absolute sample positions.
+
+    The samples come back in the same units the matching loader returns
+    (signed 16-bit, unsigned 16-bit centred on 32768, unsigned 8-bit, signed
+    8-bit scaled up to the 16-bit range, or 32-bit float scaled by 32768), so
+    a decode reads the same scale whether it takes one capture or a stack.
+
+    This is the reader the stacking source injects: it asks for a range of
+    samples and gets an array of floats, whatever the file's own dtype.
+    """
+
+    def __init__(self, filename):
+        """Open filename; raises ValueError when it is not a fixed-width raw capture."""
+        layout = raw_layout(filename)
+        if layout is None:
+            raise ValueError(
+                f"{filename} is not a fixed-width raw capture "
+                "(s16, raw, r16, u16, r8, u8, s8, rf)"
+            )
+        self.filename = filename
+        self.dtype, self.width = layout
+        self._file = open(filename, "rb")
+        self._length = os.path.getsize(filename) // self.width
+
+    @property
+    def length(self):
+        """The capture's length in samples."""
+        return self._length
+
+    def read(self, start, count):
+        """The samples [start, start + count) as float64.
+
+        Samples before the file and past its end read as zero, so a caller
+        may ask for a range that overhangs either end.  Returns a new array;
+        it does not share memory with the file.
+        """
+        out = np.zeros(count, dtype=np.float64)
+        lo = max(0, int(start))
+        hi = min(self._length, int(start) + int(count))
+        if hi <= lo:
+            return out
+        self._file.seek(lo * self.width)
+        data = np.fromfile(self._file, dtype=self.dtype, count=hi - lo)
+        if self.dtype == "float32":
+            data = data * 32768.0
+        elif self.dtype == "int8":
+            # The same scale-up the .s8 loader applies, so the two paths
+            # decode identically.
+            data = data.astype(np.float64) * 256.0
+        out[lo - int(start) : lo - int(start) + len(data)] = data
+        return out
+
+    def close(self):
+        """Close the file."""
+        if self._file is not None:
+            self._file.close()
+            self._file = None
+
+
+#: The packed captures: samples and bytes per group.
+PACKED_LAYOUTS = {".lds": (4, 5), ".r30": (3, 4)}
+
+#: The compressed captures, decoded by PyAV (LoadLDF): every suffix
+#: make_loader sends to LoadLDF, so a capture the decoder reads as a stream
+#: can also be read at positions.
+COMPRESSED_EXTENSIONS = ("raw.oga", ".ldf", ".wav", ".flac", ".vhs")
+
+
+class PackedCapture:
+    """A packed capture (.lds: four 10-bit samples in five bytes; .r30:
+    three in a 32-bit word), read at absolute sample positions with the
+    loaders the decoder reads them with (load_packed_data_4_40 and
+    load_packed_data_3_32), so the samples are the same."""
+
+    def __init__(self, filename):
+        ext = os.path.splitext(filename)[1].lower()
+        if ext not in PACKED_LAYOUTS:
+            raise ValueError(f"{filename} is not a packed capture (lds, r30)")
+        per_group, group_bytes = PACKED_LAYOUTS[ext]
+        self.filename = filename
+        self._load = load_packed_data_4_40 if ext == ".lds" else load_packed_data_3_32
+        self._file = open(filename, "rb")
+        self._length = os.path.getsize(filename) // group_bytes * per_group
+
+    @property
+    def length(self):
+        return self._length
+
+    def read(self, start, count):
+        """The samples [start, start + count) as float64, zero outside the
+        capture (as RawCapture.read)."""
+        out = np.zeros(count, dtype=np.float64)
+        lo = max(0, int(start))
+        hi = min(self._length, int(start) + int(count))
+        if hi <= lo:
+            return out
+        data = self._load(self._file, lo, hi - lo)
+        n = min(len(data), hi - lo)
+        out[lo - int(start) : lo - int(start) + n] = data[:n]
+        return out
+
+    def close(self):
+        if self._file is not None:
+            self._file.close()
+            self._file = None
+
+
+def compressed_length(filename):
+    """The number of samples in a compressed (.ldf/.flac) capture.
+
+    The header's count is where the search starts, not the answer: a FLAC
+    whose header could not be rewritten once encoded (written through a
+    pipe) can carry a count that is not the stream's - one 28 GB capture
+    says 16.8 s of a 20-minute stream.  The decoder reads such a file to its
+    end, so the end is found in the stream itself: a seek, then the first
+    frame decoded there and its position, doubling past the header's count
+    while the stream goes on, halving back, and the last stretch decoded to
+    the end.  (The decoder's own reader cannot be asked one sample at a
+    time near the end: it answers from what it holds.)
+    """
+    import av
+
+    with av.open(filename) as container:
+        stream = container.streams.audio[0]
+        scale = stream.time_base * stream.sample_rate
+
+        def frame_at(sample):
+            """The frame a seek to `sample` lands on: (first sample, count),
+            or None past the end."""
+            try:
+                container.seek(int(sample / scale), stream=stream, any_frame=False, backward=True)
+            except av.error.FFmpegError:
+                return None
+            for frame in container.decode(stream):
+                if frame.pts is None:
+                    return None
+                return int(frame.pts * scale), frame.samples
+            return None
+
+        def inside(sample):
+            found = frame_at(sample)
+            return found is not None and found[0] + found[1] > sample
+
+        claimed = int(stream.duration * scale) if stream.duration is not None else 0
+        lo, guess = 0, max(claimed, 1 << 20)
+        if inside(guess):
+            lo, step = guess, guess
+            while inside(lo + step):
+                lo += step
+                step *= 2
+            hi = lo + step
+        else:
+            hi = guess
+        while hi - lo > 1 << 16:
+            mid = (lo + hi) // 2
+            if inside(mid):
+                lo = mid
+            else:
+                hi = mid
+        found = frame_at(lo)
+        if found is None:
+            return 0
+        container.seek(int(found[0] / scale), stream=stream, any_frame=False, backward=True)
+        end = found[0]
+        for frame in container.decode(stream):
+            if frame.pts is not None:
+                end = int(frame.pts * scale)
+            end += frame.samples
+        return end
+
+
+class CompressedCapture:
+    """A compressed capture (.ldf, .raw.oga, .flac, .wav, .vhs), read at
+    absolute sample positions through the decoder's own FLAC reader
+    (LoadLDF), which seeks in the container and decodes from there."""
+
+    def __init__(self, filename):
+        self.filename = filename
+        self._loader = LoadLDF(filename)
+        self._length = compressed_length(filename)
+
+    @property
+    def length(self):
+        return self._length
+
+    def read(self, start, count):
+        """The samples [start, start + count) as float64, zero outside the
+        capture (as RawCapture.read)."""
+        out = np.zeros(count, dtype=np.float64)
+        lo = max(0, int(start))
+        hi = min(self._length, int(start) + int(count))
+        if hi <= lo:
+            return out
+        data = self._loader.read(None, lo, hi - lo)
+        if data is None:
+            raise IOError(f"{self.filename}: the stream ends before sample {hi}"
+                          + (f" ({self._loader.failed})" if self._loader.failed else ""))
+        out[lo - int(start) : hi - int(start)] = data
+        return out
+
+    def close(self):
+        if self._loader is not None:
+            self._loader._close()
+            self._loader = None
+
+
+def open_capture(filename):
+    """A capture read at absolute sample positions, whatever its format:
+    raw (RawCapture), packed (PackedCapture) or compressed
+    (CompressedCapture).  Raises ValueError for another format."""
+    if raw_layout(filename) is not None:
+        return RawCapture(filename)
+    ext = os.path.splitext(filename)[1].lower()
+    if ext in PACKED_LAYOUTS:
+        return PackedCapture(filename)
+    # Matched on the name's end, not on splitext: ".raw.oga" has two dots.
+    if filename.lower().endswith(COMPRESSED_EXTENSIONS):
+        return CompressedCapture(filename)
+    raise ValueError(
+        f"{filename}: a capture read at positions is raw (s16, raw, r16, u16, "
+        "r8, u8, s8, rf), packed (lds, r30) or compressed (ldf, raw.oga, "
+        "flac, wav, vhs)")
+
+
+def open_capture_reader(filename):
+    """open_capture(filename).read: module-level, so that
+    ``functools.partial(open_capture_reader, filename)`` can be sent to
+    another process (the stacked source's pass 0)."""
+    return open_capture(filename).read
+
+
+def capture_dtype(filename):
+    """The sample type of a capture's samples, as RAW_LAYOUTS names it (the
+    packed and compressed captures read as signed 16-bit)."""
+    layout = raw_layout(filename)
+    return layout[0] if layout is not None else "int16"
+
+
+def spool_stdin():
+    """Buffer what stdin carries to a temporary 16-bit file, for a decode
+    that reads its input at positions; returns its name.  ffmpeg decodes it
+    as the decoder's stdin loader (LoadFFmpeg) does, and the samples keep
+    their own rate.  The caller removes the file."""
+    import sys
+    import tempfile
+
+    fd, path = tempfile.mkstemp(prefix="ld-decode-stdin-", suffix=".s16")
+    os.close(fd)
+    command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", "-",
+               "-c:a", "pcm_s16le", "-f", "s16le", path]
+    try:
+        code = subprocess.run(command, stdin=sys.stdin.buffer).returncode
+        if code != 0:
+            raise IOError(f"stdin: ffmpeg exited with status {code} while buffering it")
+    except BaseException:
+        os.remove(path)
+        raise
+    return path
+
+
+#: The rate a capture is taken to be at when nothing says otherwise (Hz):
+#: the decoder's own default, and the Domesday Duplicator's rate.
+DEFAULT_CAPTURE_RATE_HZ = 40.0e6
+
+
+def open_raw_reader(filename):
+    """A reader of the fixed-width raw capture ``filename``: ``read(start, count)``.
+
+    Module-level, so ``functools.partial(open_raw_reader, filename)`` can be
+    sent to another process, which opens the capture itself (the stacked
+    source's pass 0 does).  The file stays open for the process's life.
+    """
+    return RawCapture(filename).read
+
+
+def sidecar_sample_rate(lines):
+    """The sample rate (Hz) a Domesday Duplicator sidecar gives, or None.
+
+    ``lines`` is the sidecar's text, line by line.  The rate is the
+    ``sample_rate_hz`` key, in hertz, which the Domesday Duplicator writes
+    quoted (``"sample_rate_hz": 75000000``, under ``"capture"``); a bare
+    key is read as well.  A trailing comment is ignored.
+    """
+    for line in lines:
+        key, sep, value = line.partition(":")
+        if sep and key.strip().strip("\"'") == "sample_rate_hz":
+            try:
+                rate = float(value.split("#")[0].strip().strip("\"'"))
+            except ValueError:
+                return None
+            return rate if rate > 0 else None
+    return None
+
+
+def capture_sample_rate(filename, inputfreq=None):
+    """The capture's own sample rate in Hz.
+
+    inputfreq is the rate the user gave (in MHz); when it is None the rate
+    is read from the Domesday Duplicator sidecar that sits next to the
+    capture (a .yaml file, see sidecar_sample_rate), and failing that it is
+    DEFAULT_CAPTURE_RATE_HZ, as for any other decode.  Returns None only
+    when the sidecar exists but its rate cannot be read.
+    """
+    if inputfreq is not None:
+        return float(inputfreq) * 1e6
+    sidecar = os.path.splitext(filename)[0] + ".yaml"
+    if not os.path.isfile(sidecar):
+        return DEFAULT_CAPTURE_RATE_HZ
+    try:
+        with open(sidecar, "r", encoding="utf-8", errors="replace") as f:
+            return sidecar_sample_rate(f)
+    except OSError:
+        return None
 
 
 def load_unpacked_data(infile, sample, readlen, sampletype):

@@ -41,7 +41,9 @@ jobs:
           python scripts\generate_version.py | Out-File -FilePath build\package\lddecode\version -Encoding utf8
           $version = Get-Content build\package\lddecode\version -ErrorAction SilentlyContinue
           if ([string]::IsNullOrEmpty($version)) { $version = "dev" }
-          $safeVersion = $version -replace ':', '-'
+          # A branch name can carry a slash (feat/x): it would make the
+          # package's file name a path.
+          $safeVersion = $version -replace '[:/\\]', '-'
           echo "VERSION=$safeVersion" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           
           # Create wrapper batch scripts

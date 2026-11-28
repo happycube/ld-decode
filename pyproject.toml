@@ -39,6 +39,11 @@ dev = [
     "pytest>=6.0",
     "pytest-cov>=2.10",
 ]
+# --device opencl: the decoder's demodulation, and the stacked source's
+# read and combination, on a GPU.
+opencl = [
+    "pyopencl>=2022.1",
+]
 docs = [
     "sphinx>=3.0",
     "sphinx-rtd-theme>=0.5",
